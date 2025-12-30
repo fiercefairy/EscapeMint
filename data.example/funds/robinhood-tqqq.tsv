@@ -1,0 +1,4 @@
+date	value	action	amount	dividend	expense	cash_interest	fund_size	margin_borrowed	notes
+2024-01-01	100	BUY	100							Initial DCA
+2024-01-08	205	BUY	100							Week 1 - TQQQ up
+2024-01-15	295	BUY	100							Week 2 - slight dip

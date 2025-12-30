@@ -1,0 +1,226 @@
+import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
+import { fetchPlatforms, createPlatform, deletePlatform, renamePlatform, type Platform } from '../api/platforms'
+
+export function Platforms() {
+  const [platforms, setPlatforms] = useState<Platform[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [newPlatform, setNewPlatform] = useState({ id: '', name: '' })
+  const [editForm, setEditForm] = useState({ newId: '', newName: '' })
+
+  const loadPlatforms = async () => {
+    setLoading(true)
+    const result = await fetchPlatforms()
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      setPlatforms(result.data ?? [])
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    loadPlatforms()
+  }, [])
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newPlatform.id.trim() || !newPlatform.name.trim()) return
+
+    const result = await createPlatform({
+      id: newPlatform.id.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+      name: newPlatform.name
+    })
+
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Platform created')
+      setNewPlatform({ id: '', name: '' })
+      setShowAddForm(false)
+      loadPlatforms()
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    const result = await deletePlatform(id)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Platform deleted')
+      loadPlatforms()
+    }
+  }
+
+  const handleStartEdit = (platform: Platform) => {
+    setEditingId(platform.id)
+    setEditForm({ newId: platform.id, newName: platform.name })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setEditForm({ newId: '', newName: '' })
+  }
+
+  const handleSaveEdit = async (oldId: string) => {
+    if (!editForm.newId.trim() || !editForm.newName.trim()) return
+
+    const result = await renamePlatform(oldId, editForm.newId, editForm.newName)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      const msg = result.data?.renamed
+        ? `Platform renamed (${result.data.renamed} fund(s) updated)`
+        : 'Platform updated'
+      toast.success(msg)
+      setEditingId(null)
+      loadPlatforms()
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-white">Platforms</h1>
+          <p className="text-sm text-slate-400">Manage trading platforms and brokerages</p>
+        </div>
+        <button
+          onClick={() => setShowAddForm(!showAddForm)}
+          className="px-3 py-1.5 text-sm bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors"
+        >
+          {showAddForm ? 'Cancel' : 'Add Platform'}
+        </button>
+      </div>
+
+      {showAddForm && (
+        <form onSubmit={handleAdd} className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">ID (lowercase)</label>
+              <input
+                type="text"
+                value={newPlatform.id}
+                onChange={e => setNewPlatform({ ...newPlatform, id: e.target.value })}
+                placeholder="e.g., cryptocom"
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Display Name</label>
+              <input
+                type="text"
+                value={newPlatform.name}
+                onChange={e => setNewPlatform({ ...newPlatform, name: e.target.value })}
+                placeholder="e.g., Crypto.com"
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                required
+              />
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <button
+              type="submit"
+              className="px-4 py-2 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors"
+            >
+              Create Platform
+            </button>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-mint-400"></div>
+        </div>
+      ) : (
+        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-700 text-slate-400">
+                <th className="px-4 py-3">ID</th>
+                <th className="px-4 py-3">Display Name</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {platforms.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
+                    No platforms yet. Add one or create a fund to get started.
+                  </td>
+                </tr>
+              ) : (
+                platforms.map(platform => (
+                  <tr key={platform.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                    {editingId === platform.id ? (
+                      <>
+                        <td className="px-4 py-3">
+                          <input
+                            type="text"
+                            value={editForm.newId}
+                            onChange={e => setEditForm({ ...editForm, newId: e.target.value })}
+                            className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-white text-sm focus:outline-none focus:border-mint-500"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="text"
+                            value={editForm.newName}
+                            onChange={e => setEditForm({ ...editForm, newName: e.target.value })}
+                            className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-white text-sm focus:outline-none focus:border-mint-500"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => handleSaveEdit(platform.id)}
+                            className="px-2 py-1 text-xs bg-mint-600 text-white rounded hover:bg-mint-700 mr-2"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="px-2 py-1 text-xs bg-slate-600 text-white rounded hover:bg-slate-500"
+                          >
+                            Cancel
+                          </button>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-4 py-3 text-white font-mono">{platform.id}</td>
+                        <td className="px-4 py-3 text-slate-300">{platform.name}</td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => handleStartEdit(platform)}
+                            className="px-2 py-1 text-xs bg-slate-600 text-white rounded hover:bg-slate-500 mr-2"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(platform.id)}
+                            className="px-2 py-1 text-xs bg-red-600/20 text-red-400 rounded hover:bg-red-600/30"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="text-sm text-slate-500">
+        <p>Note: Renaming a platform ID will update all associated fund files automatically.</p>
+        <p>You can only delete platforms that have no funds associated with them.</p>
+      </div>
+    </div>
+  )
+}

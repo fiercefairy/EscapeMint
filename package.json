@@ -1,0 +1,56 @@
+{
+  "name": "escapemint",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local-first, open-source capital allocation engine for rules-based fund management",
+  "scripts": {
+    "setup": "npm install && npm run build:packages && npm run setup:data",
+    "setup:data": "mkdir -p data/funds && cp -rn data.example/funds/* data/funds/ 2>/dev/null || true",
+    "dev": "pm2 start ecosystem.config.cjs && pm2 logs",
+    "dev:stop": "pm2 stop ecosystem.config.cjs",
+    "dev:restart": "pm2 restart ecosystem.config.cjs",
+    "dev:status": "pm2 status",
+    "dev:logs": "pm2 logs",
+    "build:packages": "npm run build:engine && npm run build:storage",
+    "build": "npm run build:packages && npm run build:server && npm run build:web",
+    "build:engine": "npx tsc --project packages/engine/tsconfig.json",
+    "build:storage": "npx tsc --project packages/storage/tsconfig.json",
+    "build:server": "npx tsc --project packages/server/tsconfig.json",
+    "build:web": "cd packages/web && npx vite build",
+    "test": "npm run test:engine && npm run test:storage",
+    "test:engine": "cd packages/engine && npm test",
+    "test:storage": "cd packages/storage && npm test",
+    "lint": "eslint packages --ext .ts,.tsx",
+    "lint:fix": "eslint packages --ext .ts,.tsx --fix",
+    "typecheck": "tsc --noEmit",
+    "start": "pm2 start ecosystem.config.cjs --env production",
+    "stop": "pm2 stop ecosystem.config.cjs",
+    "logs": "pm2 logs"
+  },
+  "keywords": [
+    "investing",
+    "fund-management",
+    "capital-allocation",
+    "rules-based",
+    "local-first"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react": "^7.37.3",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "pm2": "^5.4.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.19.0",
+    "xlsx": "^0.18.5"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
+}

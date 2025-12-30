@@ -1,0 +1,4 @@
+#schema_version:1
+id	portfolio_id	name	period	period_custom_days	action_amount_usd	starting_fund_size_usd	target_growth_apy	start_date	tolerance_pct	created_at	updated_at
+test-subfund-001	test-portfolio-001	Test Fund A	weekly		100	10000	0.30	2024-01-01	0.02	2024-01-01T00:00:00.000Z	2024-01-01T00:00:00.000Z
+test-subfund-002	test-portfolio-001	Test Fund B	monthly		500	50000	0.20	2024-01-01	0.03	2024-01-01T00:00:00.000Z	2024-01-01T00:00:00.000Z

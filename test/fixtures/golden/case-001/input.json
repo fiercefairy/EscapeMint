@@ -1,0 +1,16 @@
+{
+  "description": "Simple case: no cash flows, 30% APY target, 1 year elapsed",
+  "config": {
+    "starting_fund_size_usd": 10000,
+    "target_growth_apy": 0.30,
+    "start_date": "2024-01-01",
+    "tolerance_pct": 0.02,
+    "action_amount_usd": 100,
+    "period": "weekly"
+  },
+  "cashflows": [],
+  "dividends": [],
+  "expenses": [],
+  "snapshot_date": "2025-01-01",
+  "equity_value_usd": 12500
+}

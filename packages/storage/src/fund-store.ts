@@ -1,0 +1,380 @@
+import { readFile, writeFile, rename, mkdir, readdir, unlink } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { dirname, join, basename } from 'node:path'
+import { v4 as uuidv4 } from 'uuid'
+import type { SubFundConfig, Trade, Dividend, Expense } from '@escapemint/engine'
+
+/**
+ * A single row in the fund time-series.
+ */
+export interface FundEntry {
+  date: string
+  value: number
+  action?: 'BUY' | 'SELL' | 'DEPOSIT' | 'WITHDRAW'
+  amount?: number
+  dividend?: number
+  expense?: number
+  cash_interest?: number
+  fund_size?: number
+  margin_borrowed?: number
+  notes?: string
+}
+
+/**
+ * Complete fund data from a single file.
+ */
+export interface FundData {
+  /** Derived from filename: platform-ticker */
+  id: string
+  platform: string
+  ticker: string
+  config: SubFundConfig
+  entries: FundEntry[]
+}
+
+const ENTRY_HEADERS = ['date', 'value', 'action', 'amount', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_borrowed', 'notes']
+
+/**
+ * Get the JSON config file path for a TSV file.
+ */
+function getConfigPath(tsvPath: string): string {
+  return tsvPath.replace(/\.tsv$/, '.json')
+}
+
+/**
+ * Read config from JSON file.
+ */
+async function readConfig(configPath: string): Promise<SubFundConfig | null> {
+  if (!existsSync(configPath)) {
+    return null
+  }
+  const content = await readFile(configPath, 'utf-8')
+  return JSON.parse(content) as SubFundConfig
+}
+
+/**
+ * Write config to JSON file.
+ */
+async function writeConfig(configPath: string, config: SubFundConfig): Promise<void> {
+  const dir = dirname(configPath)
+  if (!existsSync(dir)) {
+    await mkdir(dir, { recursive: true })
+  }
+  const tempPath = join(dir, `.${uuidv4()}.tmp`)
+  await writeFile(tempPath, JSON.stringify(config, null, 2), 'utf-8')
+  await rename(tempPath, configPath)
+}
+
+
+/**
+ * Parse a data row into FundEntry.
+ */
+function parseEntry(line: string, headers: string[]): FundEntry {
+  const values = line.split('\t')
+  const entry: FundEntry = {
+    date: '',
+    value: 0
+  }
+
+  for (let i = 0; i < headers.length; i++) {
+    const header = headers[i]
+    const val = values[i] ?? ''
+
+    switch (header) {
+      case 'date':
+        entry.date = val
+        break
+      case 'value':
+        entry.value = parseFloat(val) || 0
+        break
+      case 'action':
+        if (val === 'BUY' || val === 'SELL' || val === 'DEPOSIT' || val === 'WITHDRAW') entry.action = val
+        break
+      case 'amount':
+        if (val) entry.amount = parseFloat(val)
+        break
+      case 'dividend':
+        if (val) entry.dividend = parseFloat(val)
+        break
+      case 'expense':
+        if (val) entry.expense = parseFloat(val)
+        break
+      case 'cash_interest':
+        if (val) entry.cash_interest = parseFloat(val)
+        break
+      case 'fund_size':
+        if (val) entry.fund_size = parseFloat(val)
+        break
+      case 'margin_borrowed':
+        if (val) entry.margin_borrowed = parseFloat(val)
+        break
+      case 'notes':
+        if (val) entry.notes = val.replace(/\\t/g, '\t').replace(/\\n/g, '\n')
+        break
+    }
+  }
+
+  return entry
+}
+
+/**
+ * Serialize entry to TSV line.
+ */
+function serializeEntry(entry: FundEntry): string {
+  const values = [
+    entry.date,
+    entry.value.toString(),
+    entry.action ?? '',
+    entry.amount?.toString() ?? '',
+    entry.dividend?.toString() ?? '',
+    entry.expense?.toString() ?? '',
+    entry.cash_interest?.toString() ?? '',
+    entry.fund_size?.toString() ?? '',
+    entry.margin_borrowed?.toString() ?? '',
+    (entry.notes ?? '').replace(/\t/g, '\\t').replace(/\n/g, '\\n')
+  ]
+  return values.join('\t')
+}
+
+/**
+ * Extract platform and ticker from filename.
+ * Format: platform-ticker.tsv -> { platform: 'platform', ticker: 'ticker' }
+ */
+function parseFilename(filename: string): { platform: string; ticker: string } {
+  const name = basename(filename, '.tsv')
+  const dashIndex = name.indexOf('-')
+  if (dashIndex === -1) {
+    return { platform: name, ticker: '' }
+  }
+  return {
+    platform: name.slice(0, dashIndex),
+    ticker: name.slice(dashIndex + 1)
+  }
+}
+
+/**
+ * Read a fund file and return parsed data.
+ * Config is read from JSON file, entries from TSV file.
+ */
+export async function readFund(filePath: string): Promise<FundData | null> {
+  if (!existsSync(filePath)) {
+    return null
+  }
+
+  const { platform, ticker } = parseFilename(filePath)
+  const configPath = getConfigPath(filePath)
+
+  // Read config from JSON file
+  const config = await readConfig(configPath)
+  if (!config) {
+    return null
+  }
+
+  // Read entries from TSV file
+  const content = await readFile(filePath, 'utf-8')
+  const lines = content.split('\n').filter(line => line.trim() !== '')
+
+  if (lines.length < 1) {
+    return null
+  }
+
+  // First line is headers
+  const headerLine = lines[0]
+  if (!headerLine) {
+    return null
+  }
+  const headers = headerLine.split('\t')
+
+  // Remaining lines are entries
+  const entries: FundEntry[] = []
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (line) {
+      entries.push(parseEntry(line, headers))
+    }
+  }
+
+  return {
+    id: `${platform}-${ticker}`,
+    platform,
+    ticker,
+    config,
+    entries
+  }
+}
+
+/**
+ * Write fund data to file atomically.
+ * Config is written to a separate JSON file, TSV contains only data.
+ */
+export async function writeFund(filePath: string, data: FundData): Promise<void> {
+  const dir = dirname(filePath)
+  if (!existsSync(dir)) {
+    await mkdir(dir, { recursive: true })
+  }
+
+  // Write config to JSON file
+  const configPath = getConfigPath(filePath)
+  await writeConfig(configPath, data.config)
+
+  // Write only headers + entries to TSV (no config line)
+  const lines: string[] = [
+    ENTRY_HEADERS.join('\t'),
+    ...data.entries.map(serializeEntry)
+  ]
+
+  const content = lines.join('\n') + '\n'
+
+  // Atomic write
+  const tempPath = join(dir, `.${uuidv4()}.tmp`)
+  await writeFile(tempPath, content, 'utf-8')
+  await rename(tempPath, filePath)
+}
+
+/**
+ * Update only the config for a fund (more efficient than writeFund for config-only changes).
+ */
+export async function updateFundConfig(filePath: string, config: Partial<SubFundConfig>): Promise<SubFundConfig> {
+  const configPath = getConfigPath(filePath)
+  const existingConfig = await readConfig(configPath)
+
+  if (!existingConfig) {
+    throw new Error(`Config file not found: ${configPath}`)
+  }
+
+  const updatedConfig: SubFundConfig = { ...existingConfig, ...config }
+  await writeConfig(configPath, updatedConfig)
+  return updatedConfig
+}
+
+/**
+ * Delete a fund (removes both TSV data and JSON config files).
+ */
+export async function deleteFund(filePath: string): Promise<void> {
+  const configPath = getConfigPath(filePath)
+
+  // Delete TSV file
+  if (existsSync(filePath)) {
+    await unlink(filePath)
+  }
+
+  // Delete JSON config file
+  if (existsSync(configPath)) {
+    await unlink(configPath)
+  }
+}
+
+/**
+ * Append an entry to a fund file.
+ */
+export async function appendEntry(filePath: string, entry: FundEntry): Promise<void> {
+  const fund = await readFund(filePath)
+  if (!fund) {
+    throw new Error(`Fund file not found: ${filePath}`)
+  }
+
+  fund.entries.push(entry)
+  await writeFund(filePath, fund)
+}
+
+/**
+ * Update an entry at a specific index.
+ */
+export async function updateEntry(filePath: string, entryIndex: number, entry: FundEntry): Promise<void> {
+  const fund = await readFund(filePath)
+  if (!fund) {
+    throw new Error(`Fund file not found: ${filePath}`)
+  }
+
+  if (entryIndex < 0 || entryIndex >= fund.entries.length) {
+    throw new Error(`Entry index out of bounds: ${entryIndex}`)
+  }
+
+  fund.entries[entryIndex] = entry
+  await writeFund(filePath, fund)
+}
+
+/**
+ * List all fund files in a directory.
+ */
+export async function listFunds(fundsDir: string): Promise<string[]> {
+  if (!existsSync(fundsDir)) {
+    return []
+  }
+
+  const files = await readdir(fundsDir)
+  return files
+    .filter(f => f.endsWith('.tsv'))
+    .map(f => join(fundsDir, f))
+}
+
+/**
+ * Read all funds from a directory.
+ */
+export async function readAllFunds(fundsDir: string): Promise<FundData[]> {
+  const files = await listFunds(fundsDir)
+  const funds: FundData[] = []
+
+  for (const file of files) {
+    const fund = await readFund(file)
+    if (fund) {
+      funds.push(fund)
+    }
+  }
+
+  return funds
+}
+
+/**
+ * Convert fund entries to trades for engine calculation.
+ */
+export function entriesToTrades(entries: FundEntry[]): Trade[] {
+  return entries
+    .filter(e => e.action && e.amount)
+    .map(e => ({
+      date: e.date,
+      amount_usd: e.amount!,
+      type: e.action!.toLowerCase() as 'buy' | 'sell'
+    }))
+}
+
+/**
+ * Convert fund entries to dividends for engine calculation.
+ */
+export function entriesToDividends(entries: FundEntry[]): Dividend[] {
+  return entries
+    .filter(e => e.dividend && e.dividend > 0)
+    .map(e => ({
+      date: e.date,
+      amount_usd: e.dividend!
+    }))
+}
+
+/**
+ * Convert fund entries to expenses for engine calculation.
+ */
+export function entriesToExpenses(entries: FundEntry[]): Expense[] {
+  return entries
+    .filter(e => e.expense && e.expense > 0)
+    .map(e => ({
+      date: e.date,
+      amount_usd: e.expense!
+    }))
+}
+
+/**
+ * Sum all cash interest from entries.
+ */
+export function entriesToCashInterest(entries: FundEntry[]): number {
+  return entries.reduce((sum, e) => sum + (e.cash_interest ?? 0), 0)
+}
+
+/**
+ * Get latest equity value from entries.
+ */
+export function getLatestEquity(entries: FundEntry[]): { date: string; value: number } | null {
+  if (entries.length === 0) return null
+  const latest = entries[entries.length - 1]
+  if (!latest) return null
+  return { date: latest.date, value: latest.value }
+}

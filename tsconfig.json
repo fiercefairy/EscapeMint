@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "references": [
+    { "path": "./packages/engine" },
+    { "path": "./packages/storage" },
+    { "path": "./packages/server" },
+    { "path": "./packages/web" }
+  ]
+}
