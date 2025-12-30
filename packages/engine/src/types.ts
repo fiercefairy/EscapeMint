@@ -1,6 +1,14 @@
 export type ActionType = 'BUY' | 'SELL'
 
+export type FundStatus = 'active' | 'closed'
+
 export interface SubFundConfig {
+  /**
+   * Fund status: 'active' for running funds, 'closed' for completed funds.
+   * Defaults to 'active' if not specified.
+   */
+  status?: FundStatus
+
   /**
    * Total capital allocated to this sub-fund (e.g., $10,000).
    * This is the total fund size including both cash and invested amounts.

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { updateFund, deleteFund, notifyFundsChanged, type FundConfig } from '../api/funds'
+import { updateFund, deleteFund, notifyFundsChanged, type FundConfig, type FundStatus } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
 
 interface EditFundConfigModalProps {
@@ -28,6 +28,7 @@ export function EditFundConfigModal({ fundId, fundPlatform, fundTicker, config, 
   const [selectedPlatform, setSelectedPlatform] = useState(fundPlatform.toLowerCase())
   const [ticker, setTicker] = useState(fundTicker.toLowerCase())
   const [formData, setFormData] = useState({
+    status: config.status ?? 'active' as FundStatus,
     fund_size_usd: config.fund_size_usd,
     target_apy: round(config.target_apy * 100), // Display as percentage
     interval_days: config.interval_days,
@@ -56,6 +57,7 @@ export function EditFundConfigModal({ fundId, fundPlatform, fundTicker, config, 
     setLoading(true)
 
     const updatedConfig: Partial<FundConfig> = {
+      status: formData.status,
       fund_size_usd: formData.fund_size_usd,
       target_apy: round(formData.target_apy / 100, 4),
       interval_days: formData.interval_days,
@@ -153,8 +155,27 @@ export function EditFundConfigModal({ fundId, fundPlatform, fundTicker, config, 
             </p>
           )}
 
-          {/* Fund Size and Start Date */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Status, Fund Size, and Start Date */}
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Status</label>
+              <select
+                value={formData.status}
+                onChange={e => {
+                  const newStatus = e.target.value as FundStatus
+                  // Auto-set fund_size to 0 when marking as closed
+                  if (newStatus === 'closed' && formData.fund_size_usd > 0) {
+                    setFormData({ ...formData, status: newStatus, fund_size_usd: 0 })
+                  } else {
+                    setFormData({ ...formData, status: newStatus })
+                  }
+                }}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+              >
+                <option value="active">Active</option>
+                <option value="closed">Closed</option>
+              </select>
+            </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Fund Size ($)</label>
               <input
@@ -177,6 +198,11 @@ export function EditFundConfigModal({ fundId, fundPlatform, fundTicker, config, 
               />
             </div>
           </div>
+          {formData.status === 'closed' && formData.fund_size_usd > 0 && (
+            <p className="text-xs text-amber-400 -mt-2">
+              Closed funds should have a fund size of $0
+            </p>
+          )}
 
           {/* Target APY and Interval */}
           <div className="grid grid-cols-2 gap-4">

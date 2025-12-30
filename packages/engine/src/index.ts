@@ -18,6 +18,7 @@ export {
 } from './aggregate.js'
 export type {
   ActionType,
+  FundStatus,
   SubFundConfig,
   Trade,
   CashFlow,

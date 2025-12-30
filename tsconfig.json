@@ -3,6 +3,7 @@
   "compilerOptions": {
     "noEmit": true
   },
+  "files": [],
   "references": [
     { "path": "./packages/engine" },
     { "path": "./packages/storage" },

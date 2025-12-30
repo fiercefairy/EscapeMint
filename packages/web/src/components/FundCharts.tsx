@@ -14,6 +14,7 @@ interface TimeSeriesPoint {
   value: number
   startInput: number
   fundSize: number
+  cashAvailable: number
   cumulativeDividends: number
   cumulativeExpenses: number
   realizedGains: number
@@ -129,6 +130,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
       value: entry.value,
       startInput,
       fundSize,
+      cashAvailable,
       cumulativeDividends,
       cumulativeExpenses,
       realizedGains,
@@ -724,208 +726,10 @@ function AreaChart({
     </div>
   )
 }
-
-// Percentage Stacked Area (Cash vs Asset) with hover tooltips
-function CashAssetChart({ data, resize }: { data: TimeSeriesPoint[]; resize?: number }) {
-  const ref = useRef<SVGSVGElement>(null)
-
-  useEffect(() => {
-    if (!ref.current || data.length === 0) return
-
-    const svg = d3.select(ref.current)
-    svg.selectAll('*').remove()
-
-    const margin = { top: 10, right: 10, bottom: 25, left: 40 }
-    const width = ref.current.clientWidth - margin.left - margin.right
-    const height = ref.current.clientHeight - margin.top - margin.bottom
-
-    const g = svg
-      .append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`)
-
-    const x = d3.scaleTime()
-      .domain(d3.extent(data, d => d.date) as [Date, Date])
-      .range([0, width])
-
-    const y = d3.scaleLinear()
-      .domain([0, 1])
-      .range([height, 0])
-
-    // Cash area (bottom)
-    const cashArea = d3.area<TimeSeriesPoint>()
-      .x(d => x(d.date))
-      .y0(height)
-      .y1(d => y(d.cashPct))
-      .curve(d3.curveMonotoneX)
-
-    // Asset area (top, stacked on cash)
-    const assetArea = d3.area<TimeSeriesPoint>()
-      .x(d => x(d.date))
-      .y0(d => y(d.cashPct))
-      .y1(d => y(d.cashPct + d.assetPct))
-      .curve(d3.curveMonotoneX)
-
-    g.append('path')
-      .datum(data)
-      .attr('fill', '#86efac') // Light green for cash
-      .attr('d', cashArea)
-
-    g.append('path')
-      .datum(data)
-      .attr('fill', '#60a5fa') // Light blue for asset
-      .attr('d', assetArea)
-
-    // X axis
-    g.append('g')
-      .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(x).ticks(4).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
-      .selectAll('text')
-      .attr('fill', '#64748b')
-      .attr('font-size', '9px')
-
-    // Y axis
-    g.append('g')
-      .call(d3.axisLeft(y).ticks(4).tickFormat(d => `${((d as number) * 100).toFixed(0)}%`))
-      .selectAll('text')
-      .attr('fill', '#64748b')
-      .attr('font-size', '9px')
-
-    svg.selectAll('.domain').attr('stroke', '#334155')
-    svg.selectAll('.tick line').attr('stroke', '#334155')
-
-    // Hover tooltip elements
-    const focus = g.append('g').style('display', 'none')
-
-    focus.append('line')
-      .attr('class', 'hover-line')
-      .attr('y1', 0)
-      .attr('y2', height)
-      .attr('stroke', '#94a3b8')
-      .attr('stroke-width', 1)
-      .attr('stroke-dasharray', '3,3')
-
-    const tooltip = focus.append('g').attr('class', 'tooltip-group')
-
-    tooltip.append('rect')
-      .attr('class', 'tooltip-bg')
-      .attr('fill', '#1e293b')
-      .attr('stroke', '#475569')
-      .attr('rx', 4)
-      .attr('ry', 4)
-
-    tooltip.append('text')
-      .attr('class', 'tooltip-date')
-      .attr('fill', '#94a3b8')
-      .attr('font-size', '9px')
-      .attr('text-anchor', 'middle')
-
-    tooltip.append('text')
-      .attr('class', 'tooltip-cash')
-      .attr('fill', '#86efac')
-      .attr('font-size', '10px')
-      .attr('text-anchor', 'middle')
-
-    tooltip.append('text')
-      .attr('class', 'tooltip-asset')
-      .attr('fill', '#f87171')
-      .attr('font-size', '10px')
-      .attr('text-anchor', 'middle')
-
-    const bisect = d3.bisector<TimeSeriesPoint, Date>(d => d.date).left
-
-    g.append('rect')
-      .attr('class', 'overlay')
-      .attr('width', width)
-      .attr('height', height)
-      .attr('fill', 'none')
-      .attr('pointer-events', 'all')
-      .on('mouseover', () => focus.style('display', null))
-      .on('mouseout', () => focus.style('display', 'none'))
-      .on('mousemove', function(event) {
-        const [mouseX] = d3.pointer(event)
-        const x0 = x.invert(mouseX)
-        const i = bisect(data, x0, 1)
-        const d0 = data[i - 1]
-        const d1 = data[i]
-        if (!d0) return
-
-        const d = d1 && (x0.getTime() - d0.date.getTime() > d1.date.getTime() - x0.getTime()) ? d1 : d0
-        const xPos = x(d.date)
-
-        focus.select('.hover-line').attr('x1', xPos).attr('x2', xPos)
-
-        const dateStr = d3.timeFormat('%b %d, %Y')(d.date)
-        const tooltipGroup = focus.select('.tooltip-group')
-        tooltipGroup.select('.tooltip-date').text(dateStr)
-
-        const cashText = `Cash: ${(d.cashPct * 100).toFixed(1)}%`
-        const assetText = `Asset: ${(d.assetPct * 100).toFixed(1)}%`
-
-        const cashEl = tooltipGroup.select('.tooltip-cash').text(cashText)
-        const assetEl = tooltipGroup.select('.tooltip-asset').text(assetText)
-
-        const cashBBox = (cashEl.node() as SVGTextElement).getBBox()
-        const assetBBox = (assetEl.node() as SVGTextElement).getBBox()
-        const tooltipWidth = Math.max(cashBBox.width, assetBBox.width) + 16
-        const tooltipHeight = 44
-        const tooltipY = 10
-
-        let tooltipX = xPos
-        if (xPos + tooltipWidth / 2 > width) {
-          tooltipX = width - tooltipWidth / 2
-        } else if (xPos - tooltipWidth / 2 < 0) {
-          tooltipX = tooltipWidth / 2
-        }
-
-        tooltipGroup.attr('transform', `translate(${tooltipX}, ${tooltipY})`)
-
-        tooltipGroup.select('.tooltip-bg')
-          .attr('x', -tooltipWidth / 2)
-          .attr('y', 0)
-          .attr('width', tooltipWidth)
-          .attr('height', tooltipHeight)
-
-        tooltipGroup.select('.tooltip-date')
-          .attr('x', 0)
-          .attr('y', 11)
-
-        tooltipGroup.select('.tooltip-cash')
-          .attr('x', 0)
-          .attr('y', 24)
-
-        tooltipGroup.select('.tooltip-asset')
-          .attr('x', 0)
-          .attr('y', 38)
-      })
-
-  }, [data, resize])
-
-  return (
-    <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 flex flex-col h-[200px]">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-medium text-white">Cash vs Asset</h3>
-        <div className="flex gap-2">
-          <span className="text-[10px] text-slate-400 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm bg-green-300" />
-            Cash
-          </span>
-          <span className="text-[10px] text-slate-400 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm bg-blue-400" />
-            Asset
-          </span>
-        </div>
-      </div>
-      <svg ref={ref} className="w-full flex-1 min-h-[100px]" style={{ overflow: 'visible' }} />
-    </div>
-  )
-}
-
-type ChartKey = 'unrealizedGain' | 'value' | 'fundSize'
+type ChartKey = 'value'
 
 interface ChartBoundsState {
-  unrealizedGain: ChartBounds
   value: ChartBounds
-  fundSize: ChartBounds
 }
 
 export function FundCharts({ entries, config, fundId }: FundChartsProps) {
@@ -941,17 +745,13 @@ export function FundCharts({ entries, config, fundId }: FundChartsProps) {
 
   // Initialize state from config.chart_bounds
   const [chartBounds, setChartBounds] = useState<ChartBoundsState>(() => ({
-    unrealizedGain: config.chart_bounds?.unrealizedGain ?? {},
-    value: config.chart_bounds?.value ?? {},
-    fundSize: config.chart_bounds?.fundSize ?? {}
+    value: config.chart_bounds?.value ?? {}
   }))
 
   // Sync with config when it changes externally
   useEffect(() => {
     setChartBounds({
-      unrealizedGain: config.chart_bounds?.unrealizedGain ?? {},
-      value: config.chart_bounds?.value ?? {},
-      fundSize: config.chart_bounds?.fundSize ?? {}
+      value: config.chart_bounds?.value ?? {}
     })
   }, [config.chart_bounds])
 
@@ -1011,31 +811,17 @@ export function FundCharts({ entries, config, fundId }: FundChartsProps) {
         resize={chartResize}
       />
 
-      {/* Fund Size Over Time */}
-      <AreaChart
+      {/* Fund Size Over Time (showing cash vs invested allocation) */}
+      <StackedAreaChart
         data={timeSeries}
         title="Fund Size"
-        valueKey="fundSize"
-        color="#06b6d4"
-        bounds={chartBounds.fundSize}
-        onBoundsChange={updateBounds('fundSize')}
+        series={[
+          { key: 'startInput', label: 'Invested', color: '#8b5cf6' },
+          { key: 'cashAvailable', label: 'Cash', color: '#22c55e' }
+        ]}
         resize={chartResize}
       />
 
-      {/* Unrealized Gain */}
-      <AreaChart
-        data={timeSeries}
-        title="Unrealized Gain"
-        valueKey="unrealizedGain"
-        color="#8b5cf6"
-        allowNegative={true}
-        bounds={chartBounds.unrealizedGain}
-        onBoundsChange={updateBounds('unrealizedGain')}
-        resize={chartResize}
-      />
-
-      {/* Cash vs Asset */}
-      <CashAssetChart data={timeSeries} resize={chartResize} />
     </div>
   )
 }

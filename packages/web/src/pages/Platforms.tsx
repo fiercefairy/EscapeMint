@@ -8,7 +8,7 @@ export function Platforms() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [newPlatform, setNewPlatform] = useState({ id: '', name: '' })
-  const [editForm, setEditForm] = useState({ newId: '', newName: '' })
+  const [editForm, setEditForm] = useState({ newId: '', newName: '', cash_apy: '', auto_calculate_interest: false })
 
   const loadPlatforms = async () => {
     setLoading(true)
@@ -56,25 +56,50 @@ export function Platforms() {
 
   const handleStartEdit = (platform: Platform) => {
     setEditingId(platform.id)
-    setEditForm({ newId: platform.id, newName: platform.name })
+    setEditForm({
+      newId: platform.id,
+      newName: platform.name,
+      cash_apy: platform.cash_apy ? (platform.cash_apy * 100).toString() : '',
+      auto_calculate_interest: platform.auto_calculate_interest ?? false
+    })
   }
 
   const handleCancelEdit = () => {
     setEditingId(null)
-    setEditForm({ newId: '', newName: '' })
+    setEditForm({ newId: '', newName: '', cash_apy: '', auto_calculate_interest: false })
   }
 
   const handleSaveEdit = async (oldId: string) => {
     if (!editForm.newId.trim() || !editForm.newName.trim()) return
 
-    const result = await renamePlatform(oldId, editForm.newId, editForm.newName)
-    if (result.error) {
-      toast.error(result.error)
-    } else {
+    // If ID changed, use rename API
+    if (oldId !== editForm.newId.toLowerCase().replace(/[^a-z0-9-]/g, '-')) {
+      const result = await renamePlatform(oldId, editForm.newId, editForm.newName)
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
       const msg = result.data?.renamed
         ? `Platform renamed (${result.data.renamed} fund(s) updated)`
         : 'Platform updated'
       toast.success(msg)
+    }
+
+    // Update platform settings (name, cash_apy, auto_calculate_interest)
+    const platformUpdate: Parameters<typeof createPlatform>[0] = {
+      id: editForm.newId,
+      name: editForm.newName,
+      auto_calculate_interest: editForm.auto_calculate_interest
+    }
+    if (editForm.cash_apy) {
+      platformUpdate.cash_apy = parseFloat(editForm.cash_apy) / 100
+    }
+    const result = await createPlatform(platformUpdate)
+
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success('Platform settings saved')
       setEditingId(null)
       loadPlatforms()
     }
@@ -143,13 +168,15 @@ export function Platforms() {
               <tr className="border-b border-slate-700 text-slate-400">
                 <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">Display Name</th>
+                <th className="px-4 py-3 text-right">Cash APY</th>
+                <th className="px-4 py-3 text-center">Auto Interest</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {platforms.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
                     No platforms yet. Add one or create a fund to get started.
                   </td>
                 </tr>
@@ -175,6 +202,35 @@ export function Platforms() {
                           />
                         </td>
                         <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <input
+                              type="number"
+                              value={editForm.cash_apy}
+                              onChange={e => setEditForm({ ...editForm, cash_apy: e.target.value })}
+                              className="w-20 px-2 py-1 bg-slate-700 border border-slate-600 rounded text-white text-sm text-right focus:outline-none focus:border-mint-500"
+                              placeholder="0.00"
+                              step="0.01"
+                              min="0"
+                            />
+                            <span className="text-slate-400 text-sm">%</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setEditForm({ ...editForm, auto_calculate_interest: !editForm.auto_calculate_interest })}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                              editForm.auto_calculate_interest ? 'bg-mint-600' : 'bg-slate-600'
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                                editForm.auto_calculate_interest ? 'translate-x-4.5' : 'translate-x-1'
+                              }`}
+                            />
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-right">
                           <button
                             onClick={() => handleSaveEdit(platform.id)}
                             className="px-2 py-1 text-xs bg-mint-600 text-white rounded hover:bg-mint-700 mr-2"
@@ -193,6 +249,16 @@ export function Platforms() {
                       <>
                         <td className="px-4 py-3 text-white font-mono">{platform.id}</td>
                         <td className="px-4 py-3 text-slate-300">{platform.name}</td>
+                        <td className="px-4 py-3 text-right text-slate-300">
+                          {platform.cash_apy ? `${(platform.cash_apy * 100).toFixed(2)}%` : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {platform.auto_calculate_interest ? (
+                            <span className="text-mint-400">On</span>
+                          ) : (
+                            <span className="text-slate-500">Off</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right">
                           <button
                             onClick={() => handleStartEdit(platform)}

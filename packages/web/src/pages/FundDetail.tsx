@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useParams, useLocation, Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import * as d3 from 'd3'
-import { fetchFund, fetchFundState, updateFundConfig, type FundDetail as FundDetailType, type FundStateResponse, type FundEntry } from '../api/funds'
+import { fetchFund, fetchFundState, updateFundConfig, type FundDetail as FundDetailType, type FundStateResponse, type FundEntry, type ChartBounds } from '../api/funds'
 
 // Chart data point for P&L and APY charts
 interface ChartDataPoint {
@@ -14,6 +14,121 @@ import { AddEntryModal } from '../components/AddEntryModal'
 import { EditEntryModal } from '../components/EditEntryModal'
 import { EditFundPanel } from '../components/EditFundPanel'
 import { FundCharts } from '../components/FundCharts'
+
+// Chart Settings Dropdown Component
+function ChartSettings({
+  bounds,
+  onChange,
+  isPercent = false
+}: {
+  bounds: ChartBounds
+  onChange: (bounds: ChartBounds) => void
+  isPercent?: boolean
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const toDisplay = (val: number | undefined) => {
+    if (val === undefined) return ''
+    return isPercent ? (val * 100).toString() : val.toString()
+  }
+  const [localMin, setLocalMin] = useState(() => toDisplay(bounds.yMin))
+  const [localMax, setLocalMax] = useState(() => toDisplay(bounds.yMax))
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setLocalMin(toDisplay(bounds.yMin))
+    setLocalMax(toDisplay(bounds.yMax))
+  }, [bounds, isPercent])
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleApply = () => {
+    const newBounds: ChartBounds = {}
+    if (localMin !== '') {
+      newBounds.yMin = isPercent ? parseFloat(localMin) / 100 : parseFloat(localMin)
+    }
+    if (localMax !== '') {
+      newBounds.yMax = isPercent ? parseFloat(localMax) / 100 : parseFloat(localMax)
+    }
+    onChange(newBounds)
+    setIsOpen(false)
+  }
+
+  const handleClear = () => {
+    setLocalMin('')
+    setLocalMax('')
+    onChange({})
+    setIsOpen(false)
+  }
+
+  const hasBounds = bounds.yMin !== undefined || bounds.yMax !== undefined
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`p-1 rounded hover:bg-slate-700 transition-colors ${hasBounds ? 'text-mint-400' : 'text-slate-500'}`}
+        title="Configure Y-axis bounds"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div className="absolute right-0 top-6 z-50 bg-slate-700 rounded-lg shadow-lg border border-slate-600 p-2 min-w-[160px]">
+          <div className="text-[10px] text-slate-400 mb-1.5">Y-Axis Bounds</div>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <label className="text-[10px] text-slate-400 w-8">Min:</label>
+              <input
+                type="number"
+                value={localMin}
+                onChange={(e) => setLocalMin(e.target.value)}
+                placeholder="Auto"
+                className="flex-1 px-1.5 py-0.5 text-xs bg-slate-800 border border-slate-600 rounded text-white w-16"
+              />
+              {isPercent && <span className="text-[10px] text-slate-400">%</span>}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="text-[10px] text-slate-400 w-8">Max:</label>
+              <input
+                type="number"
+                value={localMax}
+                onChange={(e) => setLocalMax(e.target.value)}
+                placeholder="Auto"
+                className="flex-1 px-1.5 py-0.5 text-xs bg-slate-800 border border-slate-600 rounded text-white w-16"
+              />
+              {isPercent && <span className="text-[10px] text-slate-400">%</span>}
+            </div>
+          </div>
+          <div className="flex gap-1.5 mt-2">
+            <button
+              type="button"
+              onClick={handleClear}
+              className="flex-1 px-2 py-1 text-[10px] bg-slate-600 text-white rounded hover:bg-slate-500"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={handleApply}
+              className="flex-1 px-2 py-1 text-[10px] bg-mint-600 text-white rounded hover:bg-mint-700"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Column definitions with default visibility
 // Default order: Date, Equity, Cash first, then the rest
@@ -70,6 +185,8 @@ export function FundDetail() {
   const pnlChartRef = useRef<SVGSVGElement>(null)
   const columnMenuRef = useRef<HTMLDivElement>(null)
   const [chartResize, setChartResize] = useState(0)
+  const [apyBounds, setApyBounds] = useState<ChartBounds>({})
+  const [pnlBounds, setPnlBounds] = useState<ChartBounds>({})
 
   // Resize handler for charts
   useEffect(() => {
@@ -78,22 +195,33 @@ export function FundDetail() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  // Sync chart bounds from fund config when fund loads
+  useEffect(() => {
+    if (!fund) return
+    setApyBounds(fund.config.chart_bounds?.apy ?? {})
+    setPnlBounds(fund.config.chart_bounds?.pnl ?? {})
+  }, [fund?.id])
+
   // Sync column preferences from fund config when fund loads
   useEffect(() => {
     if (!fund) return
 
-    // Load column order from fund config
+    // Load column order from fund config, or reset to defaults
     if (fund.config.entries_column_order && fund.config.entries_column_order.length > 0) {
       const saved = fund.config.entries_column_order as ColumnId[]
       const defaultOrder = getDefaultColumnOrder()
       const savedSet = new Set(saved)
       const missing = defaultOrder.filter(id => !savedSet.has(id))
       setColumnOrder([...saved, ...missing])
+    } else {
+      setColumnOrder(getDefaultColumnOrder())
     }
 
-    // Load visible columns from fund config
+    // Load visible columns from fund config, or reset to defaults
     if (fund.config.entries_visible_columns && fund.config.entries_visible_columns.length > 0) {
       setVisibleColumns(new Set(fund.config.entries_visible_columns as ColumnId[]))
+    } else {
+      setVisibleColumns(getDefaultColumns())
     }
   }, [fund?.id]) // Only run when fund id changes, not on every fund update
 
@@ -118,6 +246,36 @@ export function FundDetail() {
       entries_visible_columns: [...visible]
     })
   }, [id])
+
+  // Update APY chart bounds
+  const updateApyBounds = useCallback(async (bounds: ChartBounds) => {
+    setApyBounds(bounds)
+    if (!id || !fund) return
+    const newChartBounds: Record<string, ChartBounds> = { ...fund.config.chart_bounds, apy: bounds }
+    if (bounds.yMin === undefined && bounds.yMax === undefined) {
+      delete newChartBounds.apy
+    }
+    if (Object.keys(newChartBounds).length > 0) {
+      await updateFundConfig(id, { chart_bounds: newChartBounds })
+    } else {
+      await updateFundConfig(id, { chart_bounds: {} })
+    }
+  }, [id, fund])
+
+  // Update P&L chart bounds
+  const updatePnlBounds = useCallback(async (bounds: ChartBounds) => {
+    setPnlBounds(bounds)
+    if (!id || !fund) return
+    const newChartBounds: Record<string, ChartBounds> = { ...fund.config.chart_bounds, pnl: bounds }
+    if (bounds.yMin === undefined && bounds.yMax === undefined) {
+      delete newChartBounds.pnl
+    }
+    if (Object.keys(newChartBounds).length > 0) {
+      await updateFundConfig(id, { chart_bounds: newChartBounds })
+    } else {
+      await updateFundConfig(id, { chart_bounds: {} })
+    }
+  }, [id, fund])
 
   const toggleColumn = (columnId: ColumnId) => {
     setVisibleColumns(prev => {
@@ -215,6 +373,8 @@ export function FundDetail() {
     let cumDividends = 0
     let cumExpenses = 0
     let cumCashInterest = 0
+    let costBasis = 0
+    let previousCyclesGain = 0
 
     return sorted.map((entry, index) => {
       const entryDate = new Date(entry.date)
@@ -226,14 +386,17 @@ export function FundDetail() {
 
       // First entry has no P&L or APY yet
       if (index === 0) {
-        if (entry.action === 'BUY' && entry.amount) totalBuys += entry.amount
+        if (entry.action === 'BUY' && entry.amount) {
+          totalBuys += entry.amount
+          costBasis += entry.amount
+        }
         return { date: entryDate, pnl: 0, apy: 0 }
       }
 
       const daysElapsed = Math.max(1, (entryDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
 
-      // Total return = currentValue + priorSells + dividends + interest - expenses - totalBuys
-      const totalMoneyOut = entry.value + totalSells + cumDividends + cumCashInterest - cumExpenses
+      // Total return = currentValue + priorSells + dividends + interest - expenses - totalBuys + previousCyclesGain
+      const totalMoneyOut = entry.value + totalSells + cumDividends + cumCashInterest - cumExpenses + previousCyclesGain
       const totalReturn = totalMoneyOut - totalBuys
 
       // Simple return = totalReturn / currentValue (if value > 0)
@@ -243,8 +406,25 @@ export function FundDetail() {
       const apy = daysElapsed > 0 ? Math.pow(1 + clampedReturnPct, 365 / daysElapsed) - 1 : 0
 
       // NOW process this row's buy/sell action (for next iteration)
-      if (entry.action === 'BUY' && entry.amount) totalBuys += entry.amount
-      else if (entry.action === 'SELL' && entry.amount) totalSells += entry.amount
+      if (entry.action === 'BUY' && entry.amount) {
+        totalBuys += entry.amount
+        costBasis += entry.amount
+      } else if (entry.action === 'SELL' && entry.amount) {
+        totalSells += entry.amount
+        // Check for full liquidation
+        const isFullLiquidation = entry.value === 0 || entry.value <= entry.amount
+        if (isFullLiquidation) {
+          const extracted = entry.amount - costBasis
+          previousCyclesGain += extracted
+          costBasis = 0
+          totalBuys = 0
+          totalSells = 0
+        } else {
+          // Partial sell - reduce cost basis proportionally
+          const sellProportion = entry.amount / (entry.value + entry.amount)
+          costBasis -= costBasis * sellProportion
+        }
+      }
 
       return { date: entryDate, pnl: totalReturn, apy: isFinite(apy) ? apy : 0 }
     })
@@ -269,11 +449,10 @@ export function FundDetail() {
 
     if (data.length === 0) return
 
-    // Use config bounds if available, otherwise auto-scale with reasonable limits
-    const bounds = fund?.config.chart_bounds?.apy
+    // Use state bounds if available, otherwise auto-scale with reasonable limits
     const yExtent = d3.extent(data, d => d.apy) as [number, number]
-    let yMin = bounds?.yMin ?? Math.max(-2, yExtent[0])
-    let yMax = bounds?.yMax ?? Math.min(2, yExtent[1])
+    let yMin = apyBounds.yMin ?? Math.max(-2, yExtent[0])
+    let yMax = apyBounds.yMax ?? Math.min(2, yExtent[1])
 
     // Ensure a minimum range to avoid collapsed scale when all values are the same
     if (yMin === yMax) {
@@ -291,24 +470,44 @@ export function FundDetail() {
       .nice()
       .range([height, 0])
 
-    // Clip path - coordinates relative to g element (already translated by margins)
-    const clipId = `apy-clip-${Date.now()}`
-    g.append('defs')
-      .append('clipPath')
-      .attr('id', clipId)
+    const zeroY = y(Math.max(yMin, Math.min(yMax, 0)))
+
+    // Clip paths for positive and negative regions
+    const clipIdPos = `apy-clip-pos-${Date.now()}`
+    const clipIdNeg = `apy-clip-neg-${Date.now()}`
+
+    const defs = g.append('defs')
+
+    // Positive clip (above zero line)
+    defs.append('clipPath')
+      .attr('id', clipIdPos)
       .append('rect')
       .attr('x', 0)
       .attr('y', 0)
       .attr('width', width)
-      .attr('height', height)
+      .attr('height', zeroY)
 
-    const baseline = y(Math.max(yMin, Math.min(yMax, 0)))
+    // Negative clip (below zero line)
+    defs.append('clipPath')
+      .attr('id', clipIdNeg)
+      .append('rect')
+      .attr('x', 0)
+      .attr('y', zeroY)
+      .attr('width', width)
+      .attr('height', height - zeroY)
 
-    // Area
-    const area = d3.area<{ date: Date; apy: number }>()
+    // Positive area (green) - from 0 up to positive values
+    const positiveArea = d3.area<{ date: Date; apy: number }>()
       .x(d => x(d.date))
-      .y0(baseline)
-      .y1(d => y(Math.max(yMin, Math.min(yMax, d.apy))))
+      .y0(zeroY)
+      .y1(d => y(Math.max(0, Math.min(yMax, d.apy))))
+      .curve(d3.curveMonotoneX)
+
+    // Negative area (red) - from 0 down to negative values
+    const negativeArea = d3.area<{ date: Date; apy: number }>()
+      .x(d => x(d.date))
+      .y0(zeroY)
+      .y1(d => y(Math.min(0, Math.max(yMin, d.apy))))
       .curve(d3.curveMonotoneX)
 
     // Line
@@ -317,18 +516,36 @@ export function FundDetail() {
       .y(d => y(Math.max(yMin, Math.min(yMax, d.apy))))
       .curve(d3.curveMonotoneX)
 
+    // Draw positive area (green)
     g.append('path')
       .datum(data)
       .attr('fill', 'rgba(16, 185, 129, 0.2)')
-      .attr('clip-path', `url(#${clipId})`)
-      .attr('d', area)
+      .attr('clip-path', `url(#${clipIdPos})`)
+      .attr('d', positiveArea)
 
+    // Draw negative area (red)
+    g.append('path')
+      .datum(data)
+      .attr('fill', 'rgba(239, 68, 68, 0.2)')
+      .attr('clip-path', `url(#${clipIdNeg})`)
+      .attr('d', negativeArea)
+
+    // Positive line (green) - clipped to positive region
     g.append('path')
       .datum(data)
       .attr('fill', 'none')
       .attr('stroke', '#10b981')
       .attr('stroke-width', 1.5)
-      .attr('clip-path', `url(#${clipId})`)
+      .attr('clip-path', `url(#${clipIdPos})`)
+      .attr('d', line)
+
+    // Negative line (red) - clipped to negative region
+    g.append('path')
+      .datum(data)
+      .attr('fill', 'none')
+      .attr('stroke', '#a72e2eff')
+      .attr('stroke-width', 1.5)
+      .attr('clip-path', `url(#${clipIdNeg})`)
       .attr('d', line)
 
     // Zero line
@@ -463,7 +680,7 @@ export function FundDetail() {
           .attr('y', 26)
       })
 
-  }, [chartData, fund?.config.chart_bounds?.apy, chartResize])
+  }, [chartData, apyBounds, chartResize])
 
   // Draw P&L chart
   useEffect(() => {
@@ -484,9 +701,10 @@ export function FundDetail() {
 
     if (data.length === 0) return
 
+    // Use state bounds if available, otherwise auto-scale
     const yExtent = d3.extent(data, d => d.pnl) as [number, number]
-    let yMin = yExtent[0]
-    let yMax = yExtent[1]
+    let yMin = pnlBounds.yMin ?? yExtent[0]
+    let yMax = pnlBounds.yMax ?? yExtent[1]
 
     // Ensure a minimum range
     if (yMin === yMax) {
@@ -504,24 +722,44 @@ export function FundDetail() {
       .nice()
       .range([height, 0])
 
-    // Clip path
-    const clipId = `pnl-clip-${Date.now()}`
-    g.append('defs')
-      .append('clipPath')
-      .attr('id', clipId)
+    const zeroY = y(Math.max(yMin, Math.min(yMax, 0)))
+
+    // Clip paths for positive and negative regions
+    const clipIdPos = `pnl-clip-pos-${Date.now()}`
+    const clipIdNeg = `pnl-clip-neg-${Date.now()}`
+
+    const defs = g.append('defs')
+
+    // Positive clip (above zero line)
+    defs.append('clipPath')
+      .attr('id', clipIdPos)
       .append('rect')
       .attr('x', 0)
       .attr('y', 0)
       .attr('width', width)
-      .attr('height', height)
+      .attr('height', zeroY)
 
-    const baseline = y(Math.max(yMin, Math.min(yMax, 0)))
+    // Negative clip (below zero line)
+    defs.append('clipPath')
+      .attr('id', clipIdNeg)
+      .append('rect')
+      .attr('x', 0)
+      .attr('y', zeroY)
+      .attr('width', width)
+      .attr('height', height - zeroY)
 
-    // Area
-    const area = d3.area<ChartDataPoint>()
+    // Positive area (green) - from 0 up to positive values
+    const positiveArea = d3.area<ChartDataPoint>()
       .x(d => x(d.date))
-      .y0(baseline)
-      .y1(d => y(Math.max(yMin, Math.min(yMax, d.pnl))))
+      .y0(zeroY)
+      .y1(d => y(Math.max(0, Math.min(yMax, d.pnl))))
+      .curve(d3.curveMonotoneX)
+
+    // Negative area (red) - from 0 down to negative values
+    const negativeArea = d3.area<ChartDataPoint>()
+      .x(d => x(d.date))
+      .y0(zeroY)
+      .y1(d => y(Math.min(0, Math.max(yMin, d.pnl))))
       .curve(d3.curveMonotoneX)
 
     // Line
@@ -530,22 +768,36 @@ export function FundDetail() {
       .y(d => y(Math.max(yMin, Math.min(yMax, d.pnl))))
       .curve(d3.curveMonotoneX)
 
-    // Color based on current value
-    const lastPnl = data[data.length - 1]?.pnl ?? 0
-    const color = lastPnl >= 0 ? '#10b981' : '#ef4444'
-
+    // Draw positive area (green)
     g.append('path')
       .datum(data)
-      .attr('fill', `${color}33`)
-      .attr('clip-path', `url(#${clipId})`)
-      .attr('d', area)
+      .attr('fill', 'rgba(16, 185, 129, 0.2)')
+      .attr('clip-path', `url(#${clipIdPos})`)
+      .attr('d', positiveArea)
 
+    // Draw negative area (red)
+    g.append('path')
+      .datum(data)
+      .attr('fill', 'rgba(239, 68, 68, 0.2)')
+      .attr('clip-path', `url(#${clipIdNeg})`)
+      .attr('d', negativeArea)
+
+    // Positive line (green) - clipped to positive region
     g.append('path')
       .datum(data)
       .attr('fill', 'none')
-      .attr('stroke', color)
+      .attr('stroke', '#10b981')
       .attr('stroke-width', 1.5)
-      .attr('clip-path', `url(#${clipId})`)
+      .attr('clip-path', `url(#${clipIdPos})`)
+      .attr('d', line)
+
+    // Negative line (red) - clipped to negative region
+    g.append('path')
+      .datum(data)
+      .attr('fill', 'none')
+      .attr('stroke', '#ef4444')
+      .attr('stroke-width', 1.5)
+      .attr('clip-path', `url(#${clipIdNeg})`)
       .attr('d', line)
 
     // Zero line
@@ -594,7 +846,7 @@ export function FundDetail() {
     focus.append('circle')
       .attr('class', 'hover-circle')
       .attr('r', 4)
-      .attr('fill', color)
+      .attr('fill', '#10b981')
       .attr('stroke', '#fff')
       .attr('stroke-width', 2)
 
@@ -643,7 +895,7 @@ export function FundDetail() {
         const yPos = y(Math.max(yMin, Math.min(yMax, d.pnl)))
 
         // Update circle color based on value
-        const pointColor = d.pnl >= 0 ? '#10b981' : '#ef4444'
+        const pointColor = d.pnl >= 0 ? '#10b981' : '#7a2323ff'
         focus.select('.hover-circle').attr('fill', pointColor)
 
         focus.select('.hover-line').attr('x1', xPos).attr('x2', xPos)
@@ -692,7 +944,7 @@ export function FundDetail() {
           .attr('y', 26)
       })
 
-  }, [chartData, chartResize])
+  }, [chartData, pnlBounds, chartResize])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -728,6 +980,7 @@ export function FundDetail() {
     let lastApy = 0
     let costBasis = 0
     let cumExtracted = 0
+    let previousCyclesGain = 0 // Realized gains from previous liquidation cycles
 
     return sorted.map((entry, index) => {
       const entryDate = new Date(entry.date)
@@ -751,8 +1004,8 @@ export function FundDetail() {
       const fundSize = entry.fund_size ?? calculatedFundSize
 
       // Calculate APY BEFORE processing this row's buy/sell action
-      // Total return = currentValue + priorSells + dividends + interest - expenses - totalBuys
-      const totalMoneyOut = entry.value + totalSells + cumDividends + cumCashInterest - cumExpenses
+      // Total return = currentValue + priorSells + dividends + interest - expenses - totalBuys + previousCyclesGain
+      const totalMoneyOut = entry.value + totalSells + cumDividends + cumCashInterest - cumExpenses + previousCyclesGain
       const totalReturn = totalMoneyOut - totalBuys
 
       const daysElapsed = Math.max(1, (entryDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
@@ -794,7 +1047,12 @@ export function FundDetail() {
         if (entry.value === 0 || entry.value <= entry.amount) {
           // Full liquidation - extract remaining profit
           extracted = entry.amount - costBasis
+          // Capture the realized gain from this cycle before resetting
+          previousCyclesGain += extracted
           costBasis = 0
+          // Reset running totals for next investment cycle
+          totalBuys = 0
+          totalSells = 0
         } else {
           // Partial sell - proportional cost basis
           const sellProportion = entry.amount / (entry.value + entry.amount)
@@ -1032,7 +1290,10 @@ export function FundDetail() {
 
           {/* P&L Chart */}
           <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 flex flex-col h-full">
-            <h2 className="text-sm font-semibold text-white mb-2">P&L</h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-semibold text-white">P&L</h2>
+              <ChartSettings bounds={pnlBounds} onChange={updatePnlBounds} />
+            </div>
             <svg
               ref={pnlChartRef}
               className="w-full flex-1 min-h-[100px]"
@@ -1042,7 +1303,10 @@ export function FundDetail() {
 
           {/* Fund APY Chart */}
           <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 flex flex-col h-full">
-            <h2 className="text-sm font-semibold text-white mb-2">APY</h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-semibold text-white">APY</h2>
+              <ChartSettings bounds={apyBounds} onChange={updateApyBounds} isPercent />
+            </div>
             <svg
               ref={apyChartRef}
               className="w-full flex-1 min-h-[100px]"
@@ -1109,7 +1373,7 @@ export function FundDetail() {
                 onClick={() => setShowAddEntry(true)}
                 className="px-2 py-1 text-xs bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors font-medium"
               >
-                + Add Entry
+                + Take Action
               </button>
             </div>
           </div>
@@ -1212,6 +1476,7 @@ export function FundDetail() {
                               <span className={
                                 entry.action === 'BUY' ? 'text-green-400'
                                 : entry.action === 'SELL' ? 'text-orange-400'
+                                : entry.action === 'HOLD' ? 'text-slate-400'
                                 : entry.action === 'DEPOSIT' ? 'text-blue-400'
                                 : entry.action === 'WITHDRAW' ? 'text-purple-400'
                                 : ''
@@ -1351,7 +1616,7 @@ export function FundDetail() {
           </table>
         </div>
 
-        {/* Add Entry Modal */}
+        {/* Take Action Modal */}
         {showAddEntry && (
           <AddEntryModal
             fundId={fund.id}

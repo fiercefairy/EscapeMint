@@ -21,6 +21,8 @@ interface PlatformConfig {
   color?: string
   url?: string
   notes?: string
+  cash_apy?: number
+  auto_calculate_interest?: boolean
 }
 
 interface Platform extends PlatformConfig {
@@ -86,12 +88,14 @@ platformsRouter.get('/', async (_req, res) => {
  * POST /platforms - Create or update a platform
  */
 platformsRouter.post('/', async (req, res, next) => {
-  const { id, name, color, url, notes } = req.body as {
+  const { id, name, color, url, notes, cash_apy, auto_calculate_interest } = req.body as {
     id?: string
     name?: string
     color?: string
     url?: string
     notes?: string
+    cash_apy?: number
+    auto_calculate_interest?: boolean
   }
 
   if (!id) return next(badRequest('id is required'))
@@ -105,6 +109,8 @@ platformsRouter.post('/', async (req, res, next) => {
   if (color) config.color = color
   if (url) config.url = url
   if (notes) config.notes = notes
+  if (cash_apy !== undefined) config.cash_apy = cash_apy
+  if (auto_calculate_interest !== undefined) config.auto_calculate_interest = auto_calculate_interest
 
   data[platformId] = config
   await writePlatformsData(data)

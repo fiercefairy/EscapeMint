@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { join } from 'node:path'
-import { rename } from 'node:fs/promises'
+import { rename, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import {
   readFund,
@@ -8,6 +8,7 @@ import {
   readAllFunds,
   appendEntry,
   updateEntry,
+  deleteEntry,
   deleteFund,
   entriesToTrades,
   entriesToDividends,
@@ -30,6 +31,61 @@ export const fundsRouter = Router()
 
 const DATA_DIR = process.env['DATA_DIR'] ?? './data'
 const FUNDS_DIR = join(DATA_DIR, 'funds')
+const PLATFORMS_FILE = join(DATA_DIR, 'platforms.json')
+
+interface PlatformConfig {
+  name: string
+  cash_apy?: number
+  auto_calculate_interest?: boolean
+}
+
+async function getPlatformConfig(platformId: string): Promise<PlatformConfig | undefined> {
+  if (!existsSync(PLATFORMS_FILE)) return undefined
+  const content = await readFile(PLATFORMS_FILE, 'utf-8')
+  const data = JSON.parse(content) as Record<string, PlatformConfig>
+  return data[platformId.toLowerCase()]
+}
+
+function calculateCashInterest(
+  fund: FundData,
+  entry: FundEntry,
+  cashApy: number
+): number | undefined {
+  const entries = fund.entries
+  if (entries.length === 0) return undefined
+
+  const prevEntry = entries[entries.length - 1]
+  if (!prevEntry) return undefined
+
+  const prevDate = new Date(prevEntry.date)
+  const currDate = new Date(entry.date)
+  const days = Math.round((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24))
+
+  if (days <= 0) return undefined
+
+  // Calculate total invested
+  let totalInvested = 0
+  for (const e of entries) {
+    if (e.action === 'BUY' && e.amount) totalInvested += e.amount
+    else if (e.action === 'SELL' && e.amount) totalInvested -= e.amount
+  }
+
+  const fundSize = entry.fund_size ?? prevEntry.fund_size ?? fund.config.fund_size_usd
+  const cash = Math.max(0, fundSize - totalInvested)
+
+  const dailyRate = Math.pow(1 + cashApy, 1/365) - 1
+  const interest = cash * dailyRate * days
+
+  // Only return if month changed (monthly payout)
+  const prevMonth = prevDate.toISOString().slice(0, 7)
+  const currMonth = currDate.toISOString().slice(0, 7)
+
+  if (currMonth !== prevMonth && interest > 0.01) {
+    return Math.round(interest * 100) / 100
+  }
+
+  return undefined
+}
 
 /**
  * GET /funds - List all funds
@@ -464,6 +520,46 @@ fundsRouter.put('/:id', async (req, res, next) => {
 })
 
 /**
+ * POST /funds/:id/preview - Preview recommendation for a hypothetical equity value
+ */
+fundsRouter.post('/:id/preview', async (req, res, next) => {
+  const id = req.params['id'] ?? ''
+  const filePath = join(FUNDS_DIR, `${id}.tsv`)
+
+  const fund = await readFund(filePath).catch(next)
+  if (!fund) {
+    return next(notFound('Fund'))
+  }
+
+  const { equity_value_usd, date } = req.body as { equity_value_usd: number; date?: string }
+  if (equity_value_usd === undefined) {
+    return next(badRequest('equity_value_usd is required'))
+  }
+
+  const snapshotDate = date ?? new Date().toISOString().split('T')[0] as string
+  const trades = entriesToTrades(fund.entries)
+  const dividends = entriesToDividends(fund.entries)
+  const expenses = entriesToExpenses(fund.entries)
+
+  const state = computeFundState(
+    fund.config,
+    trades,
+    [],
+    dividends,
+    expenses,
+    equity_value_usd,
+    snapshotDate
+  )
+
+  const recommendation = computeRecommendation(fund.config, state)
+
+  res.json({
+    state,
+    recommendation
+  })
+})
+
+/**
  * POST /funds/:id/entries - Add an entry to fund
  */
 fundsRouter.post('/:id/entries', async (req, res, next) => {
@@ -478,6 +574,15 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
   const entry = req.body as FundEntry
   if (!entry.date) return next(badRequest('date is required'))
   if (entry.value === undefined) return next(badRequest('value is required'))
+
+  // Auto-calculate cash interest if platform has it enabled
+  const platformConfig = await getPlatformConfig(fund.platform).catch(() => undefined)
+  if (platformConfig?.auto_calculate_interest && platformConfig.cash_apy && !entry.cash_interest) {
+    const calculatedInterest = calculateCashInterest(fund, entry, platformConfig.cash_apy)
+    if (calculatedInterest) {
+      entry.cash_interest = calculatedInterest
+    }
+  }
 
   await appendEntry(filePath, entry).catch(next)
 
@@ -543,6 +648,36 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
   }
 
   res.json({ entry, fund: updated })
+})
+
+/**
+ * DELETE /funds/:id/entries/:entryIndex - Delete an entry
+ */
+fundsRouter.delete('/:id/entries/:entryIndex', async (req, res, next) => {
+  const id = req.params['id'] ?? ''
+  const entryIndex = parseInt(req.params['entryIndex'] ?? '', 10)
+  const filePath = join(FUNDS_DIR, `${id}.tsv`)
+
+  if (isNaN(entryIndex)) return next(badRequest('Invalid entry index'))
+
+  const fund = await readFund(filePath).catch(next)
+  if (!fund) {
+    return next(notFound('Fund'))
+  }
+
+  if (entryIndex < 0 || entryIndex >= fund.entries.length) {
+    return next(badRequest(`Entry index out of bounds: ${entryIndex}`))
+  }
+
+  await deleteEntry(filePath, entryIndex).catch(next)
+
+  // Re-read to get updated fund
+  const updated = await readFund(filePath).catch(next)
+  if (!updated) {
+    return next(notFound('Fund'))
+  }
+
+  res.json({ fund: updated })
 })
 
 /**

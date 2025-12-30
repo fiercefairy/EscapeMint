@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { updateFund, deleteFund, notifyFundsChanged, type FundConfig } from '../api/funds'
+import { updateFund, deleteFund, notifyFundsChanged, type FundConfig, type FundStatus } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
 
 interface EditFundPanelProps {
@@ -27,6 +27,8 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
   const [selectedPlatform, setSelectedPlatform] = useState(fundPlatform.toLowerCase())
   const [ticker, setTicker] = useState(fundTicker.toLowerCase())
   const [formData, setFormData] = useState({
+    status: config.status ?? 'active' as FundStatus,
+    fund_size_usd: config.fund_size_usd,
     target_apy: round(config.target_apy * 100),
     interval_days: config.interval_days,
     input_min_usd: config.input_min_usd,
@@ -58,6 +60,8 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
     setLoading(true)
 
     const updatedConfig: Partial<FundConfig> = {
+      status: formData.status,
+      fund_size_usd: formData.fund_size_usd,
       target_apy: round(formData.target_apy / 100, 4),
       interval_days: formData.interval_days,
       input_min_usd: formData.input_min_usd,
@@ -172,17 +176,54 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
             </p>
           )}
 
-          {/* Start Date */}
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Start Date</label>
-            <input
-              type="date"
-              value={formData.start_date}
-              onChange={e => setFormData({ ...formData, start_date: e.target.value })}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-              required
-            />
+          {/* Status, Fund Size, Start Date */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Status</label>
+              <select
+                value={formData.status}
+                onChange={e => {
+                  const newStatus = e.target.value as FundStatus
+                  if (newStatus === 'closed' && formData.fund_size_usd > 0) {
+                    setFormData({ ...formData, status: newStatus, fund_size_usd: 0 })
+                  } else {
+                    setFormData({ ...formData, status: newStatus })
+                  }
+                }}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+              >
+                <option value="active">Active</option>
+                <option value="closed">Closed</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Fund Size ($)</label>
+              <input
+                type="number"
+                value={formData.fund_size_usd}
+                onChange={e => setFormData({ ...formData, fund_size_usd: parseFloat(e.target.value) || 0 })}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                step="100"
+                min="0"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Start Date</label>
+              <input
+                type="date"
+                value={formData.start_date}
+                onChange={e => setFormData({ ...formData, start_date: e.target.value })}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                required
+              />
+            </div>
           </div>
+          {formData.status === 'closed' && formData.fund_size_usd > 0 && (
+            <p className="text-xs text-amber-400 -mt-3">
+              Closed funds should have a fund size of $0
+            </p>
+          )}
 
           {/* Target APY and Interval */}
           <div className="grid grid-cols-2 gap-3">

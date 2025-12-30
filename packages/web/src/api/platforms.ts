@@ -4,6 +4,8 @@ export interface Platform {
   id: string
   name: string
   color?: string
+  cash_apy?: number
+  auto_calculate_interest?: boolean
 }
 
 export interface ApiResult<T> {
@@ -21,7 +23,7 @@ export async function fetchPlatforms(): Promise<ApiResult<Platform[]>> {
   return { data }
 }
 
-export async function createPlatform(platform: { id: string; name: string; color?: string }): Promise<ApiResult<Platform>> {
+export async function createPlatform(platform: { id: string; name: string; color?: string; cash_apy?: number; auto_calculate_interest?: boolean }): Promise<ApiResult<Platform>> {
   const response = await fetch(`${API_BASE}/platforms`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

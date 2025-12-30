@@ -10,7 +10,7 @@ import type { SubFundConfig, Trade, Dividend, Expense } from '@escapemint/engine
 export interface FundEntry {
   date: string
   value: number
-  action?: 'BUY' | 'SELL' | 'DEPOSIT' | 'WITHDRAW'
+  action?: 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
   amount?: number
   dividend?: number
   expense?: number
@@ -291,6 +291,23 @@ export async function updateEntry(filePath: string, entryIndex: number, entry: F
   }
 
   fund.entries[entryIndex] = entry
+  await writeFund(filePath, fund)
+}
+
+/**
+ * Delete an entry at a specific index.
+ */
+export async function deleteEntry(filePath: string, entryIndex: number): Promise<void> {
+  const fund = await readFund(filePath)
+  if (!fund) {
+    throw new Error(`Fund file not found: ${filePath}`)
+  }
+
+  if (entryIndex < 0 || entryIndex >= fund.entries.length) {
+    throw new Error(`Entry index out of bounds: ${entryIndex}`)
+  }
+
+  fund.entries.splice(entryIndex, 1)
   await writeFund(filePath, fund)
 }
 

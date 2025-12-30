@@ -12,7 +12,10 @@ export interface ChartBounds {
   yMax?: number
 }
 
+export type FundStatus = 'active' | 'closed'
+
 export interface FundConfig {
+  status?: FundStatus
   fund_size_usd: number
   target_apy: number
   interval_days: number
@@ -46,7 +49,7 @@ export interface FundSummary {
 export interface FundEntry {
   date: string
   value: number
-  action?: 'BUY' | 'SELL' | 'DEPOSIT' | 'WITHDRAW'
+  action?: 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
   amount?: number
   dividend?: number
   expense?: number
@@ -207,6 +210,20 @@ export async function addFundEntry(id: string, entry: Partial<FundEntry>): Promi
   return { data }
 }
 
+export async function previewRecommendation(id: string, equityValue: number, date?: string): Promise<ApiResult<{ state: FundState; recommendation: Recommendation }>> {
+  const response = await fetch(`${API_BASE}/funds/${id}/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ equity_value_usd: equityValue, date })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Failed to preview recommendation' } }))
+    return { error: error.error?.message ?? 'Failed to preview recommendation' }
+  }
+  const data = await response.json()
+  return { data }
+}
+
 export async function updateFundEntry(id: string, entryIndex: number, entry: FundEntry): Promise<ApiResult<{ entry: FundEntry; fund: FundDetail }>> {
   const response = await fetch(`${API_BASE}/funds/${id}/entries/${entryIndex}`, {
     method: 'PUT',
@@ -216,6 +233,18 @@ export async function updateFundEntry(id: string, entryIndex: number, entry: Fun
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: { message: 'Failed to update entry' } }))
     return { error: error.error?.message ?? 'Failed to update entry' }
+  }
+  const data = await response.json()
+  return { data }
+}
+
+export async function deleteFundEntry(id: string, entryIndex: number): Promise<ApiResult<{ fund: FundDetail }>> {
+  const response = await fetch(`${API_BASE}/funds/${id}/entries/${entryIndex}`, {
+    method: 'DELETE'
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Failed to delete entry' } }))
+    return { error: error.error?.message ?? 'Failed to delete entry' }
   }
   const data = await response.json()
   return { data }
@@ -271,7 +300,7 @@ export interface AuditEntry {
   ticker: string
   date: string
   value: number
-  action?: 'BUY' | 'SELL' | 'DEPOSIT' | 'WITHDRAW'
+  action?: 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
   amount?: number
   dividend?: number
   expense?: number

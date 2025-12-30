@@ -85,7 +85,8 @@ export function Layout() {
 
     for (const fund of funds) {
       const platformId = fund.platform.toLowerCase()
-      const isClosed = fund.config.fund_size_usd === 0
+      // Use explicit status if set, otherwise fall back to fund_size_usd === 0 for backwards compatibility
+      const isClosed = fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)
       const groups = isClosed ? closedGroups : activeGroups
 
       if (!groups.has(platformId)) {
