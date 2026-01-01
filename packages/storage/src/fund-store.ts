@@ -12,10 +12,13 @@ export interface FundEntry {
   value: number
   action?: 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
   amount?: number
+  shares?: number
+  price?: number
   dividend?: number
   expense?: number
   cash_interest?: number
   fund_size?: number
+  margin_available?: number
   margin_borrowed?: number
   notes?: string
 }
@@ -32,7 +35,7 @@ export interface FundData {
   entries: FundEntry[]
 }
 
-const ENTRY_HEADERS = ['date', 'value', 'action', 'amount', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_borrowed', 'notes']
+const ENTRY_HEADERS = ['date', 'value', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'notes']
 
 /**
  * Get the JSON config file path for a TSV file.
@@ -88,10 +91,16 @@ function parseEntry(line: string, headers: string[]): FundEntry {
         entry.value = parseFloat(val) || 0
         break
       case 'action':
-        if (val === 'BUY' || val === 'SELL' || val === 'DEPOSIT' || val === 'WITHDRAW') entry.action = val
+        if (val === 'BUY' || val === 'SELL' || val === 'HOLD' || val === 'DEPOSIT' || val === 'WITHDRAW') entry.action = val
         break
       case 'amount':
         if (val) entry.amount = parseFloat(val)
+        break
+      case 'shares':
+        if (val) entry.shares = parseFloat(val)
+        break
+      case 'price':
+        if (val) entry.price = parseFloat(val)
         break
       case 'dividend':
         if (val) entry.dividend = parseFloat(val)
@@ -104,6 +113,9 @@ function parseEntry(line: string, headers: string[]): FundEntry {
         break
       case 'fund_size':
         if (val) entry.fund_size = parseFloat(val)
+        break
+      case 'margin_available':
+        if (val) entry.margin_available = parseFloat(val)
         break
       case 'margin_borrowed':
         if (val) entry.margin_borrowed = parseFloat(val)
@@ -126,10 +138,13 @@ function serializeEntry(entry: FundEntry): string {
     entry.value.toString(),
     entry.action ?? '',
     entry.amount?.toString() ?? '',
+    entry.shares?.toString() ?? '',
+    entry.price?.toString() ?? '',
     entry.dividend?.toString() ?? '',
     entry.expense?.toString() ?? '',
     entry.cash_interest?.toString() ?? '',
     entry.fund_size?.toString() ?? '',
+    entry.margin_available?.toString() ?? '',
     entry.margin_borrowed?.toString() ?? '',
     (entry.notes ?? '').replace(/\t/g, '\\t').replace(/\n/g, '\\n')
   ]

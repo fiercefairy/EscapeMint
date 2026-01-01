@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
-import { useParams, useLocation, Link } from 'react-router-dom'
+import { useParams, useLocation, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import * as d3 from 'd3'
-import { fetchFund, fetchFundState, updateFundConfig, type FundDetail as FundDetailType, type FundStateResponse, type FundEntry, type ChartBounds } from '../api/funds'
+import { fetchFund, fetchFundState, updateFundConfig, updateFundEntry, type FundDetail as FundDetailType, type FundStateResponse, type FundEntry, type ChartBounds } from '../api/funds'
 
 // Chart data point for P&L and APY charts
 interface ChartDataPoint {
@@ -138,19 +138,25 @@ const ALL_COLUMNS = [
   { id: 'cash', label: 'Cash', defaultVisible: true },
   { id: 'action', label: 'Action', defaultVisible: true },
   { id: 'amount', label: 'Amount', defaultVisible: true },
+  { id: 'shares', label: 'Shares', defaultVisible: false },
+  { id: 'cumShares', label: 'Σ Shares', defaultVisible: false },
+  { id: 'price', label: 'Price', defaultVisible: false },
   { id: 'invested', label: 'Invested', defaultVisible: true },
   { id: 'dividend', label: 'Dividend', defaultVisible: true },
   { id: 'expense', label: 'Expense', defaultVisible: true },
   { id: 'extracted', label: 'Extracted', defaultVisible: true },
   { id: 'cashInt', label: 'Cash Int', defaultVisible: true },
-  { id: 'unrealized', label: 'Unrealized', defaultVisible: true },
-  { id: 'pnl', label: 'P&L', defaultVisible: true },
-  { id: 'apy', label: 'APY', defaultVisible: true },
+  { id: 'unrealized', label: 'Unrealized', defaultVisible: false },
+  { id: 'realized', label: 'Realized', defaultVisible: true },
+  { id: 'liquidPnl', label: 'Liquid P&L', defaultVisible: true },
+  { id: 'realizedApy', label: 'Real APY', defaultVisible: true },
+  { id: 'liquidApy', label: 'Liq APY', defaultVisible: true },
   { id: 'cumExpense', label: 'Σ Exp', defaultVisible: true },
   { id: 'cumDividends', label: 'Σ Div', defaultVisible: true },
   { id: 'cumExtracted', label: 'Σ Extracted', defaultVisible: true },
   { id: 'cumCashInt', label: 'Σ Int', defaultVisible: true },
   { id: 'marginAvail', label: 'Margin Avail', defaultVisible: false },
+  { id: 'marginBorrowed', label: 'Margin Borrowed', defaultVisible: false },
   { id: 'fundSize', label: 'Fund Size', defaultVisible: true },
   { id: 'notes', label: 'Notes', defaultVisible: true },
   { id: 'edit', label: 'Edit', defaultVisible: true }
@@ -169,13 +175,15 @@ const getDefaultColumnOrder = (): ColumnId[] => {
 export function FundDetail() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
+  const navigate = useNavigate()
   const isEditing = location.pathname.endsWith('/edit')
+  const isAdding = location.pathname.endsWith('/add')
 
   const [fund, setFund] = useState<FundDetailType | null>(null)
   const [state, setState] = useState<FundStateResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showAddEntry, setShowAddEntry] = useState(false)
-  const [editingEntry, setEditingEntry] = useState<{ index: number; entry: FundEntry } | null>(null)
+  const [showAddEntry, setShowAddEntry] = useState(isAdding)
+  const [editingEntry, setEditingEntry] = useState<{ index: number; entry: FundEntry; calculatedFundSize?: number } | null>(null)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [showColumnMenu, setShowColumnMenu] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnId>>(getDefaultColumns)
@@ -187,6 +195,7 @@ export function FundDetail() {
   const [chartResize, setChartResize] = useState(0)
   const [apyBounds, setApyBounds] = useState<ChartBounds>({})
   const [pnlBounds, setPnlBounds] = useState<ChartBounds>({})
+  const [chartsCollapsed, setChartsCollapsed] = useState(false)
 
   // Resize handler for charts
   useEffect(() => {
@@ -195,11 +204,12 @@ export function FundDetail() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // Sync chart bounds from fund config when fund loads
+  // Sync chart bounds and collapsed state from fund config when fund loads
   useEffect(() => {
     if (!fund) return
     setApyBounds(fund.config.chart_bounds?.apy ?? {})
     setPnlBounds(fund.config.chart_bounds?.pnl ?? {})
+    setChartsCollapsed(fund.config.charts_collapsed ?? false)
   }, [fund?.id])
 
   // Sync column preferences from fund config when fund loads
@@ -276,6 +286,18 @@ export function FundDetail() {
       await updateFundConfig(id, { chart_bounds: {} })
     }
   }, [id, fund])
+
+  // Toggle charts collapsed state
+  const toggleChartsCollapsed = useCallback(async () => {
+    const newValue = !chartsCollapsed
+    setChartsCollapsed(newValue)
+    // Trigger chart redraw after expanding (DOM needs time to render)
+    if (!newValue) {
+      setTimeout(() => setChartResize(n => n + 1), 50)
+    }
+    if (!id) return
+    await updateFundConfig(id, { charts_collapsed: newValue })
+  }, [id, chartsCollapsed])
 
   const toggleColumn = (columnId: ColumnId) => {
     setVisibleColumns(prev => {
@@ -976,6 +998,7 @@ export function FundDetail() {
     let cumCashInterest = 0
     let cumDeposits = 0
     let cumWithdrawals = 0
+    let cumShares = 0
     let lastNonZeroValue = 0
     let lastApy = 0
     let costBasis = 0
@@ -992,10 +1015,11 @@ export function FundDetail() {
         cumWithdrawals += entry.amount
       }
 
-      // Track dividends, expenses, cash interest FIRST (they affect this row's APY and fund_size)
+      // Track dividends, expenses, cash interest, shares FIRST (they affect this row's APY and fund_size)
       if (entry.dividend) cumDividends += entry.dividend
       if (entry.expense) cumExpenses += entry.expense
       if (entry.cash_interest) cumCashInterest += entry.cash_interest
+      if (entry.shares) cumShares += entry.shares
 
       // Calculate fund_size: use manual override if set, otherwise calculate dynamically
       const calculatedFundSize = fund.config.fund_size_usd
@@ -1031,8 +1055,10 @@ export function FundDetail() {
       }
 
       // Calculate cash BEFORE the action (what was available before BUY/SELL)
+      // If manage_cash is false, cash is always 0
+      const manageCash = fund.config.manage_cash ?? true
       const netInvestedBefore = totalBuys - totalSells
-      const cash = fundSize === 0 ? 0 : Math.max(0, fundSize - netInvestedBefore)
+      const cash = !manageCash ? 0 : (fundSize === 0 ? 0 : Math.max(0, fundSize - netInvestedBefore))
 
       // NOW process this row's buy/sell action (for next iteration and display)
       let extracted = 0
@@ -1044,7 +1070,8 @@ export function FundDetail() {
         // Calculate extracted profit from this sell
         // If selling to 0 (liquidation), extracted = sell_amount - remaining_cost_basis
         // Otherwise, extracted = sell_amount - proportional_cost_basis
-        if (entry.value === 0 || entry.value <= entry.amount) {
+        // Use tolerance for floating point comparison
+        if (entry.value === 0 || entry.value <= entry.amount + 0.01) {
           // Full liquidation - extract remaining profit
           extracted = entry.amount - costBasis
           // Capture the realized gain from this cycle before resetting
@@ -1065,8 +1092,14 @@ export function FundDetail() {
 
       // Net invested = buys - sells (what's still "in" the fund from cash perspective)
       // If fund is closed or we just sold everything, we have nothing invested
-      const isFullLiquidation = entry.action === 'SELL' && entry.amount && entry.amount >= entry.value
-      const netInvested = (fundSize === 0 || isFullLiquidation) ? 0 : totalBuys - totalSells
+      // Use tolerance for floating point comparison (e.g., 17490.9297 vs 17490.9298)
+      const isFullLiquidation = entry.action === 'SELL' && entry.amount && entry.amount >= entry.value - 0.01
+      // Cap at 0 - can't have negative invested (selling at profit doesn't mean negative investment)
+      const netInvested = (fundSize === 0 || isFullLiquidation) ? 0 : Math.max(0, totalBuys - totalSells)
+
+      // Data integrity check: invested exceeds fund size (purchased without available cash)
+      // Use small tolerance (1 cent) for floating point precision
+      const hasIntegrityIssue = fundSize > 0 && netInvested > fundSize + 0.01
 
       // Post-action equity value (entry.value is pre-action)
       let postActionValue = entry.value
@@ -1079,9 +1112,25 @@ export function FundDetail() {
       // Unrealized gain = post-action asset value - cost basis
       const unrealized = postActionValue - costBasis
 
-      // Total gain = total return (realized + unrealized + dividends + interest - expenses)
-      const gainUsd = isFirstEntry ? 0 : totalReturn
-      const gainPct = isFirstEntry ? 0 : (totalBuys > 0 ? totalReturn / totalBuys : 0)
+      // Realized gain = money actually extracted: interest + dividends + extracted profits - expenses
+      const realized = cumCashInterest + cumDividends + cumExtracted - cumExpenses
+
+      // Liquid P&L = unrealized + realized (total paper + real gains)
+      const liquidPnl = unrealized + realized
+
+      // Calculate Realized APY (based only on realized gains)
+      const realizedReturnPct = denominatorValue > 0 ? realized / denominatorValue : 0
+      const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
+      let realizedApy = isFirstEntry ? 0 : (daysElapsed > 0 ? Math.pow(1 + clampedRealizedPct, 365 / daysElapsed) - 1 : 0)
+
+      // Liquid APY = current APY (based on total return including unrealized)
+      let liquidApy = apy
+
+      // If value is 0 (closed fund), preserve the last valid APYs
+      if (entry.value === 0 && lastApy !== 0) {
+        realizedApy = lastApy // For closed funds, realized = liquid
+        liquidApy = lastApy
+      }
 
       return {
         ...entry,
@@ -1094,10 +1143,13 @@ export function FundDetail() {
         cumCashInterest,
         extracted,
         cumExtracted,
+        cumShares,
         unrealized,
-        gainUsd,
-        gainPct,
-        apy
+        realized,
+        liquidPnl,
+        realizedApy,
+        liquidApy,
+        hasIntegrityIssue
       }
     })
   }, [fund])
@@ -1113,9 +1165,72 @@ export function FundDetail() {
     return entries
   }, [computedEntries, sortOrder])
 
+  // Count entries with data integrity issues
+  const integrityIssueCount = useMemo(() => {
+    return computedEntries.filter(e => e.hasIntegrityIssue).length
+  }, [computedEntries])
+
   const toggleSort = () => {
     setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')
   }
+
+  // Calculate price from amount and shares
+  const calculatePriceFromEntry = (entry: FundEntry): number | null => {
+    if (!entry.amount || !entry.shares || entry.shares === 0) return null
+    return Math.abs(entry.amount / entry.shares)
+  }
+
+  // Update a single entry's price
+  const handleCalcPrice = async (originalIndex: number, entry: FundEntry) => {
+    if (!fund || !id) return
+    const price = calculatePriceFromEntry(entry)
+    if (price === null) {
+      toast.error('Cannot calculate price: missing amount or shares')
+      return
+    }
+    const updatedEntry: FundEntry = { ...entry, price: Math.round(price * 10000) / 10000 }
+    const result = await updateFundEntry(id, originalIndex, updatedEntry)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success(`Price calculated: ${formatCurrency(price)}`)
+      loadData()
+    }
+  }
+
+  // Calculate all missing prices
+  const handleCalcAllPrices = async () => {
+    if (!fund || !id) return
+    const entriesToUpdate = fund.entries
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => !entry.price && entry.amount && entry.shares && entry.shares !== 0)
+
+    if (entriesToUpdate.length === 0) {
+      toast.info('No prices to calculate')
+      return
+    }
+
+    let successCount = 0
+    for (const { entry, index } of entriesToUpdate) {
+      const price = calculatePriceFromEntry(entry)
+      if (price !== null) {
+        const updatedEntry: FundEntry = { ...entry, price: Math.round(price * 10000) / 10000 }
+        const result = await updateFundEntry(id, index, updatedEntry)
+        if (!result.error) successCount++
+      }
+    }
+
+    if (successCount > 0) {
+      toast.success(`Calculated ${successCount} price${successCount > 1 ? 's' : ''}`)
+      loadData()
+    }
+  }
+
+  // Check if any entries can have prices calculated
+  const canCalcAnyPrices = useMemo(() => {
+    if (!fund) return false
+    return fund.entries.some(entry => !entry.price && entry.amount && entry.shares && entry.shares !== 0)
+  }, [fund])
 
   if (loading) {
     return (
@@ -1206,121 +1321,160 @@ export function FundDetail() {
           </div>
         </div>
 
-        {/* Current State + P&L + APY Charts Row (3 columns) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* Current State */}
-          <div className="bg-slate-800 rounded-lg p-3 border border-slate-700">
-            <h2 className="text-sm font-semibold text-white mb-2">Current State</h2>
-            {fund.config.fund_size_usd === 0 && state?.closedMetrics ? (
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <p className="text-[10px] text-slate-400">Total Invested</p>
-                  <p className="font-medium text-white">{formatCurrency(state.closedMetrics.total_invested_usd)}</p>
+        {/* Stats Section (collapsible) */}
+        <div className="bg-slate-800 rounded-lg border border-slate-700">
+          <button
+            onClick={toggleChartsCollapsed}
+            className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-700/50 transition-colors"
+          >
+            <h2 className="text-base font-semibold text-white">Stats</h2>
+            <svg
+              className={`w-5 h-5 text-slate-400 transition-transform ${chartsCollapsed ? '' : 'rotate-180'}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {!chartsCollapsed && (
+            <div className="p-3 space-y-3">
+              {/* Current State + P&L + APY Charts Row (3 columns) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Current State */}
+                <div className="bg-slate-700/50 rounded-lg p-3">
+                  <h3 className="text-sm font-semibold text-white mb-2">Current State</h3>
+                  {fund.config.fund_size_usd === 0 && state?.closedMetrics ? (
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-[10px] text-slate-400">Total Invested</p>
+                        <p className="font-medium text-white">{formatCurrency(state.closedMetrics.total_invested_usd)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Total Returned</p>
+                        <p className="font-medium text-white">{formatCurrency(state.closedMetrics.total_returned_usd)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Net Gain/Loss</p>
+                        <p className={`font-medium ${state.closedMetrics.net_gain_usd >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatCurrency(state.closedMetrics.net_gain_usd)} ({formatPercent(state.closedMetrics.return_pct)})
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Annualized Return</p>
+                        <p className={`font-medium ${state.closedMetrics.apy >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatPercent(state.closedMetrics.apy)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Dividends</p>
+                        <p className="font-medium text-mint-400">{formatCurrency(state.closedMetrics.total_dividends_usd)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Cash Interest</p>
+                        <p className="font-medium text-mint-400">{formatCurrency(state.closedMetrics.total_cash_interest_usd)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Duration</p>
+                        <p className="font-medium text-white">{state.closedMetrics.duration_days} days</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Expenses</p>
+                        <p className="font-medium text-red-400">{formatCurrency(state.closedMetrics.total_expenses_usd)}</p>
+                      </div>
+                    </div>
+                  ) : fund.config.fund_size_usd === 0 ? (
+                    <p className="text-slate-400 text-sm">This fund is closed. Historical data preserved below.</p>
+                  ) : state?.state ? (
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-[10px] text-slate-400">Start Input</p>
+                        <p className="font-medium text-white">{formatCurrency(state.state.start_input_usd)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Actual Value</p>
+                        <p className="font-medium text-mint-400">{formatCurrency(state.state.actual_value_usd)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Expected Target</p>
+                        <p className="font-medium text-white">{formatCurrency(state.state.expected_target_usd)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Target Diff</p>
+                        <p className={`font-medium ${state.state.target_diff_usd >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatCurrency(state.state.target_diff_usd)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Gain</p>
+                        <p className={`font-medium ${state.state.gain_usd >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatCurrency(state.state.gain_usd)} ({formatPercent(state.state.gain_pct)})
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Cash Available</p>
+                        <p className="font-medium text-white">{formatCurrency(state.state.cash_available_usd)}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-slate-400 text-sm">No state data available</p>
+                  )}
                 </div>
-                <div>
-                  <p className="text-[10px] text-slate-400">Total Returned</p>
-                  <p className="font-medium text-white">{formatCurrency(state.closedMetrics.total_returned_usd)}</p>
+
+                {/* P&L Chart */}
+                <div className="bg-slate-700/50 rounded-lg p-3 flex flex-col h-full">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-white">P&L</h3>
+                    <ChartSettings bounds={pnlBounds} onChange={updatePnlBounds} />
+                  </div>
+                  <svg
+                    ref={pnlChartRef}
+                    className="w-full flex-1 min-h-[100px]"
+                    style={{ overflow: 'visible' }}
+                  />
                 </div>
-                <div>
-                  <p className="text-[10px] text-slate-400">Net Gain/Loss</p>
-                  <p className={`font-medium ${state.closedMetrics.net_gain_usd >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {formatCurrency(state.closedMetrics.net_gain_usd)} ({formatPercent(state.closedMetrics.return_pct)})
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400">Annualized Return</p>
-                  <p className={`font-medium ${state.closedMetrics.apy >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {formatPercent(state.closedMetrics.apy)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400">Dividends</p>
-                  <p className="font-medium text-mint-400">{formatCurrency(state.closedMetrics.total_dividends_usd)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400">Cash Interest</p>
-                  <p className="font-medium text-mint-400">{formatCurrency(state.closedMetrics.total_cash_interest_usd)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400">Duration</p>
-                  <p className="font-medium text-white">{state.closedMetrics.duration_days} days</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400">Expenses</p>
-                  <p className="font-medium text-red-400">{formatCurrency(state.closedMetrics.total_expenses_usd)}</p>
+
+                {/* Fund APY Chart */}
+                <div className="bg-slate-700/50 rounded-lg p-3 flex flex-col h-full">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-white">APY</h3>
+                    <ChartSettings bounds={apyBounds} onChange={updateApyBounds} isPercent />
+                  </div>
+                  <svg
+                    ref={apyChartRef}
+                    className="w-full flex-1 min-h-[100px]"
+                    style={{ overflow: 'visible' }}
+                  />
                 </div>
               </div>
-            ) : fund.config.fund_size_usd === 0 ? (
-              <p className="text-slate-400 text-sm">This fund is closed. Historical data preserved below.</p>
-            ) : state?.state ? (
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <p className="text-[10px] text-slate-400">Start Input</p>
-                  <p className="font-medium text-white">{formatCurrency(state.state.start_input_usd)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400">Actual Value</p>
-                  <p className="font-medium text-mint-400">{formatCurrency(state.state.actual_value_usd)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400">Expected Target</p>
-                  <p className="font-medium text-white">{formatCurrency(state.state.expected_target_usd)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400">Target Diff</p>
-                  <p className={`font-medium ${state.state.target_diff_usd >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {formatCurrency(state.state.target_diff_usd)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400">Gain</p>
-                  <p className={`font-medium ${state.state.gain_usd >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {formatCurrency(state.state.gain_usd)} ({formatPercent(state.state.gain_pct)})
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400">Cash Available</p>
-                  <p className="font-medium text-white">{formatCurrency(state.state.cash_available_usd)}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-slate-400 text-sm">No state data available</p>
-            )}
-          </div>
 
-          {/* P&L Chart */}
-          <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 flex flex-col h-full">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-semibold text-white">P&L</h2>
-              <ChartSettings bounds={pnlBounds} onChange={updatePnlBounds} />
+              {/* Fund Analysis Charts */}
+              <FundCharts entries={fund.entries} config={fund.config} fundId={fund.id} />
             </div>
-            <svg
-              ref={pnlChartRef}
-              className="w-full flex-1 min-h-[100px]"
-              style={{ overflow: 'visible' }}
-            />
-          </div>
-
-          {/* Fund APY Chart */}
-          <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 flex flex-col h-full">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-semibold text-white">APY</h2>
-              <ChartSettings bounds={apyBounds} onChange={updateApyBounds} isPercent />
-            </div>
-            <svg
-              ref={apyChartRef}
-              className="w-full flex-1 min-h-[100px]"
-              style={{ overflow: 'visible' }}
-            />
-          </div>
+          )}
         </div>
 
-        {/* Fund Analysis Charts (3-column grid) */}
-        <FundCharts entries={fund.entries} config={fund.config} fundId={fund.id} />
+        {/* Data Integrity Alert */}
+        {integrityIssueCount > 0 && (
+          <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 flex items-center gap-3">
+            <svg className="w-5 h-5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-red-300 text-sm font-medium">
+                Data Integrity Issue{integrityIssueCount > 1 ? 's' : ''} Detected
+              </p>
+              <p className="text-red-400/80 text-xs">
+                {integrityIssueCount} entr{integrityIssueCount === 1 ? 'y' : 'ies'} where invested amount exceeds fund size (highlighted in red below)
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Entries Table */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-x-auto">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700">
+        <div className="bg-slate-800 rounded-lg border border-slate-700 flex flex-col max-h-[70vh]">
+          {/* Fixed Header */}
+          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700 flex-shrink-0">
             <h2 className="text-base font-semibold text-white">
               Entries ({fund.entries.length})
             </h2>
@@ -1377,8 +1531,10 @@ export function FundDetail() {
               </button>
             </div>
           </div>
+          {/* Scrollable Table Container */}
+          <div className="flex-1 overflow-auto min-h-0">
           <table className="w-full text-left text-sm">
-            <thead>
+            <thead className="sticky top-0 bg-slate-800 z-10">
               <tr className="border-b border-slate-700 text-slate-400 text-xs">
                 {visibleOrderedColumns.map((col, idx) => {
                   const isFirst = idx === 0
@@ -1434,6 +1590,31 @@ export function FundDetail() {
                       </th>
                     )
                   }
+                  if (col.id === 'price') {
+                    return (
+                      <th
+                        key={col.id}
+                        draggable
+                        onDragStart={() => handleDragStart(col.id)}
+                        onDragOver={(e) => handleDragOver(e, col.id)}
+                        onDragEnd={handleDragEnd}
+                        className={`px-2 py-2 text-right cursor-grab ${draggedColumn === col.id ? 'opacity-50' : ''}`}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          {col.label}
+                          {canCalcAnyPrices && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleCalcAllPrices() }}
+                              className="px-1 py-0.5 text-[9px] bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                              title="Calculate all missing prices from amount/shares"
+                            >
+                              calc
+                            </button>
+                          )}
+                        </div>
+                      </th>
+                    )
+                  }
                   return (
                     <th
                       key={col.id}
@@ -1451,7 +1632,13 @@ export function FundDetail() {
             </thead>
             <tbody>
               {sortedEntries.map((entry, i) => (
-                <tr key={i} className="border-b border-slate-700/50 text-xs hover:bg-slate-700/30">
+                <tr
+                  key={i}
+                  className={`border-b border-slate-700/50 text-xs hover:bg-slate-700/30 ${
+                    entry.hasIntegrityIssue ? 'bg-red-900/40 hover:bg-red-900/50' : ''
+                  }`}
+                  title={entry.hasIntegrityIssue ? `Data integrity issue: invested ($${entry.totalInvested.toFixed(2)}) exceeds fund size ($${entry.fundSize.toFixed(2)})` : undefined}
+                >
                   {visibleOrderedColumns.map((col, idx) => {
                     const isFirst = idx === 0
                     switch (col.id) {
@@ -1492,6 +1679,35 @@ export function FundDetail() {
                             {entry.amount ? formatCurrency(entry.amount) : '-'}
                           </td>
                         )
+                      case 'shares':
+                        return (
+                          <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
+                            {entry.shares ? entry.shares.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 }) : '-'}
+                          </td>
+                        )
+                      case 'cumShares':
+                        // Round very small values to 0 to avoid "-0" display
+                        const displayShares = entry.cumShares && Math.abs(entry.cumShares) < 0.00000001 ? 0 : entry.cumShares
+                        return (
+                          <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
+                            {displayShares ? displayShares.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 }) : entry.cumShares === 0 || displayShares === 0 ? '0' : '-'}
+                          </td>
+                        )
+                      case 'price':
+                        const canCalcPrice = !entry.price && entry.amount && entry.shares && entry.shares !== 0
+                        return (
+                          <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
+                            {entry.price ? formatCurrency(entry.price) : canCalcPrice ? (
+                              <button
+                                onClick={() => handleCalcPrice(entry.originalIndex, entry)}
+                                className="px-1 py-0.5 text-[9px] bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                title={`Calculate: $${entry.amount?.toFixed(2)} ÷ ${Math.abs(entry.shares ?? 0).toFixed(4)} shares`}
+                              >
+                                calc
+                              </button>
+                            ) : '-'}
+                          </td>
+                        )
                       case 'invested':
                         return (
                           <td key={col.id} className="px-2 py-1.5 text-right text-blue-400">
@@ -1516,6 +1732,12 @@ export function FundDetail() {
                         )
                       case 'marginAvail':
                         return (
+                          <td key={col.id} className="px-2 py-1.5 text-right text-purple-300">
+                            {entry.margin_available ? formatCurrency(entry.margin_available) : '-'}
+                          </td>
+                        )
+                      case 'marginBorrowed':
+                        return (
                           <td key={col.id} className="px-2 py-1.5 text-right text-purple-400">
                             {entry.margin_borrowed ? formatCurrency(entry.margin_borrowed) : '-'}
                           </td>
@@ -1526,16 +1748,28 @@ export function FundDetail() {
                             {formatCurrency(entry.unrealized)}
                           </td>
                         )
-                      case 'pnl':
+                      case 'realized':
                         return (
-                          <td key={col.id} className={`px-2 py-1.5 text-right ${entry.gainUsd >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {formatCurrency(entry.gainUsd)}
+                          <td key={col.id} className={`px-2 py-1.5 text-right ${entry.realized >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {formatCurrency(entry.realized)}
                           </td>
                         )
-                      case 'apy':
+                      case 'liquidPnl':
                         return (
-                          <td key={col.id} className={`px-2 py-1.5 text-right ${entry.apy >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {formatPercent(entry.apy)}
+                          <td key={col.id} className={`px-2 py-1.5 text-right ${entry.liquidPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {formatCurrency(entry.liquidPnl)}
+                          </td>
+                        )
+                      case 'realizedApy':
+                        return (
+                          <td key={col.id} className={`px-2 py-1.5 text-right ${entry.realizedApy >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {formatPercent(entry.realizedApy)}
+                          </td>
+                        )
+                      case 'liquidApy':
+                        return (
+                          <td key={col.id} className={`px-2 py-1.5 text-right ${entry.liquidApy >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {formatPercent(entry.liquidApy)}
                           </td>
                         )
                       case 'dividend':
@@ -1596,7 +1830,7 @@ export function FundDetail() {
                         return (
                           <td key={col.id} className="px-2 py-1.5">
                             <button
-                              onClick={() => setEditingEntry({ index: entry.originalIndex, entry })}
+                              onClick={() => setEditingEntry({ index: entry.originalIndex, entry, calculatedFundSize: entry.fundSize })}
                               className="p-1 text-slate-400 hover:text-white hover:bg-slate-600 rounded transition-colors"
                               title="Edit entry"
                             >
@@ -1614,6 +1848,7 @@ export function FundDetail() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* Take Action Modal */}
@@ -1622,7 +1857,11 @@ export function FundDetail() {
             fundId={fund.id}
             fundTicker={fund.ticker}
             currentRecommendation={state?.recommendation}
-            onClose={() => setShowAddEntry(false)}
+            existingEntries={fund.entries}
+            onClose={() => {
+              setShowAddEntry(false)
+              if (isAdding) navigate(`/fund/${fund.id}`, { replace: true })
+            }}
             onAdded={loadData}
           />
         )}
@@ -1634,6 +1873,8 @@ export function FundDetail() {
             fundTicker={fund.ticker}
             entryIndex={editingEntry.index}
             entry={editingEntry.entry}
+            existingEntries={fund.entries.slice(0, editingEntry.index)}
+            calculatedFundSize={editingEntry.calculatedFundSize}
             onClose={() => setEditingEntry(null)}
             onUpdated={loadData}
           />

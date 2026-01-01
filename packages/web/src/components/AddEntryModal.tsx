@@ -1,34 +1,23 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { addFundEntry, previewRecommendation, type FundEntry, type FundState, type Recommendation } from '../api/funds'
+import { EntryForm, buildEntryFromForm, createEmptyFormData, type EntryFormData, type ActionType } from './EntryForm'
 
 interface AddEntryModalProps {
   fundId: string
   fundTicker: string
   currentRecommendation?: Recommendation | null | undefined
+  existingEntries?: FundEntry[]
   onClose: () => void
   onAdded: () => void
 }
 
-type ActionType = '' | 'BUY' | 'SELL' | 'HOLD'
-
-export function AddEntryModal({ fundId, fundTicker, currentRecommendation, onClose, onAdded }: AddEntryModalProps) {
+export function AddEntryModal({ fundId, fundTicker, currentRecommendation, existingEntries = [], onClose, onAdded }: AddEntryModalProps) {
   const [loading, setLoading] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [result, setResult] = useState<{ state: FundState; recommendation: Recommendation } | null>(null)
-  const [preview, setPreview] = useState<{ state: FundState; recommendation: Recommendation | null } | null>(null)
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0] as string,
-    value: '',
-    action: '' as ActionType,
-    amount: '',
-    deposit: '',
-    withdrawal: '',
-    dividend: '',
-    expense: '',
-    cash_interest: '',
-    notes: ''
-  })
+  const [preview, setPreview] = useState<{ state: FundState; recommendation: Recommendation | null; margin_available: number; fund_size: number } | null>(null)
+  const [formData, setFormData] = useState<EntryFormData>(createEmptyFormData)
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -53,26 +42,28 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, onClo
 
     if (response.data) {
       setPreview(response.data)
-
-      // Auto-fill action and amount from recommendation
-      const rec = response.data.recommendation
-      if (rec) {
-        const newAction = rec.action as ActionType
-        setFormData(prev => ({
-          ...prev,
-          action: newAction,
-          amount: rec.amount.toFixed(2)
-        }))
-      } else {
-        // No recommendation means HOLD
-        setFormData(prev => ({
-          ...prev,
-          action: 'HOLD',
-          amount: ''
-        }))
-      }
     }
   }, [fundId])
+
+  // Apply recommendation to form
+  const useRecommendation = useCallback(() => {
+    const rec = preview?.recommendation
+    if (rec) {
+      setFormData(prev => ({
+        ...prev,
+        action: rec.action as ActionType,
+        amount: rec.amount.toFixed(2)
+      }))
+      toast.success(`Applied: ${rec.action} ${formatCurrency(rec.amount)}`)
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        action: 'HOLD',
+        amount: ''
+      }))
+      toast.success('Applied: HOLD')
+    }
+  }, [preview])
 
   // Fetch preview when equity value changes
   useEffect(() => {
@@ -89,49 +80,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, onClo
     e.preventDefault()
     setLoading(true)
 
-    const entry: Partial<FundEntry> = {
-      date: formData.date,
-      value: parseFloat(formData.value) || 0
-    }
-
-    // Only add action/amount for BUY/SELL (not HOLD)
-    if (formData.action && formData.action !== 'HOLD') {
-      entry.action = formData.action
-      entry.amount = parseFloat(formData.amount) || 0
-    }
-
-    // Handle deposit/withdrawal - store as DEPOSIT/WITHDRAW action if present
-    // These affect cash pool but not equity
-    const depositVal = parseFloat(formData.deposit)
-    const withdrawalVal = parseFloat(formData.withdrawal)
-
-    if (depositVal > 0) {
-      // If we also have a BUY/SELL, we need to record both
-      // For now, deposit/withdrawal are recorded via fund_size changes in the entry
-      // This is a simplification - deposits add to available cash
-      entry.notes = (entry.notes ?? '') + (entry.notes ? ' | ' : '') + `Deposit: $${depositVal}`
-    }
-
-    if (withdrawalVal > 0) {
-      entry.notes = (entry.notes ?? '') + (entry.notes ? ' | ' : '') + `Withdrawal: $${withdrawalVal}`
-    }
-
-    if (formData.dividend) {
-      entry.dividend = parseFloat(formData.dividend)
-    }
-
-    if (formData.expense) {
-      entry.expense = parseFloat(formData.expense)
-    }
-
-    if (formData.cash_interest) {
-      entry.cash_interest = parseFloat(formData.cash_interest)
-    }
-
-    if (formData.notes && !entry.notes?.includes(formData.notes)) {
-      entry.notes = formData.notes + (entry.notes ? ' | ' + entry.notes : '')
-    }
-
+    const entry = buildEntryFromForm(formData)
     const response = await addFundEntry(fundId, entry)
 
     if (response.error) {
@@ -222,54 +171,27 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, onClo
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-slate-800 rounded-lg p-6 w-full max-w-lg border border-slate-700 max-h-[90vh] overflow-y-auto">
+      <div className="bg-slate-800 rounded-lg p-6 w-full max-w-4xl border border-slate-700 max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-bold text-white mb-2">Take Action</h2>
         <p className="text-slate-400 text-sm mb-4">Record activity for {fundTicker.toUpperCase()}</p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Date and Equity Value Row */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Date</label>
-              <input
-                type="date"
-                value={formData.date}
-                onChange={e => setFormData({ ...formData, date: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Current Equity ($)</label>
-              <input
-                type="number"
-                value={formData.value}
-                onChange={e => setFormData({ ...formData, value: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="Asset value now"
-                step="0.01"
-                min="0"
-                required
-              />
-            </div>
-          </div>
-
-          {/* Live Recommendation Banner */}
-          {formData.value && (
-            <div className={`rounded-lg p-3 ${
-              previewLoading
-                ? 'bg-slate-700/50 border border-slate-600'
-                : displayRec?.action === 'BUY'
-                  ? 'bg-blue-900/30 border border-blue-800'
-                  : displayRec?.action === 'SELL'
-                    ? 'bg-orange-900/30 border border-orange-800'
-                    : 'bg-slate-700/50 border border-slate-600'
-            }`}>
-              {previewLoading ? (
-                <p className="text-slate-400 text-sm">Calculating recommendation...</p>
-              ) : displayRec ? (
-                <>
-                  <div className="flex justify-between items-start">
+        {/* Live Recommendation Banner */}
+        {formData.value && (
+          <div className={`rounded-lg p-3 mb-4 ${
+            previewLoading
+              ? 'bg-slate-700/50 border border-slate-600'
+              : displayRec?.action === 'BUY'
+                ? 'bg-blue-900/30 border border-blue-800'
+                : displayRec?.action === 'SELL'
+                  ? 'bg-orange-900/30 border border-orange-800'
+                  : 'bg-slate-700/50 border border-slate-600'
+          }`}>
+            {previewLoading ? (
+              <p className="text-slate-400 text-sm">Calculating recommendation...</p>
+            ) : displayRec ? (
+              <>
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-2">
                     <div>
                       <p className="text-xs text-slate-400">Recommended Action</p>
                       <p className={`font-semibold ${
@@ -278,135 +200,83 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, onClo
                         {displayRec.action} {formatCurrency(displayRec.amount)}
                       </p>
                     </div>
-                    {displayState && (
-                      <div className="text-right">
-                        <p className="text-xs text-slate-400">Cash Available</p>
-                        <p className="text-white text-sm">{formatCurrency(displayState.cash_available_usd)}</p>
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      onClick={useRecommendation}
+                      className="px-2 py-1 text-xs bg-mint-600 hover:bg-mint-500 text-white rounded transition-colors"
+                    >
+                      Use
+                    </button>
                   </div>
-                  {displayRec.insufficient_cash && (
-                    <p className="text-xs text-yellow-400 mt-1">Insufficient cash - amount limited</p>
+                  {displayState && (
+                    <div className="text-right">
+                      <p className="text-xs text-slate-400">Cash Available</p>
+                      <p className="text-white text-sm">{formatCurrency(displayState.cash_available_usd)}</p>
+                    </div>
                   )}
-                </>
-              ) : (
+                </div>
+                {displayRec.insufficient_cash && displayRec.action === 'BUY' && (
+                  <div className="mt-2 pt-2 border-t border-slate-700">
+                    <p className="text-xs text-yellow-400 mb-2">
+                      Insufficient cash ({formatCurrency(displayState?.cash_available_usd ?? 0)} available, need {formatCurrency(displayRec.explanation?.limit_usd ?? displayRec.amount)})
+                    </p>
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const needed = (displayRec.explanation?.limit_usd ?? displayRec.amount) - (displayState?.cash_available_usd ?? 0)
+                          setFormData(prev => ({ ...prev, deposit: Math.ceil(needed).toFixed(2) }))
+                          toast.success(`Deposit of ${formatCurrency(Math.ceil(needed))} added`)
+                        }}
+                        className="px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded transition-colors"
+                      >
+                        + Deposit {formatCurrency(Math.ceil((displayRec.explanation?.limit_usd ?? displayRec.amount) - (displayState?.cash_available_usd ?? 0)))}
+                      </button>
+                      {(preview?.margin_available ?? 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const needed = (displayRec.explanation?.limit_usd ?? displayRec.amount) - (displayState?.cash_available_usd ?? 0)
+                            const borrowAmount = Math.min(needed, preview?.margin_available ?? 0)
+                            setFormData(prev => ({ ...prev, margin_borrowed: (parseFloat(prev.margin_borrowed || '0') + borrowAmount).toFixed(2) }))
+                            toast.success(`Margin borrow of ${formatCurrency(borrowAmount)} added`)
+                          }}
+                          className="px-2 py-1 text-xs bg-purple-700 hover:bg-purple-600 text-white rounded transition-colors"
+                        >
+                          + Borrow from Margin ({formatCurrency(preview?.margin_available ?? 0)} available)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
                 <p className="text-slate-400 text-sm">HOLD - No action needed</p>
-              )}
-            </div>
-          )}
-
-          {/* Action Row */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Action Taken</label>
-              <select
-                value={formData.action}
-                onChange={e => setFormData({ ...formData, action: e.target.value as ActionType })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-              >
-                <option value="">Select...</option>
-                <option value="BUY">BUY</option>
-                <option value="SELL">SELL</option>
-                <option value="HOLD">HOLD (no trade)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Amount ($)</label>
-              <input
-                type="number"
-                value={formData.amount}
-                onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500 disabled:opacity-50"
-                placeholder="Trade amount"
-                step="0.01"
-                min="0"
-                disabled={!formData.action || formData.action === 'HOLD'}
-              />
-            </div>
+                <button
+                  type="button"
+                  onClick={useRecommendation}
+                  className="px-2 py-1 text-xs bg-slate-600 hover:bg-slate-500 text-white rounded transition-colors"
+                >
+                  Use
+                </button>
+              </div>
+            )}
           </div>
+        )}
 
-          {/* Deposit/Withdrawal Row */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Deposit ($)</label>
-              <input
-                type="number"
-                value={formData.deposit}
-                onChange={e => setFormData({ ...formData, deposit: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="Cash added"
-                step="0.01"
-                min="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Withdrawal ($)</label>
-              <input
-                type="number"
-                value={formData.withdrawal}
-                onChange={e => setFormData({ ...formData, withdrawal: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="Cash removed"
-                step="0.01"
-                min="0"
-              />
-            </div>
-          </div>
-
-          {/* Dividend, Expense, Cash Interest Row */}
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Dividend ($)</label>
-              <input
-                type="number"
-                value={formData.dividend}
-                onChange={e => setFormData({ ...formData, dividend: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Expense ($)</label>
-              <input
-                type="number"
-                value={formData.expense}
-                onChange={e => setFormData({ ...formData, expense: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Cash Interest ($)</label>
-              <input
-                type="number"
-                value={formData.cash_interest}
-                onChange={e => setFormData({ ...formData, cash_interest: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
-              />
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Notes</label>
-            <input
-              type="text"
-              value={formData.notes}
-              onChange={e => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-              placeholder="Optional notes"
-            />
-          </div>
+        <form onSubmit={handleSubmit}>
+          <EntryForm
+            formData={formData}
+            setFormData={setFormData}
+            existingEntries={existingEntries}
+            cashAvailable={preview?.state.cash_available_usd}
+            marginAvailable={preview?.margin_available}
+            currentFundSize={preview?.fund_size}
+          />
 
           {/* Buttons */}
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3 pt-4">
             <button
               type="button"
               onClick={onClose}

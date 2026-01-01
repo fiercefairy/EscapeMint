@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { FundCard } from '../components/FundCard'
 import { AggregatePanel } from '../components/AggregatePanel'
 import { PortfolioCharts } from '../components/PortfolioCharts'
+import { CreateFundModal } from '../components/CreateFundModal'
 import {
   fetchFunds,
   fetchAggregateMetrics,
@@ -21,6 +22,7 @@ export function Dashboard() {
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
   const [filterPlatform, setFilterPlatform] = useState<string>('all')
   const [showCharts, setShowCharts] = useState(true)
+  const [showCreateModal, setShowCreateModal] = useState(false)
 
   const loadData = async () => {
     setLoading(true)
@@ -96,6 +98,12 @@ export function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-2 py-1 text-sm bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors font-medium"
+          >
+            + Add Fund
+          </button>
           <button
             onClick={() => setShowCharts(!showCharts)}
             className={`px-2 py-1 text-sm rounded ${showCharts ? 'bg-mint-600 text-white' : 'bg-slate-800 text-slate-400'}`}
@@ -213,6 +221,14 @@ export function Dashboard() {
             </div>
           )}
         </>
+      )}
+
+      {/* Create Fund Modal */}
+      {showCreateModal && (
+        <CreateFundModal
+          onClose={() => setShowCreateModal(false)}
+          onCreated={loadData}
+        />
       )}
     </div>
   )

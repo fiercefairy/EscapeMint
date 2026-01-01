@@ -28,8 +28,15 @@ export interface FundConfig {
   margin_apr: number
   margin_access_usd: number
   accumulate: boolean
+  manage_cash?: boolean
+  auto_apply_cash_apy?: boolean
+  margin_enabled?: boolean
+  dividend_reinvest?: boolean
+  interest_reinvest?: boolean
+  expense_from_fund?: boolean
   start_date: string
   chart_bounds?: Record<string, ChartBounds>
+  charts_collapsed?: boolean
   entries_column_order?: string[]
   entries_visible_columns?: string[]
 }
@@ -51,10 +58,13 @@ export interface FundEntry {
   value: number
   action?: 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
   amount?: number
+  shares?: number
+  price?: number
   dividend?: number
   expense?: number
   cash_interest?: number
   fund_size?: number
+  margin_available?: number
   margin_borrowed?: number
   notes?: string
 }
@@ -196,6 +206,25 @@ export async function deleteFund(id: string): Promise<ApiResult<void>> {
   return {}
 }
 
+export async function createFund(data: {
+  platform: string
+  ticker: string
+  config: Partial<FundConfig>
+  initialEntry?: Partial<FundEntry>
+}): Promise<ApiResult<FundDetail>> {
+  const response = await fetch(`${API_BASE}/funds`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Failed to create fund' } }))
+    return { error: error.error?.message ?? 'Failed to create fund' }
+  }
+  const result = await response.json()
+  return { data: result }
+}
+
 export async function addFundEntry(id: string, entry: Partial<FundEntry>): Promise<ApiResult<{ entry: FundEntry; state: FundState; recommendation: Recommendation }>> {
   const response = await fetch(`${API_BASE}/funds/${id}/entries`, {
     method: 'POST',
@@ -210,7 +239,7 @@ export async function addFundEntry(id: string, entry: Partial<FundEntry>): Promi
   return { data }
 }
 
-export async function previewRecommendation(id: string, equityValue: number, date?: string): Promise<ApiResult<{ state: FundState; recommendation: Recommendation }>> {
+export async function previewRecommendation(id: string, equityValue: number, date?: string): Promise<ApiResult<{ state: FundState; recommendation: Recommendation | null; margin_available: number; fund_size: number }>> {
   const response = await fetch(`${API_BASE}/funds/${id}/preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

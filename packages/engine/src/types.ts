@@ -76,6 +76,46 @@ export interface SubFundConfig {
   accumulate: boolean
 
   /**
+   * Cash management mode (defaults to true):
+   * - true: Fund maintains a cash pile, sells add to cash balance
+   * - false: No cash pile, sells auto-withdraw (fund_size = invested, cash = 0)
+   */
+  manage_cash?: boolean
+
+  /**
+   * Auto-apply cash APY on entry save (defaults to false).
+   * When enabled, cash interest is auto-calculated based on cash balance and days elapsed.
+   */
+  auto_apply_cash_apy?: boolean
+
+  /**
+   * Enable margin features (defaults to false).
+   * When enabled, margin APR and margin access/borrowed tracking are available.
+   */
+  margin_enabled?: boolean
+
+  /**
+   * Dividend handling (defaults to true = reinvest):
+   * - true: Dividends add to cash and increase fund_size
+   * - false: Dividends extracted as profit (fund_size unchanged)
+   */
+  dividend_reinvest?: boolean
+
+  /**
+   * Cash interest handling (defaults to true = reinvest):
+   * - true: Interest adds to cash and increases fund_size
+   * - false: Interest extracted as profit (fund_size unchanged)
+   */
+  interest_reinvest?: boolean
+
+  /**
+   * Expense handling (defaults to true = from fund):
+   * - true: Expenses reduce fund_size (paid from fund)
+   * - false: Expenses covered externally (fund_size unchanged)
+   */
+  expense_from_fund?: boolean
+
+  /**
    * Date when the fund tracking begins (ISO 8601 date: YYYY-MM-DD).
    */
   start_date: string

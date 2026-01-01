@@ -7,7 +7,6 @@ import {
   writeFund,
   readAllFunds,
   appendEntry,
-  updateEntry,
   deleteEntry,
   deleteFund,
   entriesToTrades,
@@ -541,8 +540,34 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
   const dividends = entriesToDividends(fund.entries)
   const expenses = entriesToExpenses(fund.entries)
 
+  // Use fund_size from latest entry if available, otherwise from config
+  const latestEntry = fund.entries[fund.entries.length - 1]
+  const actualFundSize = latestEntry?.fund_size ?? fund.config.fund_size_usd
+  const configWithActualFundSize = { ...fund.config, fund_size_usd: actualFundSize }
+
+  // Calculate invested amount with full liquidation reset (same as FundDetail.tsx)
+  let totalBuys = 0
+  let totalSells = 0
+  for (const entry of fund.entries) {
+    if (entry.action === 'BUY' && entry.amount) {
+      totalBuys += entry.amount
+    } else if (entry.action === 'SELL' && entry.amount) {
+      totalSells += entry.amount
+      // Check for full liquidation - reset totals
+      const isFullLiquidation = entry.value === 0 || entry.value <= entry.amount + 0.01
+      if (isFullLiquidation) {
+        totalBuys = 0
+        totalSells = 0
+      }
+    }
+  }
+  const invested = Math.max(0, totalBuys - totalSells)
+  // If manage_cash is false, cash is always 0 (fund_size = invested)
+  const manageCash = fund.config.manage_cash ?? true
+  const correctedCashAvailable = manageCash ? Math.max(0, actualFundSize - invested) : 0
+
   const state = computeFundState(
-    fund.config,
+    configWithActualFundSize,
     trades,
     [],
     dividends,
@@ -551,11 +576,19 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
     snapshotDate
   )
 
-  const recommendation = computeRecommendation(fund.config, state)
+  // Override cash_available with correct calculation: fund_size - invested
+  const correctedState = { ...state, cash_available_usd: correctedCashAvailable }
+
+  const recommendation = computeRecommendation(configWithActualFundSize, correctedState)
+
+  // Include margin info for UI suggestions
+  const marginAvailable = latestEntry?.margin_available ?? 0
 
   res.json({
-    state,
-    recommendation
+    state: correctedState,
+    recommendation,
+    margin_available: marginAvailable,
+    fund_size: actualFundSize
   })
 })
 
@@ -581,6 +614,33 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     const calculatedInterest = calculateCashInterest(fund, entry, platformConfig.cash_apy)
     if (calculatedInterest) {
       entry.cash_interest = calculatedInterest
+    }
+  }
+
+  // Auto-calculate fund_size if not provided but deposit/withdrawal is present
+  if (!entry.fund_size) {
+    const prevEntry = fund.entries[fund.entries.length - 1]
+    const prevFundSize = prevEntry?.fund_size ?? fund.config.fund_size_usd
+
+    // Check for deposit in notes (format: "Deposit: $X")
+    let depositAmount = 0
+    let withdrawalAmount = 0
+    if (entry.notes) {
+      const depositMatch = entry.notes.match(/Deposit:\s*\$?([\d.]+)/)
+      if (depositMatch) depositAmount = parseFloat(depositMatch[1] ?? '0') || 0
+      const withdrawalMatch = entry.notes.match(/Withdrawal:\s*\$?([\d.]+)/)
+      if (withdrawalMatch) withdrawalAmount = parseFloat(withdrawalMatch[1] ?? '0') || 0
+    }
+    // Also check for DEPOSIT/WITHDRAW actions
+    if (entry.action === 'DEPOSIT' && entry.amount) depositAmount = entry.amount
+    if (entry.action === 'WITHDRAW' && entry.amount) withdrawalAmount = entry.amount
+
+    const adjustment = depositAmount - withdrawalAmount
+    if (adjustment !== 0) {
+      entry.fund_size = prevFundSize + adjustment
+    } else {
+      // Carry forward previous fund_size
+      entry.fund_size = prevFundSize
     }
   }
 
@@ -639,7 +699,38 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
   if (!entry.date) return next(badRequest('date is required'))
   if (entry.value === undefined) return next(badRequest('value is required'))
 
-  await updateEntry(filePath, entryIndex, entry).catch(next)
+  // Calculate fund_size change to propagate to subsequent entries
+  const oldEntry = fund.entries[entryIndex]
+  const oldFundSize = oldEntry?.fund_size ?? 0
+  const newFundSize = entry.fund_size ?? 0
+  const fundSizeDelta = newFundSize - oldFundSize
+
+  // Update the entry
+  fund.entries[entryIndex] = entry
+
+  // Propagate fund_size changes to all subsequent entries
+  if (entry.fund_size !== undefined && entry.fund_size > 0) {
+    const entryDate = new Date(entry.date)
+    for (let i = 0; i < fund.entries.length; i++) {
+      if (i === entryIndex) continue
+      const e = fund.entries[i]
+      if (!e) continue
+      const eDate = new Date(e.date)
+      // Update entries after this one (by date)
+      if (eDate > entryDate) {
+        if (e.fund_size !== undefined && e.fund_size > 0) {
+          // Entry has explicit fund_size - apply delta
+          e.fund_size = e.fund_size + fundSizeDelta
+        } else {
+          // Entry doesn't have fund_size - set it to match current entry's fund_size
+          e.fund_size = entry.fund_size
+        }
+      }
+    }
+  }
+
+  // Write the entire fund with propagated changes
+  await writeFund(filePath, fund).catch(next)
 
   // Re-read to get updated fund
   const updated = await readFund(filePath).catch(next)

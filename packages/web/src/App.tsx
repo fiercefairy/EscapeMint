@@ -13,6 +13,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="fund/:id" element={<FundDetail />} />
         <Route path="fund/:id/edit" element={<FundDetail />} />
+        <Route path="fund/:id/add" element={<FundDetail />} />
         <Route path="audit" element={<AuditTrail />} />
         <Route path="platforms" element={<Platforms />} />
         <Route path="settings" element={<Settings />} />
