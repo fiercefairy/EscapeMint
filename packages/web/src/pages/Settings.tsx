@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { toast } from 'sonner'
+import { useSettings } from '../contexts/SettingsContext'
 
 const API_BASE = '/api/v1'
 
@@ -24,6 +25,7 @@ export function Settings() {
   const [importing, setImporting] = useState(false)
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { settings, updateSetting } = useSettings()
 
   const handleExport = async () => {
     setExporting(true)
@@ -195,6 +197,23 @@ export function Settings() {
         >
           {importing ? 'Importing...' : 'Select File'}
         </button>
+      </div>
+
+      {/* Advanced/Beta Tools */}
+      <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
+        <h2 className="text-base font-semibold text-white mb-2">Advanced/Beta Tools</h2>
+        <p className="text-sm text-slate-400 mb-3">
+          Enable experimental features like Paste Column and Recalculate buttons.
+        </p>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={settings.advancedTools}
+            onChange={(e) => updateSetting('advancedTools', e.target.checked)}
+            className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500 focus:ring-offset-slate-800"
+          />
+          <span className="text-sm text-white">Enable Advanced/Beta Tools</span>
+        </label>
       </div>
 
       {/* Data Info */}

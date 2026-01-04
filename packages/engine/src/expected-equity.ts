@@ -11,21 +11,32 @@ function daysBetween(startDate: string, endDate: string): number {
 
 /**
  * Computes the total amount currently invested (start input / cost basis).
- * This is the sum of all buys minus the sum of all sells.
+ * This is the sum of all buys minus the sum of all sells, with liquidation detection.
+ * When sells exceed or equal buys (full liquidation), the totals are reset.
  */
 export function computeStartInput(trades: Trade[], asOfDate: string): number {
-  let invested = 0
+  let totalBuys = 0
+  let totalSells = 0
 
-  for (const trade of trades) {
+  // Sort trades by date to process in chronological order
+  const sortedTrades = [...trades].sort((a, b) => a.date.localeCompare(b.date))
+
+  for (const trade of sortedTrades) {
     if (daysBetween(trade.date, asOfDate) < 0) continue // Skip future
+
     if (trade.type === 'buy') {
-      invested += trade.amount_usd
+      totalBuys += trade.amount_usd
     } else {
-      invested -= trade.amount_usd
+      totalSells += trade.amount_usd
+      // Check for full liquidation: when sells >= buys, reset both
+      if (totalSells >= totalBuys) {
+        totalBuys = 0
+        totalSells = 0
+      }
     }
   }
 
-  return Math.max(0, invested)
+  return Math.max(0, totalBuys - totalSells)
 }
 
 /**
@@ -34,6 +45,9 @@ export function computeStartInput(trades: Trade[], asOfDate: string): number {
  * Uses periodic compounding (not continuous):
  * ExpectedGain = Σ(Trade_i * ((1 + TargetAPY)^(DaysElapsed_i / 365) - 1))
  * ExpectedTarget = StartInput + ExpectedGain
+ *
+ * When selling, the expected gain is proportionally reduced based on
+ * the fraction of the position being sold. Full liquidation resets everything.
  */
 export function computeExpectedTarget(
   config: SubFundConfig,
@@ -44,20 +58,38 @@ export function computeExpectedTarget(
 
   let startInput = 0
   let expectedGain = 0
+  let totalBuys = 0
+  let totalSells = 0
 
-  for (const trade of trades) {
+  // Sort trades by date to process in chronological order
+  const sortedTrades = [...trades].sort((a, b) => a.date.localeCompare(b.date))
+
+  for (const trade of sortedTrades) {
     const tradeDays = daysBetween(trade.date, asOfDate)
     if (tradeDays < 0) continue // Skip future trades
 
     if (trade.type === 'buy') {
+      totalBuys += trade.amount_usd
       startInput += trade.amount_usd
       // Each buy compounds from its trade date
       const gain = trade.amount_usd * (Math.pow(1 + target_apy, tradeDays / DAYS_PER_YEAR) - 1)
       expectedGain += gain
     } else {
-      // SELL reduces the invested amount
-      startInput -= trade.amount_usd
-      // Note: We don't subtract from expected gain - selling realizes the gain
+      totalSells += trade.amount_usd
+      // Check for full liquidation: when sells >= buys, reset everything
+      if (totalSells >= totalBuys) {
+        startInput = 0
+        expectedGain = 0
+        totalBuys = 0
+        totalSells = 0
+      } else {
+        // SELL reduces the invested amount and proportionally reduces expected gain
+        if (startInput > 0) {
+          const sellFraction = Math.min(1, trade.amount_usd / startInput)
+          expectedGain *= (1 - sellFraction)
+        }
+        startInput = Math.max(0, startInput - trade.amount_usd)
+      }
     }
   }
 
@@ -68,11 +100,16 @@ export function computeExpectedTarget(
  * Computes the available cash in the pool.
  *
  * Cash = FundSize - StartInput + Deposits - Withdrawals
+ *        + Dividends (if dividend_reinvest=true)
+ *        + Interest (if interest_reinvest=true)
+ *        - Expenses (if expense_from_fund=true)
  */
 export function computeCashAvailable(
   config: SubFundConfig,
   trades: Trade[],
   cashflows: CashFlow[],
+  dividends: Dividend[],
+  expenses: Expense[],
   asOfDate: string
 ): number {
   const startInput = computeStartInput(trades, asOfDate)
@@ -85,6 +122,32 @@ export function computeCashAvailable(
       cash += cf.amount_usd
     } else {
       cash -= cf.amount_usd
+    }
+  }
+
+  // Default config behaviors (all default to true if not specified)
+  const dividendReinvest = config.dividend_reinvest !== false
+  const interestReinvest = config.interest_reinvest !== false
+  const expenseFromFund = config.expense_from_fund !== false
+
+  // Add dividends to cash if reinvesting
+  if (dividendReinvest) {
+    for (const div of dividends) {
+      if (daysBetween(div.date, asOfDate) < 0) continue // Skip future
+      cash += div.amount_usd
+    }
+  }
+
+  // Add interest to cash if reinvesting
+  if (interestReinvest) {
+    cash += computeCashInterest(config, trades, cashflows, asOfDate)
+  }
+
+  // Subtract expenses from cash if paid from fund
+  if (expenseFromFund) {
+    for (const exp of expenses) {
+      if (daysBetween(exp.date, asOfDate) < 0) continue // Skip future
+      cash -= exp.amount_usd
     }
   }
 
@@ -159,7 +222,16 @@ export function computeCashInterest(
 
 /**
  * Computes cumulative realized gains.
- * Realized gains include: cash interest, dividends, expenses (negative)
+ * Realized gains include ALL profits extracted or earned:
+ * - Sell profits (sell proceeds minus proportional cost basis)
+ * - All dividends received
+ * - All cash interest earned
+ * - Minus expenses (if paid from fund)
+ *
+ * For sell profit calculation:
+ * - Uses running cost basis tracking
+ * - Full liquidation (total sells >= total buys): profit = sells - buys
+ * - Partial sells: estimates profit proportionally
  */
 export function computeRealizedGains(
   config: SubFundConfig,
@@ -171,19 +243,55 @@ export function computeRealizedGains(
 ): number {
   let realized = 0
 
-  // Add cash interest
+  // Sort trades by date
+  const sortedTrades = [...trades].sort((a, b) => a.date.localeCompare(b.date))
+
+  // Track cumulative buys and sells for profit calculation
+  let totalBuys = 0
+  let totalSells = 0
+  let cycleProfit = 0
+
+  for (const trade of sortedTrades) {
+    if (daysBetween(trade.date, asOfDate) < 0) continue // Skip future
+
+    if (trade.type === 'buy') {
+      totalBuys += trade.amount_usd
+    } else {
+      totalSells += trade.amount_usd
+
+      // Check for full liquidation (sells >= buys means position fully closed)
+      if (totalSells >= totalBuys) {
+        // Full cycle complete - profit is difference
+        cycleProfit = totalSells - totalBuys
+        realized += cycleProfit
+        // Reset for next cycle
+        totalBuys = 0
+        totalSells = 0
+        cycleProfit = 0
+      }
+    }
+  }
+
+  // For any remaining position (partial sells that didn't trigger liquidation),
+  // we have unrealized gains, not realized. So no additional profit added here.
+  // The profit from partial sells is captured when the position is eventually liquidated.
+
+  // Add ALL cash interest (regardless of reinvest setting)
   realized += computeCashInterest(config, trades, cashflows, asOfDate)
 
-  // Add dividends
+  // Add ALL dividends (regardless of reinvest setting)
   for (const div of dividends) {
     if (daysBetween(div.date, asOfDate) < 0) continue
     realized += div.amount_usd
   }
 
-  // Subtract expenses
-  for (const exp of expenses) {
-    if (daysBetween(exp.date, asOfDate) < 0) continue
-    realized -= exp.amount_usd
+  // Subtract expenses if paid from fund
+  const expenseFromFund = config.expense_from_fund !== false
+  if (expenseFromFund) {
+    for (const exp of expenses) {
+      if (daysBetween(exp.date, asOfDate) < 0) continue
+      realized -= exp.amount_usd
+    }
   }
 
   return realized
@@ -201,8 +309,26 @@ export function computeFundState(
   actualValue: number,
   asOfDate: string
 ): FundState {
-  // Closed fund (no allocation) - return zeroed state
-  if (config.fund_size_usd === 0) {
+  // Cash funds have simplified state - value IS the cash balance
+  if (config.fund_type === 'cash') {
+    // For cash funds, compute interest earned on the cash balance
+    const cashInterest = computeCashInterest(config, trades, cashflows, asOfDate)
+    return {
+      cash_available_usd: actualValue,
+      expected_target_usd: 0,
+      actual_value_usd: actualValue,
+      start_input_usd: 0,
+      gain_usd: cashInterest,
+      gain_pct: config.fund_size_usd > 0 ? cashInterest / config.fund_size_usd : 0,
+      target_diff_usd: 0,
+      cash_interest_usd: cashInterest,
+      realized_gains_usd: cashInterest
+    }
+  }
+
+  // Closed fund - return zeroed state (only if explicitly closed or legacy undefined status with zero fund size)
+  const isClosed = config.status === 'closed' || (config.status === undefined && config.fund_size_usd === 0)
+  if (isClosed) {
     return {
       cash_available_usd: 0,
       expected_target_usd: 0,
@@ -218,7 +344,7 @@ export function computeFundState(
 
   const startInput = computeStartInput(trades, asOfDate)
   const expectedTarget = computeExpectedTarget(config, trades, asOfDate)
-  const cashAvailable = computeCashAvailable(config, trades, cashflows, asOfDate)
+  const cashAvailable = computeCashAvailable(config, trades, cashflows, dividends, expenses, asOfDate)
   const cashInterest = computeCashInterest(config, trades, cashflows, asOfDate)
   const realizedGains = computeRealizedGains(config, trades, cashflows, dividends, expenses, asOfDate)
 
@@ -249,8 +375,7 @@ export function computeClosedFundMetrics(
   expenses: Expense[],
   cashInterest: number,
   startDate: string,
-  endDate: string,
-  finalEquityValue?: number
+  endDate: string
 ): ClosedFundMetrics {
   let totalInvested = 0
   let totalReturned = 0
@@ -275,12 +400,9 @@ export function computeClosedFundMetrics(
 
   const netGain = totalReturned + totalDividends + cashInterest - totalExpenses - totalInvested
 
-  // For APY calculation, use the final equity value if provided (last non-zero value before closure)
-  // Otherwise fall back to total returned
-  const denominatorForApy = finalEquityValue ?? totalReturned
-
-  // Simple return = profit / finalValue
-  const returnPct = denominatorForApy > 0 ? netGain / denominatorForApy : 0
+  // Return percentage = profit / total invested
+  // This shows the return on the capital that was put in
+  const returnPct = totalInvested > 0 ? netGain / totalInvested : 0
 
   const durationDays = daysBetween(startDate, endDate)
 

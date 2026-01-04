@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { fetchPlatforms, createPlatform, deletePlatform, renamePlatform, type Platform } from '../api/platforms'
 
@@ -260,6 +261,12 @@ export function Platforms() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
+                          <Link
+                            to={`/platform/${platform.id}`}
+                            className="px-2 py-1 text-xs bg-mint-600/20 text-mint-400 rounded hover:bg-mint-600/30 mr-2"
+                          >
+                            Dashboard
+                          </Link>
                           <button
                             onClick={() => handleStartEdit(platform)}
                             className="px-2 py-1 text-xs bg-slate-600 text-white rounded hover:bg-slate-500 mr-2"

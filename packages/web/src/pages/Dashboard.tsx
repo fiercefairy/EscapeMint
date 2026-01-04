@@ -5,6 +5,7 @@ import { FundCard } from '../components/FundCard'
 import { AggregatePanel } from '../components/AggregatePanel'
 import { PortfolioCharts } from '../components/PortfolioCharts'
 import { CreateFundModal } from '../components/CreateFundModal'
+import { ImportWizard } from '../components/ImportWizard'
 import {
   fetchFunds,
   fetchAggregateMetrics,
@@ -23,14 +24,16 @@ export function Dashboard() {
   const [filterPlatform, setFilterPlatform] = useState<string>('all')
   const [showCharts, setShowCharts] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [showTestData, setShowTestData] = useState(false)
 
   const loadData = async () => {
     setLoading(true)
 
     const [fundsResult, metricsResult, historyResult] = await Promise.all([
-      fetchFunds(),
-      fetchAggregateMetrics(),
-      fetchHistory()
+      fetchFunds(showTestData),
+      fetchAggregateMetrics(showTestData),
+      fetchHistory(showTestData)
     ])
 
     if (fundsResult.error) {
@@ -56,7 +59,7 @@ export function Dashboard() {
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [showTestData])
 
   // Get unique platforms
   const platforms = [...new Set(funds.map(f => f.platform))]
@@ -66,13 +69,117 @@ export function Dashboard() {
     ? funds
     : funds.filter(f => f.platform === filterPlatform)
 
-  // Group by platform
+  // Group by platform and sort cash funds to top within each group
   const fundsByPlatform = filteredFunds.reduce((acc, fund) => {
     const key = fund.platform
     if (!acc[key]) acc[key] = []
     acc[key].push(fund)
     return acc
   }, {} as Record<string, FundSummary[]>)
+
+  // Sort each platform's funds: cash funds first, then by ticker
+  for (const platform of Object.keys(fundsByPlatform)) {
+    fundsByPlatform[platform]?.sort((a, b) => {
+      const aIsCash = a.config.fund_type === 'cash'
+      const bIsCash = b.config.fund_type === 'cash'
+      if (aIsCash && !bIsCash) return -1
+      if (!aIsCash && bIsCash) return 1
+      return a.ticker.localeCompare(b.ticker)
+    })
+  }
+
+  // Filter history data based on selected platform
+  const filteredHistory = history && filterPlatform !== 'all' ? {
+    ...history,
+    currentAllocations: history.currentAllocations.filter(a => a.platform === filterPlatform),
+    totals: {
+      totalCurrentValue: history.currentAllocations
+        .filter(a => a.platform === filterPlatform)
+        .reduce((sum, a) => sum + a.value, 0),
+      totalCurrentCash: history.currentAllocations
+        .filter(a => a.platform === filterPlatform)
+        .reduce((sum, a) => sum + a.cash, 0),
+      totalCurrentMarginAccess: history.currentAllocations
+        .filter(a => a.platform === filterPlatform)
+        .reduce((sum, a) => sum + a.marginAccess, 0),
+      totalCurrentMarginBorrowed: history.currentAllocations
+        .filter(a => a.platform === filterPlatform)
+        .reduce((sum, a) => sum + a.marginBorrowed, 0)
+    }
+  } : history
+
+  // Calculate filtered metrics based on selected platform
+  const filteredMetrics = metrics && filterPlatform !== 'all' ? (() => {
+    // Filter the per-fund metrics by platform
+    const filteredFundMetrics = metrics.funds.filter(f => f.platform === filterPlatform)
+
+    // Recalculate all aggregate values from filtered funds
+    const totalFundSize = filteredFundMetrics.reduce((sum, f) => sum + f.fundSize, 0)
+    const totalValue = filteredFundMetrics.reduce((sum, f) => sum + f.currentValue, 0)
+    const totalStartInput = filteredFundMetrics.reduce((sum, f) => sum + f.startInput, 0)
+    const totalTimeWeightedFundSize = filteredFundMetrics.reduce((sum, f) => sum + f.timeWeightedFundSize, 0)
+    const totalDaysActive = filteredFundMetrics.reduce((sum, f) => sum + f.daysActive, 0)
+    const totalRealizedGains = filteredFundMetrics.reduce((sum, f) => sum + f.realizedGains, 0)
+    const activeFunds = filteredFundMetrics.filter(f => f.status !== 'closed').length
+    const closedFunds = filteredFundMetrics.filter(f => f.status === 'closed').length
+
+    // Recalculate fund shares within the filtered subset
+    const dollarsPerDay = totalTimeWeightedFundSize > 0 && totalDaysActive > 0
+      ? totalTimeWeightedFundSize / totalDaysActive
+      : 0
+
+    let totalFundShares = 0
+    const fundsWithShares = filteredFundMetrics.map(fund => {
+      const fundShares = dollarsPerDay > 0 && fund.daysActive > 0
+        ? (fund.timeWeightedFundSize / dollarsPerDay) * fund.daysActive
+        : 0
+      totalFundShares += fundShares
+      return { ...fund, fundShares }
+    })
+
+    const fundsWithSharesPct = fundsWithShares.map(fund => ({
+      ...fund,
+      fundSharesPct: totalFundShares > 0 ? fund.fundShares / totalFundShares : 0
+    }))
+
+    // Recalculate realized APY using fund shares weighting
+    let weightedRealizedAPY = 0
+    for (const fund of fundsWithSharesPct) {
+      weightedRealizedAPY += fund.realizedAPY * fund.fundSharesPct
+    }
+
+    // Sum projected annual returns from active funds
+    const projectedAnnualReturn = fundsWithSharesPct
+      .filter(f => f.currentValue > 0)
+      .reduce((sum, f) => sum + f.projectedAnnualReturn, 0)
+
+    const totalGainUsd = totalValue - totalStartInput
+    const totalGainPct = totalStartInput > 0 ? (totalValue / totalStartInput - 1) : 0
+
+    // Compute aggregate liquid APY directly from totals (not weighted average)
+    const avgDaysActive = fundsWithSharesPct.length > 0 ? totalDaysActive / fundsWithSharesPct.length : 1
+    const aggregateLiquidAPY = totalTimeWeightedFundSize > 0 && avgDaysActive > 0
+      ? (totalGainUsd / totalTimeWeightedFundSize) * (365 / avgDaysActive)
+      : 0
+
+    return {
+      ...metrics,
+      totalFundSize,
+      totalValue,
+      totalStartInput,
+      totalTimeWeightedFundSize,
+      totalDaysActive,
+      totalRealizedGains,
+      realizedAPY: weightedRealizedAPY,
+      liquidAPY: aggregateLiquidAPY,
+      projectedAnnualReturn,
+      totalGainUsd,
+      totalGainPct,
+      activeFunds,
+      closedFunds,
+      funds: fundsWithSharesPct
+    }
+  })() : metrics
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -92,9 +199,13 @@ export function Dashboard() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">Portfolio Dashboard</h1>
+          <h1 className="text-xl font-bold text-white">
+            Portfolio Dashboard
+            {showTestData && <span className="ml-2 text-amber-400 text-sm font-normal">(Test Mode)</span>}
+          </h1>
           <p className="text-sm text-slate-400">
-            {metrics?.activeFunds ?? 0} active funds • {metrics?.closedFunds ?? 0} closed
+            {filteredMetrics?.activeFunds ?? 0} active funds • {filteredMetrics?.closedFunds ?? 0} closed
+            {filterPlatform !== 'all' && <span className="ml-1 text-mint-400">({filterPlatform})</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -103,6 +214,19 @@ export function Dashboard() {
             className="px-2 py-1 text-sm bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors font-medium"
           >
             + Add Fund
+          </button>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="px-2 py-1 text-sm bg-slate-700 text-white rounded hover:bg-slate-600 transition-colors font-medium"
+          >
+            Import
+          </button>
+          <button
+            onClick={() => setShowTestData(!showTestData)}
+            className={`px-2 py-1 text-sm rounded ${showTestData ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400'}`}
+            title={showTestData ? 'Showing test funds only' : 'Click to show test funds'}
+          >
+            Test Data
           </button>
           <button
             onClick={() => setShowCharts(!showCharts)}
@@ -144,14 +268,14 @@ export function Dashboard() {
       ) : (
         <>
           {/* Aggregate Metrics Panel */}
-          {metrics && <AggregatePanel metrics={metrics} />}
+          {filteredMetrics && <AggregatePanel metrics={filteredMetrics} />}
 
           {/* Portfolio Charts */}
-          {showCharts && history && history.timeSeries.length > 0 && (
+          {showCharts && filteredHistory && filteredHistory.currentAllocations.length > 0 && (
             <PortfolioCharts
-              timeSeries={history.timeSeries}
-              allocations={history.currentAllocations}
-              totals={history.totals}
+              timeSeries={filteredHistory.timeSeries}
+              allocations={filteredHistory.currentAllocations}
+              totals={filteredHistory.totals}
             />
           )}
 
@@ -208,13 +332,21 @@ export function Dashboard() {
             <div className="space-y-4">
               {Object.entries(fundsByPlatform).map(([platform, platformFunds]) => (
                 <div key={platform}>
-                  <h2 className="text-base font-semibold text-white mb-2 capitalize">{platform}</h2>
+                  <Link
+                    to={`/platform/${platform}`}
+                    className="text-base font-semibold text-white mb-2 capitalize hover:text-mint-400 transition-colors inline-block"
+                  >
+                    {platform} →
+                  </Link>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                    {platformFunds.map(fund => (
-                      <Link key={fund.id} to={`/fund/${fund.id}`}>
-                        <FundCard fund={fund} />
-                      </Link>
-                    ))}
+                    {platformFunds.map(fund => {
+                      const fundMetrics = filteredMetrics?.funds.find(f => f.id === fund.id)
+                      return (
+                        <Link key={fund.id} to={`/fund/${fund.id}`}>
+                          <FundCard fund={fund} impactPct={fundMetrics?.fundSharesPct} />
+                        </Link>
+                      )
+                    })}
                   </div>
                 </div>
               ))}
@@ -228,6 +360,14 @@ export function Dashboard() {
         <CreateFundModal
           onClose={() => setShowCreateModal(false)}
           onCreated={loadData}
+        />
+      )}
+
+      {/* Import Wizard */}
+      {showImportModal && (
+        <ImportWizard
+          onClose={() => setShowImportModal(false)}
+          onImported={loadData}
         />
       )}
     </div>

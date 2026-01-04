@@ -1,0 +1,1761 @@
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { toast } from 'sonner'
+import {
+  previewRobinhoodImport,
+  applyRobinhoodImport,
+  readFileAsText,
+  getBrowserStatus,
+  launchBrowser,
+  connectBrowser,
+  scrapeRobinhoodHistoryStream,
+  scrapeRobinhoodHistory,
+  scrapeM1CashHistoryStream,
+  killBrowser,
+  getScrapeArchive,
+  getLocalCryptoStatements,
+  parseAllCryptoStatements,
+  downloadCryptoStatementsStream,
+  type ImportPreview,
+  type ScrapeProgressEvent,
+  type ScrapeStatusEvent,
+  type ScrapeArchive,
+  type CryptoParseAllResponse,
+  type CryptoStatementsResponse
+} from '../api/import'
+import { notifyFundsChanged } from '../api/funds'
+
+interface ImportWizardProps {
+  onClose: () => void
+  onImported?: () => void
+  platform?: string  // Optional platform filter (e.g., 'robinhood', 'm1')
+}
+
+type ImportMethod = 'csv' | 'scrape' | 'archive' | 'crypto-pdf' | 'm1-cash'
+type WizardStep = 'method' | 'archive' | 'browser' | 'url' | 'upload' | 'preview' | 'scraping' | 'importing' | 'done' | 'crypto-pdf' | 'crypto-download' | 'crypto-preview' | 'm1-cash-url'
+type BrowserState = 'idle' | 'launching' | 'launched' | 'connecting' | 'connected'
+
+// Define which import methods are available for each platform
+const PLATFORM_IMPORT_METHODS: Record<string, ImportMethod[]> = {
+  robinhood: ['csv', 'scrape', 'archive', 'crypto-pdf'],
+  m1: ['m1-cash'],
+  // Default: show all methods (for dashboard or unknown platforms)
+  _default: ['csv', 'scrape', 'archive', 'crypto-pdf', 'm1-cash']
+}
+
+// Get available methods for a platform
+const getAvailableMethods = (platform?: string): ImportMethod[] => {
+  if (!platform) return PLATFORM_IMPORT_METHODS._default
+  const normalized = platform.toLowerCase().replace(/-cash$/, '')
+  return PLATFORM_IMPORT_METHODS[normalized] ?? PLATFORM_IMPORT_METHODS._default
+}
+
+interface ScrapeProgress {
+  status: string
+  phase: 'navigating' | 'loading' | 'scraping' | 'complete' | 'error'
+  current: number
+  total: number
+  newCount: number
+  lastTx: {
+    date: string
+    type: string
+    symbol?: string
+    amount: number
+    title: string
+  } | null
+}
+
+export function ImportWizard({ onClose, onImported, platform }: ImportWizardProps) {
+  const availableMethods = getAvailableMethods(platform)
+  const [step, setStep] = useState<WizardStep>('method')
+  const [method, setMethod] = useState<ImportMethod | null>(null)
+  const [browserState, setBrowserState] = useState<BrowserState>('idle')
+  const [scrapeUrl, setScrapeUrl] = useState('https://robinhood.com/account/history')
+  const [m1CashUrl, setM1CashUrl] = useState('https://dashboard.m1.com/d/save/savings/transactions')
+  const [preview, setPreview] = useState<ImportPreview | null>(null)
+  const [selectedTransactions, setSelectedTransactions] = useState<Set<number>>(new Set())
+  const [isDragging, setIsDragging] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [archive, setArchive] = useState<ScrapeArchive | null>(null)
+  const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set())
+  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set())
+  const [scrapeProgress, setScrapeProgress] = useState<ScrapeProgress>({
+    status: '',
+    phase: 'navigating',
+    current: 0,
+    total: 0,
+    newCount: 0,
+    lastTx: null
+  })
+  const [cryptoStatements, setCryptoStatements] = useState<CryptoStatementsResponse | null>(null)
+  const [cryptoParseResult, setCryptoParseResult] = useState<CryptoParseAllResponse | null>(null)
+  const [cryptoDownloadProgress, setCryptoDownloadProgress] = useState<{
+    phase: 'idle' | 'downloading' | 'complete' | 'error'
+    current: number
+    total: number
+    downloaded: number
+    message: string
+  }>({ phase: 'idle', current: 0, total: 0, downloaded: 0, message: '' })
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const scrapeStreamRef = useRef<{ close: () => void } | null>(null)
+  const cryptoStreamRef = useRef<{ close: () => void } | null>(null)
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+      }
+      if (scrapeStreamRef.current) {
+        scrapeStreamRef.current.close()
+      }
+      if (cryptoStreamRef.current) {
+        cryptoStreamRef.current.close()
+      }
+    }
+  }, [])
+
+  // Poll for browser status when in browser step
+  useEffect(() => {
+    if (step === 'browser' && browserState === 'launched') {
+      pollIntervalRef.current = setInterval(async () => {
+        const result = await getBrowserStatus()
+        if (result.data?.connected) {
+          setBrowserState('connected')
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current)
+          }
+        }
+      }, 2000)
+
+      return () => {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current)
+        }
+      }
+    }
+  }, [step, browserState])
+
+  const handleSelectMethod = useCallback(async (m: ImportMethod) => {
+    setMethod(m)
+    if (m === 'csv') {
+      setStep('upload')
+    } else if (m === 'archive') {
+      setStep('archive')
+      setIsProcessing(true)
+      const result = await getScrapeArchive('robinhood')
+      setIsProcessing(false)
+      if (result.data) {
+        setArchive(result.data)
+        // Pre-select symbols that have matching funds
+        const matched = new Set<string>()
+        if (result.data.summary?.bySymbol) {
+          Object.entries(result.data.summary.bySymbol).forEach(([symbol, data]) => {
+            if (data.fundExists) matched.add(symbol)
+          })
+        }
+        setSelectedSymbols(matched)
+        // Select importable types by default
+        setSelectedTypes(new Set(['buy', 'sell', 'dividend', 'interest', 'stock_lending', 'deposit', 'withdrawal']))
+      }
+    } else if (m === 'crypto-pdf') {
+      setStep('crypto-pdf')
+      setIsProcessing(true)
+      // Load existing local PDF statements
+      const result = await getLocalCryptoStatements()
+      setIsProcessing(false)
+      if (result.data) {
+        setCryptoStatements(result.data)
+      }
+    } else if (m === 'm1-cash') {
+      // M1 Cash import - go to browser step first
+      setStep('browser')
+      getBrowserStatus().then(result => {
+        if (result.data?.connected) {
+          setBrowserState('connected')
+        } else if (result.data?.launched) {
+          setBrowserState('launched')
+        }
+      })
+    } else {
+      setStep('browser')
+      // Check if browser is already running
+      getBrowserStatus().then(result => {
+        if (result.data?.connected) {
+          setBrowserState('connected')
+        } else if (result.data?.launched) {
+          setBrowserState('launched')
+        }
+      })
+    }
+  }, [])
+
+  // Get platform name for display in messages
+  const getPlatformDisplayName = (m: ImportMethod | null): string => {
+    if (m === 'm1-cash') return 'M1 Finance'
+    return 'Robinhood'
+  }
+
+  // Get platform identifier for API calls
+  const getLaunchPlatform = (m: ImportMethod | null): string => {
+    if (m === 'm1-cash') return 'm1'
+    return 'robinhood'
+  }
+
+  const handleLaunchBrowser = useCallback(async () => {
+    setBrowserState('launching')
+    const platformForLaunch = getLaunchPlatform(method)
+    const platformName = getPlatformDisplayName(method)
+    const result = await launchBrowser(platformForLaunch)
+    if (result.error) {
+      toast.error(result.error)
+      setBrowserState('idle')
+      return
+    }
+    if (result.data?.alreadyRunning) {
+      // Try to connect immediately
+      setBrowserState('connecting')
+      const connectResult = await connectBrowser()
+      if (connectResult.error) {
+        setBrowserState('launched')
+        toast.info(`Browser running. Please log in to ${platformName}.`)
+      } else {
+        setBrowserState('connected')
+        toast.success('Connected to browser!')
+      }
+    } else {
+      setBrowserState('launched')
+      toast.success(`Chrome launched! Please log in to ${platformName}.`)
+    }
+  }, [method])
+
+  const handleConnectBrowser = useCallback(async () => {
+    setBrowserState('connecting')
+    const result = await connectBrowser()
+    if (result.error) {
+      toast.error(result.error)
+      setBrowserState('launched')
+      return
+    }
+    setBrowserState('connected')
+    toast.success('Connected to browser!')
+  }, [])
+
+  const handleProceedToUrl = useCallback(() => {
+    if (method === 'm1-cash') {
+      setStep('m1-cash-url')
+    } else {
+      setStep('url')
+    }
+  }, [method])
+
+  const handleScrapeUrl = useCallback(async () => {
+    if (!scrapeUrl.trim()) {
+      toast.error('Please enter a Robinhood URL')
+      return
+    }
+
+    const isValidUrl = scrapeUrl.includes('robinhood.com') && (
+      scrapeUrl.includes('history') || scrapeUrl.includes('/account/')
+    )
+    if (!isValidUrl) {
+      toast.error('Please enter a valid Robinhood history URL')
+      return
+    }
+
+    setIsProcessing(true)
+    setStep('scraping')
+    setScrapeProgress({
+      status: 'Connecting to browser...',
+      phase: 'navigating',
+      current: 0,
+      total: 0,
+      newCount: 0,
+      lastTx: null
+    })
+
+    // Use streaming API for real-time progress
+    scrapeStreamRef.current = scrapeRobinhoodHistoryStream(scrapeUrl, 'robinhood', {
+      onStatus: (data: ScrapeStatusEvent) => {
+        setScrapeProgress(prev => ({
+          ...prev,
+          status: data.message,
+          phase: data.phase
+        }))
+      },
+      onProgress: (data: ScrapeProgressEvent) => {
+        setScrapeProgress(prev => ({
+          ...prev,
+          current: data.current,
+          total: data.total,
+          newCount: data.newCount,
+          lastTx: data.lastTransaction,
+          phase: 'scraping',
+          status: `Scraped ${data.current} transactions (${data.newCount} new)`
+        }))
+      },
+      onComplete: async (data) => {
+        setScrapeProgress(prev => ({
+          ...prev,
+          phase: 'complete',
+          status: data.message
+        }))
+
+        // Now fetch the full preview data
+        const result = await scrapeRobinhoodHistory(scrapeUrl, 'robinhood')
+        setIsProcessing(false)
+
+        if (result.error) {
+          toast.error(result.error)
+          setStep('url')
+          return
+        }
+
+        if (!result.data || result.data.transactions.length === 0) {
+          toast.info('No transactions found. Archive is empty.')
+          setStep('url')
+          return
+        }
+
+        setPreview(result.data)
+        const matched = new Set<number>()
+        result.data.transactions.forEach((tx, i) => {
+          if (tx.fundExists) matched.add(i)
+        })
+        setSelectedTransactions(matched)
+        toast.success(data.message)
+        setStep('preview')
+      },
+      onError: (data) => {
+        setScrapeProgress(prev => ({
+          ...prev,
+          phase: 'error',
+          status: data.message
+        }))
+        toast.error(data.message)
+        setIsProcessing(false)
+        setStep('url')
+      }
+    })
+  }, [scrapeUrl])
+
+  const handleScrapeM1Cash = useCallback(async () => {
+    if (!m1CashUrl.trim()) {
+      toast.error('Please enter an M1 Finance URL')
+      return
+    }
+
+    if (!m1CashUrl.includes('m1.com')) {
+      toast.error('Please enter a valid M1 Finance URL')
+      return
+    }
+
+    setIsProcessing(true)
+    setStep('scraping')
+    setScrapeProgress({
+      status: 'Connecting to browser...',
+      phase: 'navigating',
+      current: 0,
+      total: 0,
+      newCount: 0,
+      lastTx: null
+    })
+
+    // Use streaming API for real-time progress
+    scrapeStreamRef.current = scrapeM1CashHistoryStream(m1CashUrl, 'm1-cash', {
+      onStatus: (data: ScrapeStatusEvent) => {
+        setScrapeProgress(prev => ({
+          ...prev,
+          status: data.message,
+          phase: data.phase
+        }))
+      },
+      onProgress: (data: ScrapeProgressEvent) => {
+        setScrapeProgress(prev => ({
+          ...prev,
+          current: data.current,
+          total: data.total,
+          newCount: data.newCount,
+          lastTx: data.lastTransaction,
+          phase: 'scraping',
+          status: `Scraped ${data.current} transactions (${data.newCount} new)`
+        }))
+      },
+      onComplete: async (data) => {
+        setScrapeProgress(prev => ({
+          ...prev,
+          phase: 'complete',
+          status: data.message
+        }))
+
+        // Load the archive to show results
+        const result = await getScrapeArchive('m1-cash')
+        setIsProcessing(false)
+
+        if (result.error) {
+          toast.error(result.error)
+          setStep('m1-cash-url')
+          return
+        }
+
+        if (!result.data || result.data.transactionCount === 0) {
+          toast.info('No transactions found. Archive is empty.')
+          setStep('m1-cash-url')
+          return
+        }
+
+        setArchive(result.data)
+        // Pre-select interest transactions
+        setSelectedTypes(new Set(['interest', 'deposit', 'withdrawal']))
+        toast.success(data.message)
+        setStep('archive')
+      },
+      onError: (data) => {
+        setScrapeProgress(prev => ({
+          ...prev,
+          phase: 'error',
+          status: data.message
+        }))
+        toast.error(data.message)
+        setIsProcessing(false)
+        setStep('m1-cash-url')
+      }
+    })
+  }, [m1CashUrl])
+
+  const handleFile = useCallback(async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      toast.error('Please upload a CSV file')
+      return
+    }
+
+    setIsProcessing(true)
+    setStep('importing')
+    const content = await readFileAsText(file).catch(() => null)
+
+    if (!content) {
+      toast.error('Failed to read file')
+      setStep('upload')
+      setIsProcessing(false)
+      return
+    }
+
+    const result = await previewRobinhoodImport(content, 'robinhood')
+    setIsProcessing(false)
+
+    if (result.error) {
+      toast.error(result.error)
+      setStep('upload')
+      return
+    }
+
+    if (!result.data || result.data.transactions.length === 0) {
+      toast.error('No valid transactions found in CSV')
+      setStep('upload')
+      return
+    }
+
+    setPreview(result.data)
+    const matched = new Set<number>()
+    result.data.transactions.forEach((tx, i) => {
+      if (tx.fundExists) matched.add(i)
+    })
+    setSelectedTransactions(matched)
+    setStep('preview')
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const file = e.dataTransfer.files[0]
+    if (file) handleFile(file)
+  }, [handleFile])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }, [])
+
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) handleFile(file)
+  }, [handleFile])
+
+  const toggleTransaction = useCallback((index: number) => {
+    setSelectedTransactions(prev => {
+      const next = new Set(prev)
+      if (next.has(index)) {
+        next.delete(index)
+      } else {
+        next.add(index)
+      }
+      return next
+    })
+  }, [])
+
+  const toggleAll = useCallback((checked: boolean) => {
+    if (!preview) return
+    if (checked) {
+      const all = new Set<number>()
+      preview.transactions.forEach((tx, i) => {
+        if (tx.fundExists) all.add(i)
+      })
+      setSelectedTransactions(all)
+    } else {
+      setSelectedTransactions(new Set())
+    }
+  }, [preview])
+
+  const handleApply = useCallback(async () => {
+    if (!preview) return
+
+    const selected = preview.transactions.filter((_, i) => selectedTransactions.has(i))
+    if (selected.length === 0) {
+      toast.error('No transactions selected')
+      return
+    }
+
+    setIsProcessing(true)
+    const result = await applyRobinhoodImport(selected, true)
+    setIsProcessing(false)
+
+    if (result.error) {
+      toast.error(result.error)
+      return
+    }
+
+    if (result.data) {
+      const { applied, skipped, errors } = result.data
+      if (errors.length > 0) {
+        toast.error(`Import completed with errors: ${errors.join(', ')}`)
+      } else if (applied > 0) {
+        toast.success(`Imported ${applied} transaction${applied !== 1 ? 's' : ''} (${skipped} skipped)`)
+        notifyFundsChanged()
+        onImported?.()
+        // Clean up browser if we used it
+        if (method === 'scrape') {
+          killBrowser().catch(() => {})
+        }
+        onClose()
+      } else {
+        toast.info(`No new transactions imported (${skipped} skipped as duplicates)`)
+      }
+    }
+  }, [preview, selectedTransactions, method, onImported, onClose])
+
+  const handleBack = useCallback(() => {
+    if (step === 'upload' || step === 'browser' || step === 'archive' || step === 'crypto-pdf') {
+      setStep('method')
+      setMethod(null)
+      setArchive(null)
+      setCryptoStatements(null)
+      setCryptoParseResult(null)
+    } else if (step === 'url') {
+      setStep('browser')
+    } else if (step === 'm1-cash-url') {
+      setStep('browser')
+    } else if (step === 'scraping') {
+      // Cancel the scrape
+      if (scrapeStreamRef.current) {
+        scrapeStreamRef.current.close()
+        scrapeStreamRef.current = null
+      }
+      setIsProcessing(false)
+      if (method === 'm1-cash') {
+        setStep('m1-cash-url')
+      } else {
+        setStep('url')
+      }
+    } else if (step === 'crypto-download') {
+      // Cancel the download
+      if (cryptoStreamRef.current) {
+        cryptoStreamRef.current.close()
+        cryptoStreamRef.current = null
+      }
+      setIsProcessing(false)
+      setStep('crypto-pdf')
+    } else if (step === 'crypto-preview') {
+      setStep('crypto-pdf')
+      setCryptoParseResult(null)
+    } else if (step === 'preview') {
+      if (method === 'csv') {
+        setStep('upload')
+      } else if (method === 'archive') {
+        setStep('archive')
+      } else if (method === 'm1-cash') {
+        setStep('m1-cash-url')
+      } else {
+        setStep('url')
+      }
+      setPreview(null)
+    }
+  }, [step, method])
+
+  const handleClose = useCallback(() => {
+    // Clean up browser if we launched it
+    if (browserState !== 'idle') {
+      killBrowser().catch(() => {})
+    }
+    onClose()
+  }, [browserState, onClose])
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2
+    }).format(amount)
+  }
+
+  const matchedCount = preview?.transactions.filter(tx => tx.fundExists).length ?? 0
+  const selectedCount = selectedTransactions.size
+
+  // Step indicator
+  const getStepNumber = () => {
+    if (step === 'method') return 1
+    if (step === 'upload' || step === 'browser' || step === 'archive' || step === 'crypto-pdf') return 2
+    if (step === 'url' || step === 'crypto-download' || step === 'm1-cash-url') return 3
+    if (step === 'scraping') return 4
+    if (step === 'crypto-preview') return 3
+    if (step === 'preview' || step === 'importing') return method === 'csv' ? 3 : method === 'archive' ? 3 : method === 'crypto-pdf' ? 3 : method === 'm1-cash' ? 4 : 5
+    return 1
+  }
+
+  const getTotalSteps = () => {
+    if (method === 'csv') return 3
+    if (method === 'archive') return 3
+    if (method === 'crypto-pdf') return 3
+    if (method === 'm1-cash') return 4
+    return 5
+  }
+
+  const formatCurrencyShort = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className="bg-slate-800 rounded-lg w-full max-w-4xl border border-slate-700 max-h-[90vh] flex flex-col">
+        {/* Header with progress */}
+        <div className="p-6 border-b border-slate-700">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xl font-bold text-white">Import Transactions</h2>
+            {step !== 'method' && (
+              <span className="text-sm text-slate-400">
+                Step {getStepNumber()} of {getTotalSteps()}
+              </span>
+            )}
+          </div>
+
+          {/* Progress bar */}
+          {step !== 'method' && (
+            <div className="mt-4 flex gap-2">
+              {Array.from({ length: getTotalSteps() }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`h-1 flex-1 rounded-full transition-colors ${
+                    i < getStepNumber() ? 'bg-mint-500' : 'bg-slate-600'
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {/* Step 1: Choose Method */}
+          {step === 'method' && (
+            <div className="space-y-4">
+              <p className="text-slate-300">
+                {platform
+                  ? `How would you like to import your ${platform} transactions?`
+                  : 'How would you like to import your transactions?'
+                }
+              </p>
+
+              <div className={`grid gap-4 mt-6 ${availableMethods.length === 1 ? 'grid-cols-1 max-w-md mx-auto' : 'grid-cols-2'}`}>
+                {availableMethods.includes('csv') && (
+                  <button
+                    onClick={() => handleSelectMethod('csv')}
+                    className="p-6 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-mint-500 hover:bg-slate-700 transition-all text-left group"
+                  >
+                    <div className="text-4xl mb-3">📄</div>
+                    <h3 className="text-lg font-medium text-white group-hover:text-mint-400 transition-colors">
+                      Upload CSV File
+                    </h3>
+                    <p className="text-sm text-slate-400 mt-1">
+                      Import from a downloaded Robinhood transaction history CSV file
+                    </p>
+                    <p className="text-xs text-slate-500 mt-3">
+                      Best for: Stock transactions
+                    </p>
+                  </button>
+                )}
+
+                {availableMethods.includes('crypto-pdf') && (
+                  <button
+                    onClick={() => handleSelectMethod('crypto-pdf')}
+                    className="p-6 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-amber-500 hover:bg-slate-700 transition-all text-left group"
+                  >
+                    <div className="text-4xl mb-3">🪙</div>
+                    <h3 className="text-lg font-medium text-white group-hover:text-amber-400 transition-colors">
+                      Crypto PDF Statements
+                    </h3>
+                    <p className="text-sm text-slate-400 mt-1">
+                      Parse monthly crypto account statements from Robinhood PDFs
+                    </p>
+                    <p className="text-xs text-slate-500 mt-3">
+                      Best for: BTC, ETH, DOGE, etc.
+                    </p>
+                  </button>
+                )}
+
+                {availableMethods.includes('archive') && (
+                  <button
+                    onClick={() => handleSelectMethod('archive')}
+                    className="p-6 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-mint-500 hover:bg-slate-700 transition-all text-left group"
+                  >
+                    <div className="text-4xl mb-3">📦</div>
+                    <h3 className="text-lg font-medium text-white group-hover:text-mint-400 transition-colors">
+                      View Saved Archive
+                    </h3>
+                    <p className="text-sm text-slate-400 mt-1">
+                      Browse previously scraped transactions and select which to import
+                    </p>
+                    <p className="text-xs text-slate-500 mt-3">
+                      Best for: Re-importing or reviewing data
+                    </p>
+                  </button>
+                )}
+
+                {availableMethods.includes('scrape') && (
+                  <button
+                    onClick={() => handleSelectMethod('scrape')}
+                    className="p-6 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-mint-500 hover:bg-slate-700 transition-all text-left group"
+                  >
+                    <div className="text-4xl mb-3">🌐</div>
+                    <h3 className="text-lg font-medium text-white group-hover:text-mint-400 transition-colors">
+                      Scrape from Browser
+                    </h3>
+                    <p className="text-sm text-slate-400 mt-1">
+                      Launch a browser, log in to Robinhood, and scrape transaction history
+                    </p>
+                    <p className="text-xs text-slate-500 mt-3">
+                      Best for: Crypto history (web scraping)
+                    </p>
+                  </button>
+                )}
+
+                {availableMethods.includes('m1-cash') && (
+                  <button
+                    onClick={() => handleSelectMethod('m1-cash')}
+                    className="p-6 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-cyan-500 hover:bg-slate-700 transition-all text-left group"
+                  >
+                    <div className="text-4xl mb-3">💰</div>
+                    <h3 className="text-lg font-medium text-white group-hover:text-cyan-400 transition-colors">
+                      M1 Cash Interest
+                    </h3>
+                    <p className="text-sm text-slate-400 mt-1">
+                      Scrape interest payments from M1 Finance savings account
+                    </p>
+                    <p className="text-xs text-slate-500 mt-3">
+                      Best for: Cash account interest tracking
+                    </p>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Step 2 (Archive): View Saved Archive */}
+          {step === 'archive' && (
+            <div className="space-y-6">
+              {isProcessing ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin text-4xl mb-4">⏳</div>
+                  <p className="text-slate-400">Loading archive...</p>
+                </div>
+              ) : !archive || archive.transactionCount === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">📭</div>
+                  <h3 className="text-xl font-medium text-white mb-2">No Archive Found</h3>
+                  <p className="text-slate-400 mb-6">
+                    No scraped data found. Use the browser scraper to capture transactions first.
+                  </p>
+                  <button
+                    onClick={() => handleSelectMethod('scrape')}
+                    className="px-6 py-3 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors font-medium"
+                  >
+                    Start Browser Scrape
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Archive Summary */}
+                  <div className="bg-slate-700/30 rounded-lg p-4">
+                    <h3 className="text-lg font-medium text-white mb-4">Archive Summary</h3>
+                    <div className="grid grid-cols-4 gap-4 mb-4">
+                      <div className="bg-slate-700/50 rounded p-3">
+                        <div className="text-2xl font-bold text-white">{archive.transactionCount}</div>
+                        <div className="text-xs text-slate-400">Total Transactions</div>
+                      </div>
+                      <div className="bg-slate-700/50 rounded p-3">
+                        <div className="text-lg font-bold text-mint-400">{formatCurrencyShort(archive.summary?.totalAmount ?? 0)}</div>
+                        <div className="text-xs text-slate-400">Total Value</div>
+                      </div>
+                      <div className="bg-slate-700/50 rounded p-3">
+                        <div className="text-sm font-medium text-white">{archive.summary?.dateRange?.oldest ?? '-'}</div>
+                        <div className="text-xs text-slate-400">Oldest</div>
+                      </div>
+                      <div className="bg-slate-700/50 rounded p-3">
+                        <div className="text-sm font-medium text-white">{archive.summary?.dateRange?.newest ?? '-'}</div>
+                        <div className="text-xs text-slate-400">Newest</div>
+                      </div>
+                    </div>
+
+                    {/* By Year */}
+                    {archive.summary?.byYear && (
+                      <div className="mb-4">
+                        <h4 className="text-sm font-medium text-slate-300 mb-2">By Year</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(archive.summary.byYear).sort(([a], [b]) => b.localeCompare(a)).map(([year, count]) => (
+                            <span key={year} className="px-3 py-1 bg-slate-600/50 rounded text-sm text-white">
+                              {year}: <span className="text-mint-400">{count}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* By Type */}
+                    {archive.summary?.byType && (
+                      <div className="mb-4">
+                        <h4 className="text-sm font-medium text-slate-300 mb-2">By Type (click to filter)</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(archive.summary.byType).sort(([, a], [, b]) => b - a).map(([type, count]) => {
+                            const isSelected = selectedTypes.has(type)
+                            return (
+                              <button
+                                key={type}
+                                onClick={() => {
+                                  const next = new Set(selectedTypes)
+                                  if (isSelected) next.delete(type)
+                                  else next.add(type)
+                                  setSelectedTypes(next)
+                                }}
+                                className={`px-3 py-1 rounded text-sm transition-colors ${
+                                  isSelected
+                                    ? type === 'buy' ? 'bg-green-500/30 text-green-300 border border-green-500/50' :
+                                      type === 'sell' ? 'bg-red-500/30 text-red-300 border border-red-500/50' :
+                                      type === 'dividend' || type === 'interest' || type === 'stock_lending' ? 'bg-blue-500/30 text-blue-300 border border-blue-500/50' :
+                                      type === 'deposit' || type === 'withdrawal' ? 'bg-purple-500/30 text-purple-300 border border-purple-500/50' :
+                                      'bg-slate-500/30 text-slate-300 border border-slate-500/50'
+                                    : 'bg-slate-700/50 text-slate-500 border border-transparent'
+                                }`}
+                              >
+                                {type}: {count}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* By Symbol */}
+                    {archive.summary?.bySymbol && (
+                      <div>
+                        <h4 className="text-sm font-medium text-slate-300 mb-2">By Symbol (click to select for import)</h4>
+                        <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                          {Object.entries(archive.summary.bySymbol)
+                            .sort(([, a], [, b]) => b.count - a.count)
+                            .map(([symbol, data]) => {
+                              const isSelected = selectedSymbols.has(symbol)
+                              return (
+                                <button
+                                  key={symbol}
+                                  onClick={() => {
+                                    const next = new Set(selectedSymbols)
+                                    if (isSelected) next.delete(symbol)
+                                    else next.add(symbol)
+                                    setSelectedSymbols(next)
+                                  }}
+                                  className={`px-3 py-1 rounded text-sm transition-colors ${
+                                    isSelected
+                                      ? data.fundExists
+                                        ? 'bg-green-500/30 text-green-300 border border-green-500/50'
+                                        : 'bg-amber-500/30 text-amber-300 border border-amber-500/50'
+                                      : 'bg-slate-700/50 text-slate-500 border border-transparent'
+                                  }`}
+                                  title={data.fundExists ? `Maps to ${data.fundId}` : 'No matching fund'}
+                                >
+                                  {symbol}: {data.count}
+                                  {!data.fundExists && <span className="ml-1 text-amber-400">⚠</span>}
+                                </button>
+                              )
+                            })}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-2">
+                          ⚠ = No matching fund (won't be imported)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-4">
+                    <button
+                      onClick={async () => {
+                        // Convert archive to preview format for the preview step
+                        setIsProcessing(true)
+                        const result = await scrapeRobinhoodHistory(scrapeUrl, 'robinhood')
+                        setIsProcessing(false)
+                        if (result.data) {
+                          // Filter by selected symbols and types
+                          const filtered = result.data.transactions.filter(tx => {
+                            const typeMatch = selectedTypes.has(tx.action.toLowerCase())
+                            const symbolMatch = !tx.symbol || selectedSymbols.has(tx.symbol)
+                            return typeMatch && symbolMatch
+                          })
+                          setPreview({ ...result.data, transactions: filtered })
+                          const matched = new Set<number>()
+                          filtered.forEach((tx, i) => {
+                            if (tx.fundExists) matched.add(i)
+                          })
+                          setSelectedTransactions(matched)
+                          setStep('preview')
+                        }
+                      }}
+                      disabled={selectedSymbols.size === 0 || selectedTypes.size === 0}
+                      className="flex-1 px-4 py-3 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                    >
+                      Preview {selectedSymbols.size} Symbol{selectedSymbols.size !== 1 ? 's' : ''} for Import
+                    </button>
+                    <button
+                      onClick={() => handleSelectMethod('scrape')}
+                      className="px-4 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors"
+                    >
+                      Add More Data
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-slate-500 text-center">
+                    Last updated: {new Date(archive.updatedAt).toLocaleString()}
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Step 2 (Crypto PDF): Local PDF Statements */}
+          {step === 'crypto-pdf' && (
+            <div className="space-y-6">
+              {isProcessing ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin text-4xl mb-4">⏳</div>
+                  <p className="text-slate-400">Loading statements...</p>
+                </div>
+              ) : (
+                <>
+                  <div className="text-center mb-4">
+                    <div className="text-4xl mb-2">🪙</div>
+                    <h3 className="text-lg font-medium text-white">Crypto Statement PDFs</h3>
+                    <p className="text-sm text-slate-400 mt-1">
+                      {cryptoStatements && cryptoStatements.count > 0
+                        ? `Found ${cryptoStatements.count} PDF statement${cryptoStatements.count !== 1 ? 's' : ''}`
+                        : 'No PDF statements found locally'}
+                    </p>
+                  </div>
+
+                  {cryptoStatements && cryptoStatements.count > 0 && (
+                    <div className="bg-slate-700/30 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-slate-300 mb-3">Downloaded Statements</h4>
+                      <div className="grid grid-cols-4 gap-2 max-h-32 overflow-y-auto">
+                        {cryptoStatements.statements.map(stmt => (
+                          <div key={stmt.filename} className="px-3 py-2 bg-slate-600/50 rounded text-sm text-white">
+                            {stmt.monthYear}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-4">
+                    {cryptoStatements && cryptoStatements.count > 0 && (
+                      <button
+                        onClick={async () => {
+                          setIsProcessing(true)
+                          const result = await parseAllCryptoStatements()
+                          setIsProcessing(false)
+                          if (result.data) {
+                            setCryptoParseResult(result.data)
+                            setStep('crypto-preview')
+                            if (result.data.errors && result.data.errors.length > 0) {
+                              toast.error(`Parsed with ${result.data.errors.length} error(s)`)
+                            } else {
+                              toast.success(`Parsed ${result.data.transactionCount} transactions from ${result.data.statementCount} statements`)
+                            }
+                          } else if (result.error) {
+                            toast.error(result.error)
+                          }
+                        }}
+                        className="flex-1 px-4 py-3 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors font-medium"
+                      >
+                        Parse All PDFs ({cryptoStatements.count})
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        // Need browser for downloading
+                        setMethod('crypto-pdf')
+                        setStep('browser')
+                      }}
+                      className="flex-1 px-4 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors"
+                    >
+                      Download More from Robinhood
+                    </button>
+                  </div>
+
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-slate-300 mb-2">How to get PDF statements:</h4>
+                    <ol className="text-sm text-slate-400 space-y-2 list-decimal list-inside">
+                      <li>Log in to Robinhood in Chrome</li>
+                      <li>Navigate to: Account → Documents → Account Statements → Crypto</li>
+                      <li>Download all monthly PDF statements to <code className="text-amber-400">data/crypto-statements/</code></li>
+                      <li>Click "Download More from Robinhood" to automate this process</li>
+                    </ol>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Crypto PDF Preview */}
+          {step === 'crypto-preview' && cryptoParseResult && (
+            <div className="space-y-4">
+              {/* Summary */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-slate-700/50 rounded p-4">
+                  <div className="text-2xl font-bold text-white">{cryptoParseResult.statementCount}</div>
+                  <div className="text-sm text-slate-400">PDFs Parsed</div>
+                </div>
+                <div className="bg-slate-700/50 rounded p-4">
+                  <div className="text-2xl font-bold text-amber-400">{cryptoParseResult.transactionCount}</div>
+                  <div className="text-sm text-slate-400">Transactions</div>
+                </div>
+                <div className="bg-slate-700/50 rounded p-4">
+                  <div className="text-2xl font-bold text-white">{cryptoParseResult.holdings.length}</div>
+                  <div className="text-sm text-slate-400">Crypto Holdings</div>
+                </div>
+              </div>
+
+              {/* By Symbol Summary */}
+              <div className="bg-slate-700/30 rounded-lg p-4">
+                <h3 className="text-sm font-medium text-slate-300 mb-3">By Symbol</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  {Object.entries(cryptoParseResult.bySymbol).map(([symbol, data]) => (
+                    <div key={symbol} className="bg-slate-700/50 rounded p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-lg font-bold text-white">{symbol}</span>
+                        <span className="text-sm text-slate-400">{data.buys + data.sells} txns</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="text-green-400">Buys:</span> {data.buys}
+                          <div className="text-xs text-slate-500">{formatCurrency(data.totalSpent)} spent</div>
+                        </div>
+                        <div>
+                          <span className="text-red-400">Sells:</span> {data.sells}
+                          <div className="text-xs text-slate-500">{formatCurrency(data.totalReceived)} received</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Current Holdings */}
+              {cryptoParseResult.holdings.length > 0 && (
+                <div className="bg-slate-700/30 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-slate-300 mb-3">Latest Holdings Snapshot</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {cryptoParseResult.holdings.map(h => (
+                      <div key={h.symbol} className="bg-slate-700/50 rounded p-2 text-sm">
+                        <div className="font-medium text-white">{h.symbol}</div>
+                        <div className="text-slate-400">{h.quantity.toFixed(8)}</div>
+                        <div className="text-amber-400">{formatCurrency(h.marketValue)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Transaction Preview */}
+              <div className="border border-slate-700 rounded overflow-hidden">
+                <div className="bg-slate-700/50 p-3 flex justify-between items-center">
+                  <span className="text-sm font-medium text-slate-300">
+                    Recent Transactions (showing first 50)
+                  </span>
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-800 sticky top-0">
+                      <tr>
+                        <th className="p-2 text-left text-slate-400">Date</th>
+                        <th className="p-2 text-left text-slate-400">Type</th>
+                        <th className="p-2 text-left text-slate-400">Symbol</th>
+                        <th className="p-2 text-right text-slate-400">Quantity</th>
+                        <th className="p-2 text-right text-slate-400">Price</th>
+                        <th className="p-2 text-right text-slate-400">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cryptoParseResult.transactions.slice(0, 50).map((tx, i) => (
+                        <tr key={i} className="border-t border-slate-700">
+                          <td className="p-2 text-slate-300">{tx.date}</td>
+                          <td className="p-2">
+                            <span className={`px-2 py-0.5 rounded text-xs ${
+                              tx.type === 'buy' ? 'bg-green-500/20 text-green-300' :
+                              tx.type === 'sell' ? 'bg-red-500/20 text-red-300' :
+                              'bg-slate-500/20 text-slate-300'
+                            }`}>
+                              {tx.type.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="p-2 text-white font-medium">{tx.symbol}</td>
+                          <td className="p-2 text-right text-slate-300">{tx.quantity.toFixed(8)}</td>
+                          <td className="p-2 text-right text-slate-300">{formatCurrency(tx.price)}</td>
+                          <td className="p-2 text-right text-white">{formatCurrency(tx.value)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Errors if any */}
+              {cryptoParseResult.errors && cryptoParseResult.errors.length > 0 && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded p-4">
+                  <h4 className="text-sm font-medium text-red-400 mb-2">Parse Errors</h4>
+                  <ul className="text-sm text-red-300 space-y-1">
+                    {cryptoParseResult.errors.map((err, i) => (
+                      <li key={i}>{err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded p-4">
+                <p className="text-amber-300 text-sm">
+                  <strong>Note:</strong> To import these transactions, create funds for each crypto symbol first.
+                  The parsed data is shown for review - import functionality coming soon.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2 (Scrape): Browser Launch/Login */}
+          {step === 'browser' && (
+            <div className="space-y-6">
+              <div className="text-center py-8">
+                {browserState === 'idle' && (
+                  <>
+                    <div className="text-6xl mb-4">🚀</div>
+                    <h3 className="text-xl font-medium text-white mb-2">Launch Browser</h3>
+                    <p className="text-slate-400 mb-6 max-w-md mx-auto">
+                      We'll launch Chrome and open the {getPlatformDisplayName(method)} login page.
+                      Log in to your account to continue.
+                    </p>
+                    <button
+                      onClick={handleLaunchBrowser}
+                      className="px-6 py-3 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors font-medium"
+                    >
+                      Launch Chrome
+                    </button>
+                  </>
+                )}
+
+                {browserState === 'launching' && (
+                  <>
+                    <div className="animate-spin text-6xl mb-4">⏳</div>
+                    <h3 className="text-xl font-medium text-white mb-2">Launching Chrome...</h3>
+                    <p className="text-slate-400">Please wait while we start the browser.</p>
+                  </>
+                )}
+
+                {browserState === 'launched' && (
+                  <>
+                    <div className="text-6xl mb-4">🔐</div>
+                    <h3 className="text-xl font-medium text-white mb-2">Log in to {getPlatformDisplayName(method)}</h3>
+                    <p className="text-slate-400 mb-6 max-w-md mx-auto">
+                      A Chrome window has opened. Please log in to your {getPlatformDisplayName(method)} account,
+                      then click the button below to continue.
+                    </p>
+                    <button
+                      onClick={handleConnectBrowser}
+                      className="px-6 py-3 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors font-medium"
+                    >
+                      I'm Logged In - Continue
+                    </button>
+                    <p className="text-xs text-slate-500 mt-4">
+                      We'll automatically detect when you're logged in
+                    </p>
+                  </>
+                )}
+
+                {browserState === 'connecting' && (
+                  <>
+                    <div className="animate-spin text-6xl mb-4">⏳</div>
+                    <h3 className="text-xl font-medium text-white mb-2">Connecting...</h3>
+                    <p className="text-slate-400">Establishing connection to browser.</p>
+                  </>
+                )}
+
+                {browserState === 'connected' && (
+                  <>
+                    <div className="text-6xl mb-4">✅</div>
+                    <h3 className="text-xl font-medium text-green-400 mb-2">Connected!</h3>
+                    <p className="text-slate-400 mb-6">
+                      Successfully connected to Chrome. {method === 'crypto-pdf' ? 'Ready to download crypto statements.' : 'You can now proceed to enter a URL.'}
+                    </p>
+                    <button
+                      onClick={() => {
+                        if (method === 'crypto-pdf') {
+                          // Go directly to crypto download
+                          setStep('crypto-download')
+                          setCryptoDownloadProgress({ phase: 'downloading', current: 0, total: 0, downloaded: 0, message: 'Navigating to crypto statements...' })
+                          cryptoStreamRef.current = downloadCryptoStatementsStream(false, {
+                            onStatus: (data) => {
+                              setCryptoDownloadProgress(prev => ({
+                                ...prev,
+                                message: data.message,
+                                total: data.total ?? prev.total
+                              }))
+                            },
+                            onProgress: (data) => {
+                              setCryptoDownloadProgress({
+                                phase: 'downloading',
+                                current: data.current,
+                                total: data.total,
+                                downloaded: data.downloaded,
+                                message: data.status
+                              })
+                            },
+                            onComplete: async (data) => {
+                              setCryptoDownloadProgress({
+                                phase: 'complete',
+                                current: data.total,
+                                total: data.total,
+                                downloaded: data.downloaded,
+                                message: data.message
+                              })
+                              // Refresh local statements list
+                              const result = await getLocalCryptoStatements()
+                              if (result.data) {
+                                setCryptoStatements(result.data)
+                              }
+                              toast.success(data.message)
+                              // Go back to crypto-pdf step to parse
+                              setTimeout(() => setStep('crypto-pdf'), 1500)
+                            },
+                            onError: (data) => {
+                              setCryptoDownloadProgress(prev => ({
+                                ...prev,
+                                phase: 'error',
+                                message: data.message
+                              }))
+                              toast.error(data.message)
+                            }
+                          })
+                        } else {
+                          handleProceedToUrl()
+                        }
+                      }}
+                      className="px-6 py-3 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors font-medium"
+                    >
+                      {method === 'crypto-pdf' ? 'Download Crypto Statements' : 'Continue to URL Entry'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 (Scrape): Enter URL */}
+          {step === 'url' && (
+            <div className="space-y-6">
+              <div className="text-center mb-6">
+                <div className="text-4xl mb-2">🔗</div>
+                <h3 className="text-lg font-medium text-white">Navigate to History Page</h3>
+              </div>
+
+              {/* Recommended: Full history */}
+              <div className="bg-mint-500/10 border border-mint-500/30 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl">✨</span>
+                  <div>
+                    <h4 className="text-sm font-medium text-mint-400 mb-1">Recommended: Import All History</h4>
+                    <p className="text-sm text-slate-300 mb-2">
+                      In the Chrome window, navigate to your full account history:
+                    </p>
+                    <code className="block bg-slate-800 text-mint-400 text-sm px-3 py-2 rounded font-mono">
+                      robinhood.com/account/history
+                    </code>
+                    <p className="text-xs text-slate-400 mt-2">
+                      This page shows all transactions. We'll scroll through the entire history automatically.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Alternative: Single asset */}
+              <div className="bg-slate-700/50 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-slate-300 mb-2">Alternative: Single Asset History</h4>
+                <p className="text-sm text-slate-400">
+                  You can also navigate to a specific asset's history page (e.g., Bitcoin → History).
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-slate-300">
+                  Paste the URL from Chrome
+                </label>
+                <input
+                  type="url"
+                  value={scrapeUrl}
+                  onChange={(e) => setScrapeUrl(e.target.value)}
+                  placeholder="https://robinhood.com/account/history"
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-500"
+                />
+              </div>
+
+              <button
+                onClick={handleScrapeUrl}
+                disabled={!scrapeUrl.trim() || isProcessing}
+                className="w-full px-4 py-3 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              >
+                Scrape Transactions
+              </button>
+
+              <p className="text-xs text-slate-500 text-center">
+                We'll automatically scroll to load your entire transaction history.
+              </p>
+            </div>
+          )}
+
+          {/* Step 3 (M1 Cash): Enter URL */}
+          {step === 'm1-cash-url' && (
+            <div className="space-y-6">
+              <div className="text-center mb-6">
+                <div className="text-4xl mb-2">💰</div>
+                <h3 className="text-lg font-medium text-white">Navigate to M1 Savings Transactions</h3>
+              </div>
+
+              {/* Instructions */}
+              <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl">✨</span>
+                  <div>
+                    <h4 className="text-sm font-medium text-cyan-400 mb-1">Import Cash Interest</h4>
+                    <p className="text-sm text-slate-300 mb-2">
+                      In the Chrome window, log in to M1 and navigate to your savings transactions:
+                    </p>
+                    <code className="block bg-slate-800 text-cyan-400 text-sm px-3 py-2 rounded font-mono">
+                      dashboard.m1.com/d/save/savings/transactions
+                    </code>
+                    <p className="text-xs text-slate-400 mt-2">
+                      We'll scrape all transaction pages to capture your interest payments.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-slate-300">
+                  M1 Savings Transactions URL
+                </label>
+                <input
+                  type="url"
+                  value={m1CashUrl}
+                  onChange={(e) => setM1CashUrl(e.target.value)}
+                  placeholder="https://dashboard.m1.com/d/save/savings/transactions"
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <button
+                onClick={handleScrapeM1Cash}
+                disabled={!m1CashUrl.trim() || isProcessing}
+                className="w-full px-4 py-3 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              >
+                Scrape M1 Cash Transactions
+              </button>
+
+              <p className="text-xs text-slate-500 text-center">
+                We'll automatically navigate through all pages to capture your transaction history.
+              </p>
+            </div>
+          )}
+
+          {/* Step 2 (CSV): File Upload */}
+          {step === 'upload' && (
+            <div
+              className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
+                isDragging
+                  ? 'border-mint-500 bg-mint-500/10'
+                  : 'border-slate-600 hover:border-slate-500'
+              }`}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+            >
+              <div className="text-4xl mb-4">📄</div>
+              <p className="text-white font-medium mb-2">
+                Drop your Robinhood CSV file here
+              </p>
+              <p className="text-slate-400 text-sm mb-4">
+                or click to browse
+              </p>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileInput}
+                className="hidden"
+                id="csv-file-input"
+              />
+              <label
+                htmlFor="csv-file-input"
+                className="inline-block px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-600 cursor-pointer transition-colors"
+              >
+                Select File
+              </label>
+              <p className="text-slate-500 text-xs mt-4">
+                Export from Robinhood: Account → Documents → Account Statements → Transaction History
+              </p>
+            </div>
+          )}
+
+          {/* Scraping Progress */}
+          {step === 'scraping' && (
+            <div className="space-y-6 py-6">
+              <div className="text-center">
+                <div className="text-4xl mb-4">
+                  {scrapeProgress.phase === 'error' ? '❌' :
+                   scrapeProgress.phase === 'complete' ? '✅' :
+                   scrapeProgress.phase === 'scraping' ? '📊' : '🔄'}
+                </div>
+                <h3 className="text-lg font-medium text-white mb-2">
+                  {scrapeProgress.phase === 'scraping' ? 'Scraping Transactions' :
+                   scrapeProgress.phase === 'complete' ? 'Scrape Complete' :
+                   scrapeProgress.phase === 'error' ? 'Scrape Failed' :
+                   'Connecting...'}
+                </h3>
+                <p className="text-slate-400">{scrapeProgress.status}</p>
+              </div>
+
+              {/* Progress bar */}
+              {scrapeProgress.total > 0 && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm text-slate-400">
+                    <span>Progress</span>
+                    <span>{scrapeProgress.current} / {scrapeProgress.total}</span>
+                  </div>
+                  <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-mint-500 transition-all duration-300"
+                      style={{ width: `${Math.min(100, (scrapeProgress.current / scrapeProgress.total) * 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-green-400">{scrapeProgress.newCount} new</span>
+                    <span className="text-slate-500">{scrapeProgress.current - scrapeProgress.newCount} existing</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Latest transaction */}
+              {scrapeProgress.lastTx && (
+                <div className="bg-slate-700/50 rounded-lg p-4">
+                  <h4 className="text-sm font-medium text-slate-300 mb-3">Latest Transaction</h4>
+                  <div className="grid grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <span className="text-slate-500 block">Date</span>
+                      <span className="text-white">{scrapeProgress.lastTx.date}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Type</span>
+                      <span className={`capitalize ${
+                        scrapeProgress.lastTx.type === 'buy' ? 'text-green-400' :
+                        scrapeProgress.lastTx.type === 'sell' ? 'text-red-400' :
+                        scrapeProgress.lastTx.type === 'dividend' ? 'text-blue-400' :
+                        scrapeProgress.lastTx.type === 'interest' ? 'text-purple-400' :
+                        'text-white'
+                      }`}>{scrapeProgress.lastTx.type}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Symbol</span>
+                      <span className="text-white font-medium">{scrapeProgress.lastTx.symbol || '-'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Amount</span>
+                      <span className="text-white">{formatCurrencyShort(scrapeProgress.lastTx.amount)}</span>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-slate-500 truncate">
+                    {scrapeProgress.lastTx.title}
+                  </div>
+                </div>
+              )}
+
+              {/* Scrolling indicator */}
+              {scrapeProgress.phase === 'scraping' && (
+                <div className="text-center text-sm text-slate-500">
+                  <span className="inline-block animate-bounce mr-1">↓</span>
+                  Auto-scrolling to load more history...
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Crypto Download Progress */}
+          {step === 'crypto-download' && (
+            <div className="space-y-6 py-6">
+              <div className="text-center">
+                <div className="text-4xl mb-4">
+                  {cryptoDownloadProgress.phase === 'error' ? '❌' :
+                   cryptoDownloadProgress.phase === 'complete' ? '✅' :
+                   '📥'}
+                </div>
+                <h3 className="text-lg font-medium text-white mb-2">
+                  {cryptoDownloadProgress.phase === 'downloading' ? 'Downloading Crypto Statements' :
+                   cryptoDownloadProgress.phase === 'complete' ? 'Download Complete' :
+                   cryptoDownloadProgress.phase === 'error' ? 'Download Failed' :
+                   'Starting...'}
+                </h3>
+                <p className="text-slate-400">{cryptoDownloadProgress.message}</p>
+              </div>
+
+              {/* Progress bar */}
+              {cryptoDownloadProgress.total > 0 && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm text-slate-400">
+                    <span>Progress</span>
+                    <span>{cryptoDownloadProgress.current} / {cryptoDownloadProgress.total}</span>
+                  </div>
+                  <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-amber-500 transition-all duration-300"
+                      style={{ width: `${Math.min(100, (cryptoDownloadProgress.current / cryptoDownloadProgress.total) * 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-amber-400">{cryptoDownloadProgress.downloaded} downloaded</span>
+                    <span className="text-slate-500">{cryptoDownloadProgress.current - cryptoDownloadProgress.downloaded} skipped</span>
+                  </div>
+                </div>
+              )}
+
+              {cryptoDownloadProgress.phase === 'complete' && (
+                <div className="text-center text-sm text-slate-400">
+                  Returning to parse statements...
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Loading State */}
+          {step === 'importing' && (
+            <div className="text-center py-12">
+              <div className="animate-spin text-4xl mb-4">⏳</div>
+              <p className="text-slate-400">
+                {method === 'scrape' ? 'Loading transactions...' : 'Parsing CSV...'}
+              </p>
+            </div>
+          )}
+
+          {/* Preview Step */}
+          {step === 'preview' && preview && (
+            <div className="space-y-4">
+              {/* Summary */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-slate-700/50 rounded p-4">
+                  <div className="text-2xl font-bold text-white">{preview.summary.total}</div>
+                  <div className="text-sm text-slate-400">Total Transactions</div>
+                </div>
+                <div className="bg-slate-700/50 rounded p-4">
+                  <div className="text-2xl font-bold text-green-400">{preview.summary.matched}</div>
+                  <div className="text-sm text-slate-400">Matched to Funds</div>
+                </div>
+                <div className="bg-slate-700/50 rounded p-4">
+                  <div className="text-2xl font-bold text-amber-400">{preview.summary.unmatched}</div>
+                  <div className="text-sm text-slate-400">Unmatched</div>
+                </div>
+              </div>
+
+              {/* By Symbol */}
+              {Object.keys(preview.summary.bySymbol).length > 0 && (
+                <div className="bg-slate-700/30 rounded p-4">
+                  <h3 className="text-sm font-medium text-slate-300 mb-2">By Symbol</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(preview.summary.bySymbol).map(([symbol, data]) => (
+                      <div
+                        key={symbol}
+                        className={`px-3 py-1 rounded text-sm ${
+                          data.fundExists
+                            ? 'bg-green-500/20 text-green-300'
+                            : 'bg-amber-500/20 text-amber-300'
+                        }`}
+                      >
+                        {symbol}: {data.count} txns
+                        {data.fundId && <span className="text-slate-400 ml-1">→ {data.fundId}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Unmatched warning */}
+              {preview.summary.unmatched > 0 && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded p-4">
+                  <p className="text-amber-300 text-sm">
+                    <strong>Note:</strong> {preview.summary.unmatched} transaction(s) have no matching fund.
+                    Create funds for these symbols first to import them.
+                  </p>
+                </div>
+              )}
+
+              {/* Transactions table */}
+              <div className="border border-slate-700 rounded overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-700/50">
+                    <tr>
+                      <th className="p-2 text-left">
+                        <input
+                          type="checkbox"
+                          checked={selectedCount === matchedCount && matchedCount > 0}
+                          onChange={(e) => toggleAll(e.target.checked)}
+                          className="rounded border-slate-600"
+                        />
+                      </th>
+                      <th className="p-2 text-left text-slate-300">Date</th>
+                      <th className="p-2 text-left text-slate-300">Action</th>
+                      <th className="p-2 text-left text-slate-300">Symbol</th>
+                      <th className="p-2 text-right text-slate-300">Qty</th>
+                      <th className="p-2 text-right text-slate-300">Price</th>
+                      <th className="p-2 text-right text-slate-300">Amount</th>
+                      <th className="p-2 text-left text-slate-300">Fund</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.transactions.map((tx, i) => (
+                      <tr
+                        key={i}
+                        className={`border-t border-slate-700 ${!tx.fundExists ? 'opacity-50' : ''}`}
+                      >
+                        <td className="p-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedTransactions.has(i)}
+                            onChange={() => toggleTransaction(i)}
+                            disabled={!tx.fundExists}
+                            className="rounded border-slate-600"
+                          />
+                        </td>
+                        <td className="p-2 text-slate-300">{tx.date}</td>
+                        <td className="p-2">
+                          <span className={`px-2 py-0.5 rounded text-xs ${
+                            tx.action === 'BUY' ? 'bg-green-500/20 text-green-300' :
+                            tx.action === 'SELL' ? 'bg-red-500/20 text-red-300' :
+                            tx.action === 'DIVIDEND' ? 'bg-blue-500/20 text-blue-300' :
+                            tx.action === 'INTEREST' ? 'bg-purple-500/20 text-purple-300' :
+                            'bg-slate-500/20 text-slate-300'
+                          }`}>
+                            {tx.action}
+                          </span>
+                        </td>
+                        <td className="p-2 text-white font-medium">{tx.symbol || '-'}</td>
+                        <td className="p-2 text-right text-slate-300">
+                          {tx.quantity > 0 ? tx.quantity.toFixed(6) : '-'}
+                        </td>
+                        <td className="p-2 text-right text-slate-300">
+                          {tx.price > 0 ? formatCurrency(tx.price) : '-'}
+                        </td>
+                        <td className="p-2 text-right text-white">
+                          {formatCurrency(tx.amount)}
+                        </td>
+                        <td className="p-2">
+                          {tx.fundId ? (
+                            <span className={tx.fundExists ? 'text-green-400' : 'text-amber-400'}>
+                              {tx.fundId}
+                              {!tx.fundExists && ' (missing)'}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t border-slate-700 flex justify-between items-center">
+          <div className="text-sm text-slate-400">
+            {step === 'preview' && selectedCount > 0 && (
+              <span>{selectedCount} transaction{selectedCount !== 1 ? 's' : ''} selected</span>
+            )}
+            {step === 'scraping' && scrapeProgress.newCount > 0 && (
+              <span className="text-green-400">
+                Data is being saved to archive as it's scraped
+              </span>
+            )}
+          </div>
+          <div className="flex gap-3">
+            {step !== 'method' && step !== 'importing' && (
+              <button
+                type="button"
+                onClick={handleBack}
+                className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-600 transition-colors"
+              >
+                {step === 'scraping' ? 'Cancel Scrape' : 'Back'}
+              </button>
+            )}
+            {step !== 'scraping' && (
+              <button
+                type="button"
+                onClick={handleClose}
+                className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-600 transition-colors"
+              >
+                Cancel
+              </button>
+            )}
+            {step === 'preview' && (
+              <button
+                type="button"
+                onClick={handleApply}
+                disabled={isProcessing || selectedCount === 0}
+                className="px-4 py-2 bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors disabled:opacity-50"
+              >
+                {isProcessing ? 'Importing...' : `Import ${selectedCount} Transaction${selectedCount !== 1 ? 's' : ''}`}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

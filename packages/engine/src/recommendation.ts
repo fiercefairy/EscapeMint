@@ -47,19 +47,27 @@ export function computeRecommendation(
   config: SubFundConfig,
   state: FundState
 ): Recommendation | null {
-  // Closed fund (no allocation) - no recommendation
-  if (config.fund_size_usd === 0) {
+  // Cash funds don't need trading recommendations - only DEPOSIT/WITHDRAW
+  if (config.fund_type === 'cash') {
     return null
   }
 
-  const { min_profit_usd, accumulate } = config
+  // Closed fund - no recommendation (only if explicitly closed or legacy undefined status with zero fund size)
+  const isClosed = config.status === 'closed' || (config.status === undefined && config.fund_size_usd === 0)
+  if (isClosed) {
+    return null
+  }
+
+  const { min_profit_usd, accumulate, manage_cash } = config
+  const hasCashPool = manage_cash ?? true // Default to true for backwards compatibility
 
   const limit = computeLimit(config, state)
   const { start_input_usd, expected_target_usd, actual_value_usd, gain_usd, gain_pct, target_diff_usd, cash_available_usd } = state
 
   // Special case: no investment yet, recommend initial BUY
   if (start_input_usd === 0 && actual_value_usd === 0) {
-    const buyAmount = Math.min(limit, cash_available_usd)
+    // For non-cash managed funds, always use full limit (no cash pool to check)
+    const buyAmount = hasCashPool ? Math.min(limit, cash_available_usd) : limit
     return {
       action: 'BUY',
       amount: buyAmount,
@@ -74,7 +82,7 @@ export function computeRecommendation(
         limit_usd: limit,
         reasoning: `Initial DCA purchase of $${buyAmount.toFixed(2)}.`
       },
-      insufficient_cash: cash_available_usd < limit
+      insufficient_cash: hasCashPool && cash_available_usd < limit
     }
   }
 
@@ -104,8 +112,9 @@ export function computeRecommendation(
   }
 
   // Below or at target: BUY
-  const buyAmount = Math.min(limit, cash_available_usd)
-  const insufficient = cash_available_usd < limit
+  // For non-cash managed funds, always use full limit (no cash pool to check)
+  const buyAmount = hasCashPool ? Math.min(limit, cash_available_usd) : limit
+  const insufficient = hasCashPool && cash_available_usd < limit
 
   // Determine reasoning based on performance
   let reasoning: string
@@ -115,6 +124,28 @@ export function computeRecommendation(
     reasoning = `Below cost basis (${(gain_pct * 100).toFixed(1)}% loss). DCA mid amount: $${limit.toFixed(2)}.`
   } else {
     reasoning = `On track or above cost. DCA min amount: $${limit.toFixed(2)}.`
+  }
+
+  // If no cash available for buying, recommend HOLD instead of BUY $0
+  // Check both: cash-managed funds with no cash, OR non-cash-managed funds with zero cash
+  if ((hasCashPool && buyAmount < 0.01) || (!hasCashPool && cash_available_usd < 0.01)) {
+    reasoning = `No cash available for DCA. Holding position.`
+    return {
+      action: 'HOLD',
+      amount: 0,
+      explanation: {
+        start_input_usd,
+        expected_target_usd,
+        actual_value_usd,
+        gain_usd,
+        gain_pct,
+        target_diff_usd,
+        cash_available_usd,
+        limit_usd: limit,
+        reasoning
+      },
+      insufficient_cash: true
+    }
   }
 
   if (insufficient) {

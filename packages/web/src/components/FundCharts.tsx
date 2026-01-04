@@ -51,9 +51,16 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
   let cumulativeDeposits = 0
   let cumulativeWithdrawals = 0
   let realizedGains = 0
+  let cumShares = 0
 
   for (const entry of sorted) {
     const date = new Date(entry.date)
+
+    // Track shares first - BUY adds, SELL subtracts
+    if (entry.shares) {
+      const sharesAbs = Math.abs(entry.shares)
+      cumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
+    }
 
     // Track DEPOSIT/WITHDRAW for fund_size calculation
     if (entry.action === 'DEPOSIT' && entry.amount) {
@@ -69,10 +76,18 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
       startInput -= entry.amount
       // Calculate extracted profit using proper cost basis
       let extracted = 0
-      if (entry.value === 0 || entry.value <= entry.amount) {
+      // Check for full liquidation
+      // Use cumShares check if fund has share tracking, otherwise fall back to value-based check
+      const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
+      const isFullLiquidation = hasShareTracking
+        ? Math.abs(cumShares) < 0.0001
+        : entry.value <= entry.amount + 0.01
+      if (isFullLiquidation) {
         // Full liquidation - extract remaining profit
         extracted = entry.amount - costBasis
         costBasis = 0
+        startInput = 0
+        cumShares = 0
       } else {
         // Partial sell - proportional cost basis
         const sellProportion = entry.amount / (entry.value + entry.amount)
@@ -83,10 +98,10 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
       realizedGains += extracted
     }
 
-    // Track dividends, expenses, and cash_interest
-    if (entry.dividend) cumulativeDividends += entry.dividend
-    if (entry.expense) cumulativeExpenses += entry.expense
-    if (entry.cash_interest) cumulativeCashInterest += entry.cash_interest
+    // Track dividends, expenses, and cash_interest (all positive in data)
+    if (entry.dividend) cumulativeDividends += Math.abs(entry.dividend)
+    if (entry.expense) cumulativeExpenses += Math.abs(entry.expense)
+    if (entry.cash_interest) cumulativeCashInterest += Math.abs(entry.cash_interest)
 
     // Calculate fund_size: use manual override if set, otherwise calculate dynamically
     const calculatedFundSize = config.fund_size_usd
@@ -95,9 +110,11 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
     const fundSize = entry.fund_size ?? calculatedFundSize
 
     // Calculate cash interest for APY (simplified: cash * apy * time_fraction)
+    // Only calculate if manage_cash is enabled (default true)
+    const manageCash = config.manage_cash !== false
     const daysElapsed = Math.max(0, (date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-    const cashAvailable = Math.max(0, fundSize - startInput)
-    const cashInterest = cashAvailable * config.cash_apy * (daysElapsed / 365)
+    const cashAvailable = manageCash ? Math.max(0, fundSize - startInput) : 0
+    const cashInterest = manageCash ? cashAvailable * config.cash_apy * (daysElapsed / 365) : 0
 
     // Post-action equity value (entry.value is pre-action)
     let postActionValue = entry.value

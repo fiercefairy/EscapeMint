@@ -1,6 +1,6 @@
 {
   "name": "escapemint",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "A local-first, open-source capital allocation engine for rules-based fund management",
   "scripts": {
@@ -11,6 +11,8 @@
     "dev:restart": "pm2 restart ecosystem.config.cjs",
     "dev:status": "pm2 status",
     "dev:logs": "pm2 logs",
+    "dev:api": "cd packages/server && npx tsx watch src/index.ts",
+    "dev:web": "cd packages/web && npx vite --host",
     "build:packages": "npm run build:engine && npm run build:storage",
     "build": "npm run build:packages && npm run build:server && npm run build:web",
     "build:engine": "npx tsc --project packages/engine/tsconfig.json",
@@ -20,6 +22,9 @@
     "test": "npm run test:engine && npm run test:storage",
     "test:engine": "cd packages/engine && npm test",
     "test:storage": "cd packages/storage && npm test",
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui",
+    "test:e2e:headed": "npx playwright test --headed",
     "lint": "eslint packages --ext .ts,.tsx",
     "lint:fix": "eslint packages --ext .ts,.tsx --fix",
     "typecheck": "tsc --noEmit",
@@ -41,6 +46,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.57.0",
     "eslint": "^9.17.0",
     "eslint-plugin-react": "^7.37.3",
     "eslint-plugin-react-hooks": "^5.1.0",
@@ -52,5 +58,8 @@
   },
   "workspaces": [
     "packages/*"
-  ]
+  ],
+  "dependencies": {
+    "pdf-parse": "^2.4.5"
+  }
 }

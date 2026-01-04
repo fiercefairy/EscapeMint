@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { toast } from 'sonner'
-import { updateFundEntry, deleteFundEntry, type FundEntry } from '../api/funds'
+import { updateFundEntry, deleteFundEntry, type FundEntry, type FundDetail, type FundType } from '../api/funds'
 import { EntryForm, buildEntryFromForm, createFormDataFromEntry, parseDepositFromNotes, parseWithdrawalFromNotes, type EntryFormData } from './EntryForm'
 
 interface EditEntryModalProps {
@@ -10,11 +10,12 @@ interface EditEntryModalProps {
   entry: FundEntry
   existingEntries?: FundEntry[]
   calculatedFundSize?: number | undefined
+  fundType?: FundType
   onClose: () => void
-  onUpdated: () => void
+  onUpdated: (fund?: FundDetail) => void
 }
 
-export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existingEntries = [], calculatedFundSize, onClose, onUpdated }: EditEntryModalProps) {
+export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existingEntries = [], calculatedFundSize, fundType = 'stock', onClose, onUpdated }: EditEntryModalProps) {
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -46,7 +47,7 @@ export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existing
       toast.error(response.error)
     } else {
       toast.success('Entry updated')
-      onUpdated()
+      onUpdated(response.data?.fund)
       onClose()
     }
 
@@ -60,7 +61,7 @@ export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existing
       toast.error(response.error)
     } else {
       toast.success('Entry deleted')
-      onUpdated()
+      onUpdated(response.data?.fund)
       onClose()
     }
     setDeleting(false)
@@ -79,6 +80,7 @@ export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existing
             existingEntries={existingEntries}
             baseFundSize={baseFundSize}
             showFundSizeAdjustment={true}
+            fundType={fundType}
           />
 
           {/* Buttons */}

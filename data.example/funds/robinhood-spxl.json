@@ -1,10 +1,10 @@
 {
-  "fund_size_usd": 5000,
+  "fund_size_usd": 10000,
   "target_apy": 0.25,
   "interval_days": 1,
   "input_min_usd": 200,
-  "input_mid_usd": 300,
-  "input_max_usd": 300,
+  "input_mid_usd": 200,
+  "input_max_usd": 200,
   "max_at_pct": -0.25,
   "min_profit_usd": 100,
   "cash_apy": 0.0325,
@@ -12,12 +12,13 @@
   "margin_access_usd": 0,
   "accumulate": false,
   "start_date": "2023-02-14",
-  "status": "active",
+  "charts_collapsed": false,
   "manage_cash": true,
-  "auto_apply_cash_apy": true,
-  "margin_enabled": false,
   "dividend_reinvest": false,
   "interest_reinvest": false,
   "expense_from_fund": false,
-  "audited": "2026-01-03"
+  "audited": "2026-01-03",
+  "status": "active",
+  "auto_apply_cash_apy": true,
+  "margin_enabled": false
 }

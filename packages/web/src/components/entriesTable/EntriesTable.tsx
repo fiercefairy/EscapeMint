@@ -1,0 +1,680 @@
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { toast } from 'sonner'
+import { updateFundConfig, updateFundEntry, recalculateFund, type FundEntry, type FundType } from '../../api/funds'
+import { getColumnsForFundType, getDefaultColumns, getDefaultColumnOrder, type ColumnId, type ComputedEntry } from './types'
+import { PasteColumnModal } from './PasteColumnModal'
+import { useSettings } from '../../contexts/SettingsContext'
+
+interface EntriesTableProps {
+  fundId: string
+  entries: FundEntry[]
+  computedEntries: ComputedEntry[]
+  savedColumnOrder?: ColumnId[]
+  savedVisibleColumns?: ColumnId[]
+  fundType?: FundType
+  onEdit: (index: number, entry: FundEntry, calculatedFundSize: number) => void
+  onAddEntry: () => void
+  onReload: () => void
+}
+
+export function EntriesTable({
+  fundId,
+  entries,
+  computedEntries,
+  savedColumnOrder,
+  savedVisibleColumns,
+  fundType = 'stock',
+  onEdit,
+  onAddEntry,
+  onReload
+}: EntriesTableProps) {
+  // Get columns available for this fund type
+  const availableColumns = useMemo(() => getColumnsForFundType(fundType), [fundType])
+  const { settings } = useSettings()
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [showColumnMenu, setShowColumnMenu] = useState(false)
+  const [showPasteModal, setShowPasteModal] = useState(false)
+  const [recalculating, setRecalculating] = useState(false)
+  const [visibleColumns, setVisibleColumns] = useState<Set<ColumnId>>(() =>
+    savedVisibleColumns ? new Set(savedVisibleColumns) : getDefaultColumns(fundType)
+  )
+  const [columnOrder, setColumnOrder] = useState<ColumnId[]>(() => {
+    if (savedColumnOrder && savedColumnOrder.length > 0) {
+      const defaultOrder = getDefaultColumnOrder(fundType)
+      const savedSet = new Set(savedColumnOrder)
+      const missing = defaultOrder.filter(id => !savedSet.has(id))
+      return [...savedColumnOrder, ...missing]
+    }
+    return getDefaultColumnOrder(fundType)
+  })
+  const [draggedColumn, setDraggedColumn] = useState<ColumnId | null>(null)
+  const columnMenuRef = useRef<HTMLDivElement>(null)
+
+  // Sync column preferences from props
+  useEffect(() => {
+    if (savedColumnOrder && savedColumnOrder.length > 0) {
+      const defaultOrder = getDefaultColumnOrder(fundType)
+      const savedSet = new Set(savedColumnOrder)
+      const missing = defaultOrder.filter(id => !savedSet.has(id))
+      setColumnOrder([...savedColumnOrder, ...missing])
+    } else {
+      setColumnOrder(getDefaultColumnOrder(fundType))
+    }
+
+    if (savedVisibleColumns && savedVisibleColumns.length > 0) {
+      setVisibleColumns(new Set(savedVisibleColumns))
+    } else {
+      setVisibleColumns(getDefaultColumns(fundType))
+    }
+  }, [savedColumnOrder, savedVisibleColumns, fundType])
+
+  // Close column menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (columnMenuRef.current && !columnMenuRef.current.contains(e.target as Node)) {
+        setShowColumnMenu(false)
+      }
+    }
+    if (showColumnMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showColumnMenu])
+
+  // Save column preferences to fund config
+  const saveColumnPrefs = useCallback(async (order: ColumnId[], visible: Set<ColumnId>) => {
+    await updateFundConfig(fundId, {
+      entries_column_order: order,
+      entries_visible_columns: [...visible]
+    })
+  }, [fundId])
+
+  const toggleColumn = (columnId: ColumnId) => {
+    setVisibleColumns(prev => {
+      const next = new Set(prev)
+      if (next.has(columnId)) {
+        next.delete(columnId)
+      } else {
+        next.add(columnId)
+      }
+      saveColumnPrefs(columnOrder, next)
+      return next
+    })
+  }
+
+  const isColumnVisible = (columnId: ColumnId) => visibleColumns.has(columnId)
+
+  // Drag handlers for column reordering
+  const handleDragStart = (columnId: ColumnId) => {
+    setDraggedColumn(columnId)
+  }
+
+  const handleDragOver = (e: React.DragEvent, targetColumnId: ColumnId) => {
+    e.preventDefault()
+    if (!draggedColumn || draggedColumn === targetColumnId) return
+
+    setColumnOrder(prev => {
+      const newOrder = [...prev]
+      const draggedIndex = newOrder.indexOf(draggedColumn)
+      const targetIndex = newOrder.indexOf(targetColumnId)
+      if (draggedIndex === -1 || targetIndex === -1) return prev
+      newOrder.splice(draggedIndex, 1)
+      newOrder.splice(targetIndex, 0, draggedColumn)
+      return newOrder
+    })
+  }
+
+  const handleDragEnd = () => {
+    setDraggedColumn(null)
+    setColumnOrder(currentOrder => {
+      saveColumnPrefs(currentOrder, visibleColumns)
+      return currentOrder
+    })
+  }
+
+  // Get columns in user-defined order (filtered by fund type)
+  const orderedColumns = useMemo(() => {
+    const availableIds = new Set(availableColumns.map(c => c.id))
+    return columnOrder
+      .filter(id => availableIds.has(id))
+      .map(id => availableColumns.find(c => c.id === id)!)
+      .filter(Boolean)
+  }, [columnOrder, availableColumns])
+
+  // Get visible columns in user-defined order
+  const visibleOrderedColumns = useMemo(() => {
+    return orderedColumns.filter(col => visibleColumns.has(col.id))
+  }, [orderedColumns, visibleColumns])
+
+  const sortedEntries = useMemo(() => {
+    if (computedEntries.length === 0) return []
+    const sorted = [...computedEntries]
+    sorted.sort((a, b) => {
+      const dateA = new Date(a.date).getTime()
+      const dateB = new Date(b.date).getTime()
+      return sortOrder === 'asc' ? dateA - dateB : dateB - dateA
+    })
+    return sorted
+  }, [computedEntries, sortOrder])
+
+  const toggleSort = () => {
+    setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')
+  }
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(value)
+  }
+
+  const formatPercent = (value: number) => {
+    if (!Number.isFinite(value) || Number.isNaN(value)) return '--'
+    const clamped = Math.max(-9999, Math.min(9999, value))
+    const pct = clamped * 100
+    return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'
+  }
+
+  // Calculate price from amount and shares
+  const calculatePriceFromEntry = (entry: FundEntry): number | null => {
+    if (!entry.amount || !entry.shares || entry.shares === 0) return null
+    return Math.abs(entry.amount / entry.shares)
+  }
+
+  // Update a single entry's price
+  const handleCalcPrice = async (originalIndex: number, entry: FundEntry) => {
+    const price = calculatePriceFromEntry(entry)
+    if (price === null) {
+      toast.error('Cannot calculate price: missing amount or shares')
+      return
+    }
+    const updatedEntry: FundEntry = { ...entry, price: Math.round(price * 10000) / 10000 }
+    const result = await updateFundEntry(fundId, originalIndex, updatedEntry)
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success(`Price calculated: ${formatCurrency(price)}`)
+      onReload()
+    }
+  }
+
+  // Calculate all missing prices
+  const handleCalcAllPrices = async () => {
+    const entriesToUpdate = entries
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => !entry.price && entry.amount && entry.shares && entry.shares !== 0)
+
+    if (entriesToUpdate.length === 0) {
+      toast.info('No prices to calculate')
+      return
+    }
+
+    let successCount = 0
+    for (const { entry, index } of entriesToUpdate) {
+      const price = calculatePriceFromEntry(entry)
+      if (price !== null) {
+        const updatedEntry: FundEntry = { ...entry, price: Math.round(price * 10000) / 10000 }
+        const result = await updateFundEntry(fundId, index, updatedEntry)
+        if (!result.error) successCount++
+      }
+    }
+
+    if (successCount > 0) {
+      toast.success(`Calculated ${successCount} price${successCount > 1 ? 's' : ''}`)
+      onReload()
+    }
+  }
+
+  // Check if any entries can have prices calculated
+  const canCalcAnyPrices = useMemo(() => {
+    return entries.some(entry => !entry.price && entry.amount && entry.shares && entry.shares !== 0)
+  }, [entries])
+
+  // Recalculate fund_size for all entries
+  const handleRecalculate = async () => {
+    setRecalculating(true)
+    const result = await recalculateFund(fundId)
+    setRecalculating(false)
+
+    if (result.error) {
+      toast.error(result.error)
+    } else {
+      toast.success(result.data?.message ?? 'Fund recalculated')
+      onReload()
+    }
+  }
+
+  return (
+    <div className="bg-slate-800 rounded-lg border border-slate-700 flex flex-col max-h-[70vh]">
+      {/* Fixed Header */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700 flex-shrink-0">
+        <h2 className="text-base font-semibold text-white">
+          Entries ({entries.length})
+        </h2>
+        <div className="flex items-center gap-2">
+          {/* Column Configuration */}
+          <div className="relative" ref={columnMenuRef}>
+            <button
+              onClick={() => setShowColumnMenu(!showColumnMenu)}
+              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+              title="Configure columns"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+            </button>
+            {showColumnMenu && (
+              <div className="absolute right-0 top-full mt-1 bg-slate-700 border border-slate-600 rounded-lg shadow-xl z-20 py-1 min-w-[200px]">
+                <div className="px-3 py-1.5 text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-600">
+                  Columns (drag to reorder)
+                </div>
+                {orderedColumns.map(col => {
+                  const menuLabel = col.id === 'equity' && fundType === 'cash' ? 'Cash' : col.label
+                  return (
+                    <div
+                      key={col.id}
+                      draggable
+                      onDragStart={() => handleDragStart(col.id)}
+                      onDragOver={(e) => handleDragOver(e, col.id)}
+                      onDragEnd={handleDragEnd}
+                      className={`flex items-center gap-2 px-2 py-1.5 hover:bg-slate-600 cursor-grab text-xs ${
+                        draggedColumn === col.id ? 'opacity-50 bg-slate-600' : ''
+                      }`}
+                    >
+                      <svg className="w-3 h-3 text-slate-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm6-12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm0 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
+                      </svg>
+                      <label className="flex items-center gap-2 flex-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isColumnVisible(col.id)}
+                          onChange={() => toggleColumn(col.id)}
+                          className="rounded border-slate-500 bg-slate-800 text-mint-500 focus:ring-mint-500"
+                        />
+                        <span className="text-slate-200">{menuLabel}</span>
+                      </label>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+          {settings.advancedTools && (
+            <>
+              <button
+                onClick={() => setShowPasteModal(true)}
+                className="px-2 py-1 text-xs bg-slate-600 text-white rounded hover:bg-slate-500 transition-colors font-medium"
+                title="Paste column data to bulk update entries"
+              >
+                Paste Column
+              </button>
+              <button
+                onClick={handleRecalculate}
+                disabled={recalculating}
+                className="px-2 py-1 text-xs bg-slate-600 text-white rounded hover:bg-slate-500 transition-colors font-medium disabled:opacity-50"
+                title="Recalculate fund_size and invested amounts for all entries"
+              >
+                {recalculating ? 'Recalculating...' : 'Recalculate'}
+              </button>
+            </>
+          )}
+          <button
+            onClick={onAddEntry}
+            className="px-2 py-1 text-xs bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors font-medium"
+          >
+            + Take Action
+          </button>
+        </div>
+      </div>
+      {/* Scrollable Table Container */}
+      <div className="flex-1 overflow-auto min-h-0">
+        <table className="w-full text-left text-sm">
+          <thead className="sticky top-0 bg-slate-800 z-10">
+            <tr className="border-b border-slate-700 text-slate-400 text-xs">
+              {visibleOrderedColumns.map((col, idx) => {
+                const isFirst = idx === 0
+                if (col.id === 'date') {
+                  return (
+                    <th
+                      key={col.id}
+                      draggable
+                      onDragStart={() => handleDragStart(col.id)}
+                      onDragOver={(e) => handleDragOver(e, col.id)}
+                      onDragEnd={handleDragEnd}
+                      className={`px-2 py-2 cursor-grab ${isFirst ? 'sticky left-0 bg-slate-800 z-10' : ''} ${draggedColumn === col.id ? 'opacity-50' : ''}`}
+                    >
+                      <button
+                        onClick={toggleSort}
+                        className="flex items-center gap-1 hover:text-white transition-colors"
+                      >
+                        Date
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          {sortOrder === 'desc' ? (
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          ) : (
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                          )}
+                        </svg>
+                      </button>
+                    </th>
+                  )
+                }
+                if (col.id === 'edit') {
+                  return (
+                    <th
+                      key={col.id}
+                      draggable
+                      onDragStart={() => handleDragStart(col.id)}
+                      onDragOver={(e) => handleDragOver(e, col.id)}
+                      onDragEnd={handleDragEnd}
+                      className={`px-2 py-2 w-10 cursor-grab ${draggedColumn === col.id ? 'opacity-50' : ''}`}
+                    />
+                  )
+                }
+                if (col.id === 'notes') {
+                  return (
+                    <th
+                      key={col.id}
+                      draggable
+                      onDragStart={() => handleDragStart(col.id)}
+                      onDragOver={(e) => handleDragOver(e, col.id)}
+                      onDragEnd={handleDragEnd}
+                      className={`px-2 py-2 cursor-grab ${draggedColumn === col.id ? 'opacity-50' : ''}`}
+                    >
+                      {col.label}
+                    </th>
+                  )
+                }
+                if (col.id === 'price') {
+                  return (
+                    <th
+                      key={col.id}
+                      draggable
+                      onDragStart={() => handleDragStart(col.id)}
+                      onDragOver={(e) => handleDragOver(e, col.id)}
+                      onDragEnd={handleDragEnd}
+                      className={`px-2 py-2 text-right cursor-grab ${draggedColumn === col.id ? 'opacity-50' : ''}`}
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        {col.label}
+                        {canCalcAnyPrices && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleCalcAllPrices() }}
+                            className="px-1 py-0.5 text-[9px] bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                            title="Calculate all missing prices from amount/shares"
+                          >
+                            calc
+                          </button>
+                        )}
+                      </div>
+                    </th>
+                  )
+                }
+                // For cash funds, show "Cash" instead of "Equity"
+                const displayLabel = col.id === 'equity' && fundType === 'cash' ? 'Cash' : col.label
+                return (
+                  <th
+                    key={col.id}
+                    draggable
+                    onDragStart={() => handleDragStart(col.id)}
+                    onDragOver={(e) => handleDragOver(e, col.id)}
+                    onDragEnd={handleDragEnd}
+                    className={`px-2 py-2 text-right cursor-grab ${draggedColumn === col.id ? 'opacity-50' : ''}`}
+                  >
+                    {displayLabel}
+                  </th>
+                )
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {sortedEntries.map((entry, i) => (
+              <tr
+                key={i}
+                className={`border-b border-slate-700/50 text-xs hover:bg-slate-700/30 ${
+                  entry.hasIntegrityIssue ? 'bg-red-900/40 hover:bg-red-900/50' : ''
+                }`}
+                title={entry.hasIntegrityIssue ? `Data integrity issue: invested ($${entry.totalInvested.toFixed(2)}) exceeds fund size ($${entry.fundSize.toFixed(2)})` : undefined}
+              >
+                {visibleOrderedColumns.map((col, idx) => {
+                  const isFirst = idx === 0
+                  switch (col.id) {
+                    case 'date':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-white ${isFirst ? 'sticky left-0 bg-slate-800 z-10' : ''}`}>
+                          {entry.date}
+                        </td>
+                      )
+                    case 'equity':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-mint-400">
+                          {formatCurrency(entry.value)}
+                        </td>
+                      )
+                    case 'action':
+                      // Show "Close" only when it's a SELL that fully liquidated
+                      // Use cumShares check if fund has share tracking, otherwise fall back to value-based check
+                      const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
+                      const isClosingEntry = entry.action === 'SELL' && (
+                        hasShareTracking
+                          ? entry.cumShares !== undefined && Math.abs(entry.cumShares) < 0.0001
+                          : entry.value <= (entry.amount ?? 0) + 0.01
+                      )
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right">
+                          {isClosingEntry ? (
+                            <span className="text-slate-500 italic">Close</span>
+                          ) : entry.action && (
+                            <span className={
+                              entry.action === 'BUY' ? 'text-green-400'
+                              : entry.action === 'SELL' ? 'text-orange-400'
+                              : entry.action === 'HOLD' ? 'text-slate-400'
+                              : entry.action === 'DEPOSIT' ? 'text-blue-400'
+                              : entry.action === 'WITHDRAW' ? 'text-purple-400'
+                              : ''
+                            }>
+                              {entry.action}
+                            </span>
+                          )}
+                        </td>
+                      )
+                    case 'amount':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-white">
+                          {entry.amount ? formatCurrency(entry.amount) : '-'}
+                        </td>
+                      )
+                    case 'shares':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
+                          {entry.shares ? entry.shares.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 }) : '-'}
+                        </td>
+                      )
+                    case 'cumShares':
+                      const displayShares = entry.cumShares && Math.abs(entry.cumShares) < 0.00000001 ? 0 : entry.cumShares
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
+                          {displayShares ? displayShares.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 }) : entry.cumShares === 0 || displayShares === 0 ? '0' : '-'}
+                        </td>
+                      )
+                    case 'price':
+                      const canCalcPrice = !entry.price && entry.amount && entry.shares && entry.shares !== 0
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
+                          {entry.price ? formatCurrency(entry.price) : canCalcPrice ? (
+                            <button
+                              onClick={() => handleCalcPrice(entry.originalIndex, entry)}
+                              className="px-1 py-0.5 text-[9px] bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                              title={`Calculate: $${entry.amount?.toFixed(2)} ÷ ${Math.abs(entry.shares ?? 0).toFixed(4)} shares`}
+                            >
+                              calc
+                            </button>
+                          ) : '-'}
+                        </td>
+                      )
+                    case 'invested':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-blue-400">
+                          {formatCurrency(entry.totalInvested)}
+                        </td>
+                      )
+                    case 'cash':
+                      // Prefer tracked cash from entry, fall back to calculated
+                      const displayCash = entry.cash ?? entry.calculatedCash
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-green-300">
+                          {formatCurrency(displayCash)}
+                        </td>
+                      )
+                    case 'fundSize':
+                      // Only show "closed" for true closing entries (SELL with full liquidation)
+                      // Use cumShares check if fund has share tracking, otherwise fall back to value-based check
+                      const hasShareTrackingForFundSize = entry.shares !== undefined && entry.shares !== 0
+                      const isFundClosed = entry.action === 'SELL' && (
+                        hasShareTrackingForFundSize
+                          ? entry.cumShares !== undefined && Math.abs(entry.cumShares) < 0.0001
+                          : entry.value <= (entry.amount ?? 0) + 0.01
+                      )
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-slate-400">
+                          {isFundClosed ? (
+                            <span className="text-slate-500 italic">closed</span>
+                          ) : (
+                            formatCurrency(entry.fundSize)
+                          )}
+                        </td>
+                      )
+                    case 'marginAvail':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-purple-300">
+                          {entry.margin_available ? formatCurrency(entry.margin_available) : '-'}
+                        </td>
+                      )
+                    case 'marginBorrowed':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-purple-400">
+                          {entry.margin_borrowed ? formatCurrency(entry.margin_borrowed) : '-'}
+                        </td>
+                      )
+                    case 'unrealized':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${entry.unrealized >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatCurrency(entry.unrealized)}
+                        </td>
+                      )
+                    case 'realized':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${entry.realized >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatCurrency(entry.realized)}
+                        </td>
+                      )
+                    case 'liquidPnl':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${entry.liquidPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatCurrency(entry.liquidPnl)}
+                        </td>
+                      )
+                    case 'realizedApy':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${entry.realizedApy >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatPercent(entry.realizedApy)}
+                        </td>
+                      )
+                    case 'liquidApy':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${entry.liquidApy >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatPercent(entry.liquidApy)}
+                        </td>
+                      )
+                    case 'dividend':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-yellow-400">
+                          {entry.dividend ? formatCurrency(entry.dividend) : '-'}
+                        </td>
+                      )
+                    case 'cumDividends':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-yellow-400/70">
+                          {entry.cumDividends > 0 ? formatCurrency(entry.cumDividends) : '-'}
+                        </td>
+                      )
+                    case 'expense':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-red-400">
+                          {entry.expense ? formatCurrency(entry.expense) : '-'}
+                        </td>
+                      )
+                    case 'cumExpense':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-red-400/70">
+                          {entry.cumExpenses > 0 ? formatCurrency(entry.cumExpenses) : '-'}
+                        </td>
+                      )
+                    case 'cashInt':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-cyan-400">
+                          {entry.cash_interest ? formatCurrency(entry.cash_interest) : '-'}
+                        </td>
+                      )
+                    case 'cumCashInt':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-cyan-400/70">
+                          {entry.cumCashInterest > 0 ? formatCurrency(entry.cumCashInterest) : '-'}
+                        </td>
+                      )
+                    case 'extracted':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-orange-400">
+                          {entry.extracted !== 0 ? formatCurrency(entry.extracted) : '-'}
+                        </td>
+                      )
+                    case 'cumExtracted':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-orange-400/70">
+                          {entry.cumExtracted !== 0 ? formatCurrency(entry.cumExtracted) : '-'}
+                        </td>
+                      )
+                    case 'notes':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-slate-400 max-w-[150px] truncate" title={entry.notes || ''}>
+                          {entry.notes || '-'}
+                        </td>
+                      )
+                    case 'edit':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5">
+                          <button
+                            onClick={() => onEdit(entry.originalIndex, entries[entry.originalIndex]!, entry.fundSize)}
+                            className="p-1 text-slate-400 hover:text-white hover:bg-slate-600 rounded transition-colors"
+                            title="Edit entry"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                          </button>
+                        </td>
+                      )
+                    default:
+                      return null
+                  }
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Paste Column Modal */}
+      {showPasteModal && (
+        <PasteColumnModal
+          fundId={fundId}
+          entries={entries}
+          onClose={() => setShowPasteModal(false)}
+          onUpdated={onReload}
+        />
+      )}
+    </div>
+  )
+}

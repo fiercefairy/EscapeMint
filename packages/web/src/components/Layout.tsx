@@ -10,8 +10,7 @@ const API_BASE = '/api'
 const navItems = [
   { path: '/', label: 'Dashboard', icon: '📊' },
   { path: '/audit', label: 'Audit Trail', icon: '📋' },
-  { path: '/platforms', label: 'Platforms', icon: '🏦' },
-  { path: '/settings', label: 'Settings', icon: '⚙️' }
+  { path: '/platforms', label: 'Platforms', icon: '🏦' }
 ]
 
 interface GroupedFunds {
@@ -127,8 +126,9 @@ export function Layout() {
   }
 
   const isActiveFund = (fundId: string) => location.pathname === `/fund/${fundId}`
+  const isPlatformPage = (platformId: string) => location.pathname === `/platform/${platformId}`
   const isPlatformActive = (platformId: string) => {
-    return funds.some(f => f.platform.toLowerCase() === platformId && isActiveFund(f.id))
+    return isPlatformPage(platformId) || funds.some(f => f.platform.toLowerCase() === platformId && isActiveFund(f.id))
   }
 
   const renderFundNav = (showLabels: boolean, groups: GroupedFunds[], keyPrefix = '') => (
@@ -141,22 +141,36 @@ export function Layout() {
         return (
           <div key={expandKey}>
             {/* Platform Header */}
-            <button
-              onClick={() => togglePlatform(expandKey)}
-              className={`w-full flex items-center gap-2 px-3 py-1.5 mx-1 rounded text-xs transition-colors ${
-                hasActiveFund
-                  ? 'text-mint-400'
-                  : 'text-slate-500 hover:text-slate-300'
-              }`}
-              title={!showLabels ? platform.name : undefined}
-            >
-              <span className="flex-shrink-0 text-[10px]">{isExpanded ? '▼' : '▶'}</span>
-              {showLabels ? (
-                <span className="truncate font-medium">{platform.name}</span>
-              ) : (
-                <span className="font-medium">{platform.name.charAt(0)}</span>
-              )}
-            </button>
+            <div className="flex items-center mx-1">
+              <button
+                onClick={() => togglePlatform(expandKey)}
+                className={`flex-shrink-0 p-1.5 text-[10px] transition-colors ${
+                  hasActiveFund
+                    ? 'text-mint-400'
+                    : 'text-slate-500 hover:text-slate-300'
+                }`}
+                title={isExpanded ? 'Collapse' : 'Expand'}
+              >
+                {isExpanded ? '▼' : '▶'}
+              </button>
+              <Link
+                to={`/platform/${platform.id}`}
+                className={`flex-1 py-1.5 rounded text-xs transition-colors ${
+                  isPlatformPage(platform.id)
+                    ? 'text-mint-400 font-bold'
+                    : hasActiveFund
+                      ? 'text-mint-400 font-medium'
+                      : 'text-slate-500 hover:text-slate-300 font-medium'
+                }`}
+                title={!showLabels ? `${platform.name} Dashboard` : undefined}
+              >
+                {showLabels ? (
+                  <span className="truncate">{platform.name}</span>
+                ) : (
+                  <span>{platform.name.charAt(0)}</span>
+                )}
+              </Link>
+            </div>
 
             {/* Fund Links */}
             {isExpanded && (
@@ -190,15 +204,16 @@ export function Layout() {
   return (
     <div className="h-screen bg-slate-900 flex overflow-hidden">
       {/* Sidebar - Desktop */}
-      <aside
-        className={`hidden md:flex flex-col h-screen sticky top-0 bg-slate-800 border-r border-slate-700 transition-all duration-200 ${
-          collapsed ? 'w-14' : 'w-48'
-        }`}
-      >
+      <div className="hidden md:block relative flex-shrink-0">
+        <aside
+          className={`flex flex-col h-screen sticky top-0 bg-slate-800 border-r border-slate-700 transition-all duration-200 overflow-x-hidden ${
+            collapsed ? 'w-14' : 'w-48'
+          }`}
+        >
         {/* Logo */}
         <div className="h-11 flex-shrink-0 flex items-center px-3 border-b border-slate-700">
           <Link to="/" className="flex items-center gap-2 overflow-hidden">
-            <span className="text-lg flex-shrink-0">💸</span>
+            <span className="text-lg flex-shrink-0">🌱</span>
             {!collapsed && <span className="text-sm font-bold text-mint-400 whitespace-nowrap">EscapeMint</span>}
           </Link>
         </div>
@@ -226,7 +241,7 @@ export function Layout() {
         <div className="mx-3 flex-shrink-0 border-t border-slate-700" />
 
         {/* Fund Navigation - Scrollable */}
-        <div className="flex-1 min-h-0 overflow-y-auto py-1 scrollbar-thin scrollbar-thumb-slate-700">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-1 scrollbar-thin scrollbar-thumb-slate-700">
           {!collapsed && (
             <div className="px-3 py-1 text-[10px] text-slate-600 uppercase tracking-wider">
               Sub-Funds
@@ -248,31 +263,43 @@ export function Layout() {
           )}
         </div>
 
-        {/* Version & Collapse Toggle - Fixed Footer */}
-        <div className="flex-shrink-0 border-t border-slate-700">
-          {/* Version */}
+        {/* Version & Settings - Fixed Footer */}
+        <div className={`flex-shrink-0 border-t border-slate-700 px-3 py-2 flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
           {version && (
-            <div className={`px-3 py-1 text-[10px] text-slate-600 ${collapsed ? 'text-center' : ''}`}>
+            <span className="text-[10px] text-slate-600">
               {collapsed ? `v${version}` : `EscapeMint v${version}`}
-            </div>
+            </span>
           )}
-          {/* Collapse Toggle */}
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="w-full h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          <Link
+            to="/settings"
+            className={`text-slate-500 hover:text-white transition-colors ${location.pathname === '/settings' ? 'text-mint-400' : ''}`}
+            title="Settings"
           >
-            <svg
-              className={`w-4 h-4 transition-transform ${collapsed ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-          </button>
+          </Link>
         </div>
-      </aside>
+        </aside>
+        {/* Expand/Collapse button - outside aside to avoid overflow clipping */}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className={`absolute top-3 z-10 p-1 bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white rounded transition-all duration-200 shadow-md ${
+            collapsed ? 'right-[-8px]' : 'right-2'
+          }`}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <svg
+            className={`w-4 h-4 transition-transform ${collapsed ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
+        </button>
+      </div>
 
       {/* Mobile Sidebar Overlay */}
       {mobileMenuOpen && (
@@ -291,7 +318,7 @@ export function Layout() {
         {/* Logo */}
         <div className="h-11 flex-shrink-0 flex items-center justify-between px-3 border-b border-slate-700">
           <Link to="/" className="flex items-center gap-2">
-            <span className="text-lg">💸</span>
+            <span className="text-lg">🌱</span>
             <span className="text-sm font-bold text-mint-400">EscapeMint</span>
           </Link>
           <button
@@ -342,12 +369,24 @@ export function Layout() {
           )}
         </div>
 
-        {/* Version - Mobile */}
-        {version && (
-          <div className="flex-shrink-0 px-3 py-2 border-t border-slate-700 text-[10px] text-slate-600">
-            EscapeMint v{version}
-          </div>
-        )}
+        {/* Version & Settings - Mobile */}
+        <div className="flex-shrink-0 px-3 py-2 border-t border-slate-700 flex items-center justify-between">
+          {version && (
+            <span className="text-[10px] text-slate-600">
+              v{version}
+            </span>
+          )}
+          <Link
+            to="/settings"
+            className={`text-slate-500 hover:text-white transition-colors ${location.pathname === '/settings' ? 'text-mint-400' : ''}`}
+            title="Settings"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </Link>
+        </div>
       </aside>
 
       {/* Main Content */}
@@ -361,7 +400,7 @@ export function Layout() {
             ☰
           </button>
           <Link to="/" className="flex items-center gap-2">
-            <span className="text-lg">💸</span>
+            <span className="text-lg">🌱</span>
             <span className="text-sm font-bold text-mint-400">EscapeMint</span>
           </Link>
         </header>

@@ -36,6 +36,7 @@ function formatPercent(value: number): string {
 // Pie Chart Component
 function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: string; valueKey: 'value' | 'cash' | 'fundSize' }) {
   const ref = useRef<SVGSVGElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!ref.current || data.length === 0) return
@@ -67,6 +68,8 @@ function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: st
       .innerRadius(0)
       .outerRadius(radius)
 
+    const tooltip = d3.select(tooltipRef.current)
+
     const arcs = g.selectAll('arc')
       .data(pie(pieData))
       .enter()
@@ -77,6 +80,23 @@ function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: st
       .attr('fill', (_, i) => COLORS[i % COLORS.length] ?? '#666')
       .attr('stroke', '#1e293b')
       .attr('stroke-width', 1)
+      .attr('cursor', 'pointer')
+      .on('mouseover', function(event, d) {
+        const pct = (d.data.chartValue / total * 100).toFixed(1)
+        tooltip
+          .style('opacity', 1)
+          .html(`<strong>${d.data.ticker}</strong><br/>${formatCurrency(d.data.chartValue)}<br/>${pct}%`)
+        d3.select(this).attr('opacity', 0.8)
+      })
+      .on('mousemove', function(event) {
+        tooltip
+          .style('left', (event.pageX + 10) + 'px')
+          .style('top', (event.pageY - 10) + 'px')
+      })
+      .on('mouseout', function() {
+        tooltip.style('opacity', 0)
+        d3.select(this).attr('opacity', 1)
+      })
 
     // Add labels for larger slices
     arcs.each(function(d) {
@@ -89,6 +109,7 @@ function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: st
           .attr('text-anchor', 'middle')
           .attr('fill', 'white')
           .attr('font-size', '8px')
+          .attr('pointer-events', 'none')
           .text(`${d.data.ticker}`)
       }
     })
@@ -96,9 +117,14 @@ function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: st
   }, [data, valueKey])
 
   return (
-    <div className="bg-slate-800 rounded-lg p-2 border border-slate-700">
+    <div className="bg-slate-800 rounded-lg p-2 border border-slate-700 relative">
       <h3 className="text-xs font-medium text-white mb-1">{title}</h3>
       <svg ref={ref} className="mx-auto" />
+      <div
+        ref={tooltipRef}
+        className="fixed bg-slate-900 text-white text-xs px-2 py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700"
+        style={{ opacity: 0 }}
+      />
       <div className="flex flex-wrap gap-1 mt-1 justify-center">
         {data.filter(d => d[valueKey] > 0).slice(0, 5).map((d, i) => (
           <span key={d.id} className="text-[9px] text-slate-400 flex items-center gap-0.5">
@@ -120,6 +146,7 @@ function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = for
   formatValue?: (v: number) => string
 }) {
   const ref = useRef<SVGSVGElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!ref.current || data.length === 0) return
@@ -164,6 +191,8 @@ function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = for
       .y(d => y(d.value))
       .curve(d3.curveMonotoneX)
 
+    const tooltip = d3.select(tooltipRef.current)
+
     g.append('path')
       .datum(values)
       .attr('fill', `${color}33`)
@@ -175,6 +204,30 @@ function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = for
       .attr('stroke', color)
       .attr('stroke-width', 1.5)
       .attr('d', line)
+
+    // Invisible overlay for mouse tracking
+    const bisect = d3.bisector<typeof values[0], Date>(d => d.date).left
+
+    g.append('rect')
+      .attr('width', width)
+      .attr('height', height)
+      .attr('fill', 'transparent')
+      .attr('cursor', 'crosshair')
+      .on('mouseover', () => tooltip.style('opacity', 1))
+      .on('mousemove', function(event) {
+        const [mx] = d3.pointer(event)
+        const date = x.invert(mx)
+        const i = bisect(values, date, 1)
+        const d0 = values[i - 1]
+        const d1 = values[i]
+        if (!d0 || !d1) return
+        const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
+        tooltip
+          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/>${formatValue(d.value)}`)
+          .style('left', (event.pageX + 10) + 'px')
+          .style('top', (event.pageY - 10) + 'px')
+      })
+      .on('mouseout', () => tooltip.style('opacity', 0))
 
     // X axis
     g.append('g')
@@ -197,9 +250,14 @@ function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = for
   }, [data, valueKey, color, formatValue])
 
   return (
-    <div className="bg-slate-800 rounded-lg p-2 border border-slate-700">
+    <div className="bg-slate-800 rounded-lg p-2 border border-slate-700 relative">
       <h3 className="text-xs font-medium text-white mb-1">{title}</h3>
       <svg ref={ref} className="w-full h-[120px]" style={{ overflow: 'visible' }} />
+      <div
+        ref={tooltipRef}
+        className="fixed bg-slate-900 text-white text-xs px-2 py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700"
+        style={{ opacity: 0 }}
+      />
     </div>
   )
 }
@@ -207,6 +265,7 @@ function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = for
 // Stacked Area Chart for Cash vs Asset
 function StackedAreaChart({ data }: { data: TimeSeriesPoint[] }) {
   const ref = useRef<SVGSVGElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!ref.current || data.length === 0) return
@@ -227,7 +286,9 @@ function StackedAreaChart({ data }: { data: TimeSeriesPoint[] }) {
       return {
         date: new Date(d.date),
         cashPct: total > 0 ? d.totalCash / total : 0,
-        assetPct: total > 0 ? d.totalValue / total : 0
+        assetPct: total > 0 ? d.totalValue / total : 0,
+        cash: d.totalCash,
+        asset: d.totalValue
       }
     })
 
@@ -252,12 +313,38 @@ function StackedAreaChart({ data }: { data: TimeSeriesPoint[] }) {
 
     const colors = ['#10b981', '#8b5cf6']
 
-    g.selectAll('path')
+    g.selectAll('path.area')
       .data(stackedData)
       .enter()
       .append('path')
+      .attr('class', 'area')
       .attr('fill', (_, i) => colors[i] ?? '#666')
       .attr('d', area)
+
+    // Tooltip and mouse tracking
+    const tooltip = d3.select(tooltipRef.current)
+    const bisect = d3.bisector<typeof values[0], Date>(d => d.date).left
+
+    g.append('rect')
+      .attr('width', width)
+      .attr('height', height)
+      .attr('fill', 'transparent')
+      .attr('cursor', 'crosshair')
+      .on('mouseover', () => tooltip.style('opacity', 1))
+      .on('mousemove', function(event) {
+        const [mx] = d3.pointer(event)
+        const date = x.invert(mx)
+        const i = bisect(values, date, 1)
+        const d0 = values[i - 1]
+        const d1 = values[i]
+        if (!d0 || !d1) return
+        const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
+        tooltip
+          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/>Cash: ${(d.cashPct * 100).toFixed(1)}% (${formatCurrency(d.cash)})<br/>Asset: ${(d.assetPct * 100).toFixed(1)}% (${formatCurrency(d.asset)})`)
+          .style('left', (event.pageX + 10) + 'px')
+          .style('top', (event.pageY - 10) + 'px')
+      })
+      .on('mouseout', () => tooltip.style('opacity', 0))
 
     // X axis
     g.append('g')
@@ -280,9 +367,14 @@ function StackedAreaChart({ data }: { data: TimeSeriesPoint[] }) {
   }, [data])
 
   return (
-    <div className="bg-slate-800 rounded-lg p-2 border border-slate-700">
-      <h3 className="text-xs font-medium text-white mb-1">Dollars vs Asset</h3>
+    <div className="bg-slate-800 rounded-lg p-2 border border-slate-700 relative">
+      <h3 className="text-xs font-medium text-white mb-1">Cash vs Asset</h3>
       <svg ref={ref} className="w-full h-[120px]" style={{ overflow: 'visible' }} />
+      <div
+        ref={tooltipRef}
+        className="fixed bg-slate-900 text-white text-xs px-2 py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700"
+        style={{ opacity: 0 }}
+      />
       <div className="flex gap-2 mt-1 justify-center text-[9px]">
         <span className="flex items-center gap-0.5 text-slate-400">
           <span className="w-2 h-2 rounded-full bg-emerald-500" />Cash

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { createFund, notifyFundsChanged, type FundConfig } from '../api/funds'
+import { createFund, notifyFundsChanged, type FundConfig, type FundType } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
 
 interface CreateFundModalProps {
@@ -20,6 +20,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
   const [platforms, setPlatforms] = useState<Platform[]>([])
   const [selectedPlatform, setSelectedPlatform] = useState('')
   const [ticker, setTicker] = useState('')
+  const [fundType, setFundType] = useState<FundType>('stock')
   const [formData, setFormData] = useState({
     fund_size_usd: 10000,
     target_apy: 25, // Display as percentage
@@ -37,6 +38,8 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     margin_enabled: false,
     start_date: new Date().toISOString().slice(0, 10)
   })
+
+  const isCashFund = fundType === 'cash'
 
   useEffect(() => {
     fetchPlatforms().then(result => {
@@ -59,20 +62,21 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
 
     const config: Partial<FundConfig> = {
       status: 'active',
+      fund_type: fundType,
       fund_size_usd: formData.fund_size_usd,
-      target_apy: round(formData.target_apy / 100, 4),
-      interval_days: formData.interval_days,
-      input_min_usd: formData.input_min_usd,
-      input_mid_usd: formData.input_mid_usd,
-      input_max_usd: formData.input_max_usd,
-      max_at_pct: round(formData.max_at_pct / 100, 4),
-      min_profit_usd: formData.min_profit_usd,
+      target_apy: isCashFund ? 0 : round(formData.target_apy / 100, 4),
+      interval_days: isCashFund ? 1 : formData.interval_days,
+      input_min_usd: isCashFund ? 0 : formData.input_min_usd,
+      input_mid_usd: isCashFund ? 0 : formData.input_mid_usd,
+      input_max_usd: isCashFund ? 0 : formData.input_max_usd,
+      max_at_pct: isCashFund ? 0 : round(formData.max_at_pct / 100, 4),
+      min_profit_usd: isCashFund ? 0 : formData.min_profit_usd,
       cash_apy: round(formData.cash_apy / 100, 4),
       margin_apr: round(formData.margin_apr / 100, 4),
       margin_access_usd: formData.margin_access_usd,
-      accumulate: formData.accumulate,
-      manage_cash: formData.manage_cash,
-      margin_enabled: formData.margin_enabled,
+      accumulate: isCashFund ? true : formData.accumulate,
+      manage_cash: isCashFund ? true : formData.manage_cash,
+      margin_enabled: isCashFund ? false : formData.margin_enabled,
       start_date: formData.start_date || new Date().toISOString().slice(0, 10)
     }
 
@@ -104,6 +108,38 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
         <p className="text-slate-400 text-sm mb-4">Set up a new investment tracking fund</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Fund Type Selection */}
+          <div>
+            <label className="block text-xs text-slate-400 mb-2">Fund Type</label>
+            <div className="flex gap-2">
+              {(['stock', 'crypto', 'cash'] as FundType[]).map(type => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setFundType(type)}
+                  className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
+                    fundType === type
+                      ? type === 'cash'
+                        ? 'bg-blue-600 text-white'
+                        : type === 'crypto'
+                        ? 'bg-yellow-600 text-white'
+                        : 'bg-green-600 text-white'
+                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  {type === 'stock' ? 'Stock' : type === 'crypto' ? 'Crypto' : 'Cash'}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              {fundType === 'cash'
+                ? 'Cash funds track deposits/withdrawals and earn interest'
+                : fundType === 'crypto'
+                ? 'Crypto funds track buy/sell without dividends'
+                : 'Stock funds support full trading, dividends, and DCA strategies'}
+            </p>
+          </div>
+
           {/* Platform & Ticker */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -126,7 +162,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                 value={ticker}
                 onChange={e => setTicker(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white uppercase focus:outline-none focus:border-mint-500"
-                placeholder="e.g., SPY, AAPL"
+                placeholder={isCashFund ? 'e.g., cash, savings' : 'e.g., SPY, AAPL'}
                 required
               />
             </div>
@@ -135,7 +171,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
           {/* Fund Size and Start Date */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-slate-400 mb-1">Fund Size ($)</label>
+              <label className="block text-xs text-slate-400 mb-1">{isCashFund ? 'Initial Balance ($)' : 'Fund Size ($)'}</label>
               <input
                 type="number"
                 value={formData.fund_size_usd}
@@ -158,130 +194,8 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
             </div>
           </div>
 
-          {/* Target APY and Interval */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Target APY (%)</label>
-              <input
-                type="number"
-                value={formData.target_apy}
-                onChange={e => setFormData({ ...formData, target_apy: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                step="1"
-                min="0"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Interval (days)</label>
-              <input
-                type="number"
-                value={formData.interval_days}
-                onChange={e => setFormData({ ...formData, interval_days: parseInt(e.target.value) || 1 })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                min="1"
-                required
-              />
-            </div>
-          </div>
-
-          {/* DCA Amounts */}
-          <div>
-            <label className="block text-xs text-slate-400 mb-2">DCA Amounts ($)</label>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-[10px] text-slate-500 mb-1">Min</label>
-                <input
-                  type="number"
-                  value={formData.input_min_usd}
-                  onChange={e => setFormData({ ...formData, input_min_usd: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                  step="10"
-                  min="0"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] text-slate-500 mb-1">Mid</label>
-                <input
-                  type="number"
-                  value={formData.input_mid_usd}
-                  onChange={e => setFormData({ ...formData, input_mid_usd: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                  step="10"
-                  min="0"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] text-slate-500 mb-1">Max</label>
-                <input
-                  type="number"
-                  value={formData.input_max_usd}
-                  onChange={e => setFormData({ ...formData, input_max_usd: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                  step="10"
-                  min="0"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Max At % and Min Profit */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Max DCA Threshold (%)</label>
-              <input
-                type="number"
-                value={formData.max_at_pct}
-                onChange={e => setFormData({ ...formData, max_at_pct: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                step="1"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Min Profit ($)</label>
-              <input
-                type="number"
-                value={formData.min_profit_usd}
-                onChange={e => setFormData({ ...formData, min_profit_usd: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                step="10"
-                min="0"
-              />
-            </div>
-          </div>
-
-          {/* Toggles */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="accumulate"
-                checked={formData.accumulate}
-                onChange={e => setFormData({ ...formData, accumulate: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
-              />
-              <label htmlFor="accumulate" className="text-sm text-white">
-                Accumulate Mode
-                <span className="text-slate-400 text-xs ml-2">(sell only DCA amount)</span>
-              </label>
-            </div>
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="manage_cash"
-                checked={formData.manage_cash}
-                onChange={e => setFormData({ ...formData, manage_cash: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
-              />
-              <label htmlFor="manage_cash" className="text-sm text-white">
-                Manage Cash
-                <span className="text-slate-400 text-xs ml-2">(maintain cash pile)</span>
-              </label>
-            </div>
-          </div>
-
-          {/* Cash APY (only if managing cash) */}
-          {formData.manage_cash && (
+          {/* Cash Fund: Cash APY */}
+          {isCashFund && (
             <div>
               <label className="block text-xs text-slate-400 mb-1">Cash APY (%)</label>
               <input
@@ -292,7 +206,149 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                 step="0.01"
                 min="0"
               />
+              <p className="text-[10px] text-slate-500 mt-1">Interest rate earned on cash balance</p>
             </div>
+          )}
+
+          {/* Trading Fund: Target APY and Interval */}
+          {!isCashFund && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Target APY (%)</label>
+                  <input
+                    type="number"
+                    value={formData.target_apy}
+                    onChange={e => setFormData({ ...formData, target_apy: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                    step="1"
+                    min="0"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Interval (days)</label>
+                  <input
+                    type="number"
+                    value={formData.interval_days}
+                    onChange={e => setFormData({ ...formData, interval_days: parseInt(e.target.value) || 1 })}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                    min="1"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* DCA Amounts */}
+              <div>
+                <label className="block text-xs text-slate-400 mb-2">DCA Amounts ($)</label>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-1">Min</label>
+                    <input
+                      type="number"
+                      value={formData.input_min_usd}
+                      onChange={e => setFormData({ ...formData, input_min_usd: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                      step="10"
+                      min="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-1">Mid</label>
+                    <input
+                      type="number"
+                      value={formData.input_mid_usd}
+                      onChange={e => setFormData({ ...formData, input_mid_usd: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                      step="10"
+                      min="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-1">Max</label>
+                    <input
+                      type="number"
+                      value={formData.input_max_usd}
+                      onChange={e => setFormData({ ...formData, input_max_usd: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                      step="10"
+                      min="0"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Max At % and Min Profit */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Max DCA Threshold (%)</label>
+                  <input
+                    type="number"
+                    value={formData.max_at_pct}
+                    onChange={e => setFormData({ ...formData, max_at_pct: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                    step="1"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Min Profit ($)</label>
+                  <input
+                    type="number"
+                    value={formData.min_profit_usd}
+                    onChange={e => setFormData({ ...formData, min_profit_usd: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                    step="10"
+                    min="0"
+                  />
+                </div>
+              </div>
+
+              {/* Toggles */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="accumulate"
+                    checked={formData.accumulate}
+                    onChange={e => setFormData({ ...formData, accumulate: e.target.checked })}
+                    className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
+                  />
+                  <label htmlFor="accumulate" className="text-sm text-white">
+                    Accumulate Mode
+                    <span className="text-slate-400 text-xs ml-2">(sell only DCA amount)</span>
+                  </label>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="manage_cash"
+                    checked={formData.manage_cash}
+                    onChange={e => setFormData({ ...formData, manage_cash: e.target.checked })}
+                    className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
+                  />
+                  <label htmlFor="manage_cash" className="text-sm text-white">
+                    Manage Cash
+                    <span className="text-slate-400 text-xs ml-2">(maintain cash pile)</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Cash APY (only if managing cash) */}
+              {formData.manage_cash && (
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Cash APY (%)</label>
+                  <input
+                    type="number"
+                    value={formData.cash_apy}
+                    onChange={e => setFormData({ ...formData, cash_apy: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
+              )}
+            </>
           )}
 
           {/* Buttons */}

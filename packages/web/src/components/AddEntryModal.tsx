@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
-import { addFundEntry, previewRecommendation, type FundEntry, type FundState, type Recommendation } from '../api/funds'
+import { addFundEntry, previewRecommendation, type FundEntry, type FundState, type Recommendation, type FundType } from '../api/funds'
 import { EntryForm, buildEntryFromForm, createEmptyFormData, type EntryFormData, type ActionType } from './EntryForm'
 
 interface AddEntryModalProps {
@@ -8,11 +8,15 @@ interface AddEntryModalProps {
   fundTicker: string
   currentRecommendation?: Recommendation | null | undefined
   existingEntries?: FundEntry[]
+  targetApy?: number
+  minProfitUsd?: number
+  manageCash?: boolean
+  fundType?: FundType
   onClose: () => void
   onAdded: () => void
 }
 
-export function AddEntryModal({ fundId, fundTicker, currentRecommendation, existingEntries = [], onClose, onAdded }: AddEntryModalProps) {
+export function AddEntryModal({ fundId, fundTicker, currentRecommendation, existingEntries = [], targetApy, minProfitUsd, manageCash, fundType = 'stock', onClose, onAdded }: AddEntryModalProps) {
   const [loading, setLoading] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [result, setResult] = useState<{ state: FundState; recommendation: Recommendation } | null>(null)
@@ -28,7 +32,9 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
   }
 
   const formatPercent = (value: number) => {
-    const pct = value * 100
+    if (!Number.isFinite(value) || Number.isNaN(value)) return '--'
+    const clamped = Math.max(-9999, Math.min(9999, value))
+    const pct = clamped * 100
     return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'
   }
 
@@ -208,13 +214,63 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
                       Use
                     </button>
                   </div>
-                  {displayState && (
+                  {manageCash !== false && displayState && (
                     <div className="text-right">
                       <p className="text-xs text-slate-400">Cash Available</p>
                       <p className="text-white text-sm">{formatCurrency(displayState.cash_available_usd)}</p>
                     </div>
                   )}
                 </div>
+                {/* Performance Details */}
+                {displayRec.explanation && (
+                  <>
+                    <div className="mt-2 pt-2 border-t border-slate-700 grid grid-cols-4 gap-2 text-xs">
+                      <div>
+                        <p className="text-slate-500">Invested</p>
+                        <p className="text-white">{formatCurrency(displayRec.explanation.start_input_usd)}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Asset Gain</p>
+                        <p className={displayRec.explanation.gain_usd >= 0 ? 'text-green-400' : 'text-red-400'}>
+                          {formatCurrency(displayRec.explanation.gain_usd)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Gain %</p>
+                        <p className={displayRec.explanation.gain_pct >= 0 ? 'text-green-400' : 'text-red-400'}>
+                          {formatPercent(displayRec.explanation.gain_pct)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Expected</p>
+                        <p className="text-white">{formatCurrency(displayRec.explanation.expected_target_usd)}</p>
+                      </div>
+                    </div>
+                    <div className="mt-1 grid grid-cols-4 gap-2 text-xs">
+                      <div>
+                        <p className="text-slate-500">Target APY</p>
+                        <p className="text-white">{targetApy !== undefined ? `${(targetApy * 100).toFixed(0)}%` : '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">vs Target</p>
+                        <p className={displayRec.explanation.target_diff_usd >= 0 ? 'text-green-400' : 'text-red-400'}>
+                          {formatCurrency(displayRec.explanation.target_diff_usd)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Min Profit</p>
+                        <p className="text-white">{minProfitUsd !== undefined ? formatCurrency(minProfitUsd) : '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Limit</p>
+                        <p className="text-white">{formatCurrency(displayRec.explanation.limit_usd)}</p>
+                      </div>
+                    </div>
+                  </>
+                )}
+                {displayRec.explanation?.reasoning && (
+                  <p className="mt-2 text-xs text-slate-400 italic">{displayRec.explanation.reasoning}</p>
+                )}
                 {displayRec.insufficient_cash && displayRec.action === 'BUY' && (
                   <div className="mt-2 pt-2 border-t border-slate-700">
                     <p className="text-xs text-yellow-400 mb-2">
@@ -273,6 +329,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
             cashAvailable={preview?.state.cash_available_usd}
             marginAvailable={preview?.margin_available}
             currentFundSize={preview?.fund_size}
+            fundType={fundType}
           />
 
           {/* Buttons */}

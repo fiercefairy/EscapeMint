@@ -1,8 +1,22 @@
-export type ActionType = 'BUY' | 'SELL'
+export type ActionType = 'BUY' | 'SELL' | 'HOLD'
 
 export type FundStatus = 'active' | 'closed'
 
+/**
+ * Fund type determines asset class and available features:
+ * - 'cash': Platform cash pools (DEPOSIT/WITHDRAW only, no dividends)
+ * - 'stock': Stock/ETF trading (full features including dividends)
+ * - 'crypto': Cryptocurrency trading (no dividends, has staking rewards via interest)
+ */
+export type FundType = 'cash' | 'stock' | 'crypto'
+
 export interface SubFundConfig {
+  /**
+   * Fund type determines asset class and available features.
+   * Defaults to 'stock' if not specified.
+   */
+  fund_type?: FundType
+
   /**
    * Fund status: 'active' for running funds, 'closed' for completed funds.
    * Defaults to 'active' if not specified.
@@ -137,6 +151,12 @@ export interface SubFundConfig {
    * Array of column IDs that should be shown.
    */
   entries_visible_columns?: string[]
+
+  /**
+   * ISO date string indicating when this fund was last audited.
+   * Null/undefined means not audited.
+   */
+  audited?: string
 }
 
 /**

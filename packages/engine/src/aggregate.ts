@@ -1,4 +1,4 @@
-import type { SubFundConfig, Trade, FundState } from './types.js'
+import type { SubFundConfig, Trade, CashFlow, FundState } from './types.js'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const DAYS_PER_YEAR = 365
@@ -13,6 +13,8 @@ export interface FundMetrics {
   id: string
   platform: string
   ticker: string
+  status: 'active' | 'closed'
+  fundType: 'cash' | 'stock' | 'crypto'
   fundSize: number
   currentValue: number
   startInput: number
@@ -20,9 +22,12 @@ export interface FundMetrics {
   timeWeightedFundSize: number
   realizedGains: number
   realizedAPY: number
+  liquidAPY: number
   projectedAnnualReturn: number
   gainUsd: number
   gainPct: number
+  fundShares: number
+  fundSharesPct: number
 }
 
 export interface AggregateMetrics {
@@ -33,6 +38,7 @@ export interface AggregateMetrics {
   totalDaysActive: number
   totalRealizedGains: number
   realizedAPY: number
+  liquidAPY: number
   projectedAnnualReturn: number
   totalGainUsd: number
   totalGainPct: number
@@ -95,6 +101,58 @@ export function computeTimeWeightedFundSize(
 }
 
 /**
+ * Computes time-weighted fund size for a cash fund.
+ *
+ * Cash funds use DEPOSIT/WITHDRAW instead of BUY/SELL.
+ * The balance (deposits - withdrawals) represents the capital deployed.
+ */
+export function computeCashFundTimeWeightedSize(
+  cashFlows: CashFlow[],
+  startDate: string,
+  asOfDate: string
+): number {
+  const totalDays = daysBetween(startDate, asOfDate)
+  if (totalDays <= 0) return 0
+
+  // Sort cash flows by date
+  const sortedFlows = [...cashFlows].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  )
+
+  let balance = 0
+  let weightedSum = 0
+  let lastDate = startDate
+
+  for (const flow of sortedFlows) {
+    if (daysBetween(flow.date, asOfDate) < 0) continue
+    if (daysBetween(startDate, flow.date) < 0) continue
+
+    // Add time-weighted value for the period before this flow
+    const periodDays = daysBetween(lastDate, flow.date)
+    if (periodDays > 0) {
+      weightedSum += balance * periodDays
+    }
+
+    // Update balance
+    if (flow.type === 'deposit') {
+      balance += flow.amount_usd
+    } else {
+      balance -= flow.amount_usd
+    }
+    balance = Math.max(0, balance)
+    lastDate = flow.date
+  }
+
+  // Add final period to asOfDate
+  const finalDays = daysBetween(lastDate, asOfDate)
+  if (finalDays > 0) {
+    weightedSum += balance * finalDays
+  }
+
+  return weightedSum / totalDays
+}
+
+/**
  * Computes realized APY for a fund.
  *
  * Realized APY = (Realized Gains / Time-Weighted Fund Size) * (365 / Days Active)
@@ -115,6 +173,23 @@ export function computeRealizedAPY(
 }
 
 /**
+ * Computes liquid APY for a fund.
+ *
+ * Liquid APY = (Unrealized Gain / Time-Weighted Fund Size) * (365 / Days Active)
+ *
+ * This gives an annualized return based on current unrealized gains
+ * (what you would realize if you liquidated the position now).
+ */
+export function computeLiquidAPY(
+  gainUsd: number,
+  timeWeightedFundSize: number,
+  daysActive: number
+): number {
+  if (timeWeightedFundSize <= 0 || daysActive <= 0) return 0
+  return (gainUsd / timeWeightedFundSize) * (DAYS_PER_YEAR / daysActive)
+}
+
+/**
  * Computes projected annual return for a fund.
  *
  * Uses realized APY to project what a full year would return
@@ -129,6 +204,9 @@ export function computeProjectedAnnualReturn(
 
 /**
  * Computes metrics for a single fund.
+ *
+ * For cash funds (fund_type === 'cash'), uses cashFlows for TWFS calculation
+ * and treats the current balance as currentValue.
  */
 export function computeFundMetrics(
   id: string,
@@ -137,19 +215,35 @@ export function computeFundMetrics(
   config: SubFundConfig,
   trades: Trade[],
   state: FundState | null,
-  asOfDate: string
+  asOfDate: string,
+  cashFlows?: CashFlow[]
 ): FundMetrics {
   const daysActive = daysBetween(config.start_date, asOfDate)
-  const timeWeightedFundSize = computeTimeWeightedFundSize(trades, config.start_date, asOfDate)
+  const isCashFund = config.fund_type === 'cash'
+
+  // For cash funds, use cash flows for TWFS; for trading funds, use trades
+  const timeWeightedFundSize = isCashFund && cashFlows
+    ? computeCashFundTimeWeightedSize(cashFlows, config.start_date, asOfDate)
+    : computeTimeWeightedFundSize(trades, config.start_date, asOfDate)
+
   const realizedGains = state?.realized_gains_usd ?? 0
   const realizedAPY = computeRealizedAPY(realizedGains, timeWeightedFundSize, daysActive)
+
+  // For cash funds, currentValue is the cash balance (from state or computed from flows)
   const currentValue = state?.actual_value_usd ?? 0
   const projectedAnnualReturn = computeProjectedAnnualReturn(currentValue, realizedAPY)
+
+  // For cash funds, gain is just the interest earned (no unrealized gains from assets)
+  // For trading funds, gain is actual value - start input
+  const gainUsd = isCashFund ? realizedGains : (state?.gain_usd ?? 0)
+  const liquidAPY = computeLiquidAPY(gainUsd, timeWeightedFundSize, daysActive)
 
   return {
     id,
     platform,
     ticker,
+    status: config.status ?? 'active',
+    fundType: config.fund_type ?? 'stock',
     fundSize: config.fund_size_usd,
     currentValue,
     startInput: state?.start_input_usd ?? 0,
@@ -157,14 +251,24 @@ export function computeFundMetrics(
     timeWeightedFundSize,
     realizedGains,
     realizedAPY,
+    liquidAPY,
     projectedAnnualReturn,
-    gainUsd: state?.gain_usd ?? 0,
-    gainPct: state?.gain_pct ?? 0
+    gainUsd,
+    gainPct: state?.gain_pct ?? 0,
+    fundShares: 0,
+    fundSharesPct: 0
   }
 }
 
 /**
  * Computes aggregate metrics across all funds.
+ *
+ * Fund shares calculation (from spreadsheet):
+ * Fund Shares = TWFS / (TotalTWFS / TotalDays) * DaysActive
+ *             = TWFS * TotalDays * DaysActive / TotalTWFS
+ *
+ * This weights each sub-fund by both its time-weighted capital and duration,
+ * giving larger impact to funds with more capital deployed for longer.
  */
 export function computeAggregateMetrics(fundMetrics: FundMetrics[]): AggregateMetrics {
   let totalFundSize = 0
@@ -176,6 +280,7 @@ export function computeAggregateMetrics(fundMetrics: FundMetrics[]): AggregateMe
   let activeFunds = 0
   let closedFunds = 0
 
+  // First pass: compute totals
   for (const fund of fundMetrics) {
     totalFundSize += fund.fundSize
     totalValue += fund.currentValue
@@ -184,25 +289,54 @@ export function computeAggregateMetrics(fundMetrics: FundMetrics[]): AggregateMe
     totalDaysActive += fund.daysActive
     totalRealizedGains += fund.realizedGains
 
-    if (fund.platform === 'closed' || fund.currentValue === 0) {
+    if (fund.status === 'closed') {
       closedFunds++
     } else {
       activeFunds++
     }
   }
 
-  // Compute weighted realized APY
-  // Use time-weighted fund size for proper weighting
-  const realizedAPY = totalTimeWeightedFundSize > 0
-    ? totalRealizedGains / totalTimeWeightedFundSize * (DAYS_PER_YEAR / (totalDaysActive / fundMetrics.length || 1))
+  // Second pass: calculate fund shares for each fund
+  // Fund Shares = TWFS * TotalDays / TotalTWFS * DaysActive
+  // This matches the spreadsheet formula: B4/($U4/$U6)*B6
+  const dollarsPerDay = totalTimeWeightedFundSize > 0 && totalDaysActive > 0
+    ? totalTimeWeightedFundSize / totalDaysActive
     : 0
 
+  let totalFundShares = 0
+  const fundsWithShares = fundMetrics.map(fund => {
+    // Only calculate shares for funds with positive metrics
+    const fundShares = dollarsPerDay > 0 && fund.daysActive > 0
+      ? (fund.timeWeightedFundSize / dollarsPerDay) * fund.daysActive
+      : 0
+    totalFundShares += fundShares
+    return { ...fund, fundShares }
+  })
+
+  // Third pass: calculate fund shares percentage
+  const fundsWithSharesPct = fundsWithShares.map(fund => ({
+    ...fund,
+    fundSharesPct: totalFundShares > 0 ? fund.fundShares / totalFundShares : 0
+  }))
+
+  // Compute weighted realized APY using fund shares weighting
+  // Each fund's APY contribution = fund's APY * fund's share percentage
+  let weightedRealizedAPY = 0
+  for (const fund of fundsWithSharesPct) {
+    weightedRealizedAPY += fund.realizedAPY * fund.fundSharesPct
+  }
+
+  // Compute aggregate liquid APY directly from totals (not weighted average)
+  // This gives intuitive results: positive gain = positive APY
+  const totalGainUsd = totalValue - totalStartInput
+  const avgDaysActive = fundMetrics.length > 0 ? totalDaysActive / fundMetrics.length : 1
+  const aggregateLiquidAPY = computeLiquidAPY(totalGainUsd, totalTimeWeightedFundSize, avgDaysActive)
+
   // Projected annual return is sum of all active funds' projections
-  const projectedAnnualReturn = fundMetrics
-    .filter(f => f.platform !== 'closed' && f.currentValue > 0)
+  const projectedAnnualReturn = fundsWithSharesPct
+    .filter(f => f.status !== 'closed' && f.currentValue > 0)
     .reduce((sum, f) => sum + f.projectedAnnualReturn, 0)
 
-  const totalGainUsd = totalValue - totalStartInput
   const totalGainPct = totalStartInput > 0 ? (totalValue / totalStartInput - 1) : 0
 
   return {
@@ -212,12 +346,13 @@ export function computeAggregateMetrics(fundMetrics: FundMetrics[]): AggregateMe
     totalTimeWeightedFundSize,
     totalDaysActive,
     totalRealizedGains,
-    realizedAPY,
+    realizedAPY: weightedRealizedAPY,
+    liquidAPY: aggregateLiquidAPY,
     projectedAnnualReturn,
     totalGainUsd,
     totalGainPct,
     activeFunds,
     closedFunds,
-    funds: fundMetrics
+    funds: fundsWithSharesPct
   }
 }

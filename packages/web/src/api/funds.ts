@@ -13,8 +13,10 @@ export interface ChartBounds {
 }
 
 export type FundStatus = 'active' | 'closed'
+export type FundType = 'cash' | 'stock' | 'crypto'
 
 export interface FundConfig {
+  fund_type?: FundType
   status?: FundStatus
   fund_size_usd: number
   target_apy: number
@@ -39,6 +41,7 @@ export interface FundConfig {
   charts_collapsed?: boolean
   entries_column_order?: string[]
   entries_visible_columns?: string[]
+  audited?: string
 }
 
 export interface FundSummary {
@@ -56,6 +59,7 @@ export interface FundSummary {
 export interface FundEntry {
   date: string
   value: number
+  cash?: number  // Actual cash available in account (tracked, not calculated)
   action?: 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
   amount?: number
   shares?: number
@@ -130,6 +134,10 @@ export interface FundStateResponse {
   state: FundState | null
   recommendation: Recommendation | null
   closedMetrics: ClosedFundMetrics | null
+  margin_available?: number
+  margin_borrowed?: number
+  cash_available?: number
+  fund_size?: number
 }
 
 export interface ApiResult<T> {
@@ -137,8 +145,9 @@ export interface ApiResult<T> {
   error?: string
 }
 
-export async function fetchFunds(): Promise<ApiResult<FundSummary[]>> {
-  const response = await fetch(`${API_BASE}/funds`)
+export async function fetchFunds(includeTest = false): Promise<ApiResult<FundSummary[]>> {
+  const url = includeTest ? `${API_BASE}/funds?include_test=true` : `${API_BASE}/funds`
+  const response = await fetch(url)
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: { message: 'Failed to fetch funds' } }))
     return { error: error.error?.message ?? 'Failed to fetch funds' }
@@ -279,11 +288,25 @@ export async function deleteFundEntry(id: string, entryIndex: number): Promise<A
   return { data }
 }
 
+export async function recalculateFund(id: string): Promise<ApiResult<{ message: string; fund: FundDetail }>> {
+  const response = await fetch(`${API_BASE}/funds/${id}/recalculate`, {
+    method: 'POST'
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Failed to recalculate fund' } }))
+    return { error: error.error?.message ?? 'Failed to recalculate fund' }
+  }
+  const data = await response.json()
+  return { data }
+}
+
 // Aggregate calculations for dashboard
 export interface FundMetrics {
   id: string
   platform: string
   ticker: string
+  status: 'active' | 'closed'
+  fundType: 'cash' | 'stock' | 'crypto'
   fundSize: number
   currentValue: number
   startInput: number
@@ -291,9 +314,12 @@ export interface FundMetrics {
   timeWeightedFundSize: number
   realizedGains: number
   realizedAPY: number
+  liquidAPY: number
   projectedAnnualReturn: number
   gainUsd: number
   gainPct: number
+  fundShares: number
+  fundSharesPct: number
 }
 
 export interface AggregateMetrics {
@@ -304,6 +330,7 @@ export interface AggregateMetrics {
   totalDaysActive: number
   totalRealizedGains: number
   realizedAPY: number
+  liquidAPY: number
   projectedAnnualReturn: number
   totalGainUsd: number
   totalGainPct: number
@@ -312,8 +339,9 @@ export interface AggregateMetrics {
   funds: FundMetrics[]
 }
 
-export async function fetchAggregateMetrics(): Promise<ApiResult<AggregateMetrics>> {
-  const response = await fetch(`${API_BASE}/funds/aggregate`)
+export async function fetchAggregateMetrics(includeTest = false): Promise<ApiResult<AggregateMetrics>> {
+  const url = includeTest ? `${API_BASE}/funds/aggregate?include_test=true` : `${API_BASE}/funds/aggregate`
+  const response = await fetch(url)
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: { message: 'Failed to fetch aggregate metrics' } }))
     return { error: error.error?.message ?? 'Failed to fetch aggregate metrics' }
@@ -380,7 +408,7 @@ export function calculateAggregateMetrics(funds: FundSummary[]): Omit<AggregateM
     totalFundSize += fund.config.fund_size_usd
     totalValue += fund.latestEquity?.value ?? 0
 
-    if (fund.platform === 'closed' || fund.latestEquity?.value === 0) {
+    if (fund.config.status === 'closed') {
       closedFunds++
     } else {
       activeFunds++
@@ -444,8 +472,9 @@ export interface HistoryResponse {
   }
 }
 
-export async function fetchHistory(): Promise<ApiResult<HistoryResponse>> {
-  const response = await fetch(`${API_BASE}/funds/history`)
+export async function fetchHistory(includeTest = false): Promise<ApiResult<HistoryResponse>> {
+  const url = includeTest ? `${API_BASE}/funds/history?include_test=true` : `${API_BASE}/funds/history`
+  const response = await fetch(url)
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: { message: 'Failed to fetch history' } }))
     return { error: error.error?.message ?? 'Failed to fetch history' }

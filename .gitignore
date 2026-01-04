@@ -1,6 +1,7 @@
 # User data - NEVER commit
 /data/
 !/data/.gitkeep
+data.backup
 
 # Environment
 .env
@@ -29,6 +30,11 @@ Thumbs.db
 # Test coverage
 coverage/
 
+# Playwright
+playwright-report/
+test-results/
+
 # Temp files
 *.tmp
 .*.tmp
+.browser

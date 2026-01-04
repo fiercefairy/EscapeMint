@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { updateFund, deleteFund, notifyFundsChanged, type FundConfig, type FundStatus } from '../api/funds'
+import { updateFund, deleteFund, notifyFundsChanged, type FundConfig, type FundStatus, type FundType } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
 
 interface EditFundPanelProps {
@@ -26,6 +26,7 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
   const [platforms, setPlatforms] = useState<Platform[]>([])
   const [selectedPlatform, setSelectedPlatform] = useState(fundPlatform.toLowerCase())
   const [ticker, setTicker] = useState(fundTicker.toLowerCase())
+  const [fundType, setFundType] = useState<FundType>(config.fund_type ?? 'stock')
   const [formData, setFormData] = useState({
     status: config.status ?? 'active' as FundStatus,
     fund_size_usd: config.fund_size_usd,
@@ -49,6 +50,8 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
     start_date: config.start_date
   })
 
+  const isCashFund = fundType === 'cash'
+
   useEffect(() => {
     fetchPlatforms().then(result => {
       if (result.data) {
@@ -67,21 +70,22 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
 
     const updatedConfig: Partial<FundConfig> = {
       status: formData.status,
+      fund_type: fundType,
       fund_size_usd: formData.fund_size_usd,
-      target_apy: round(formData.target_apy / 100, 4),
-      interval_days: formData.interval_days,
-      input_min_usd: formData.input_min_usd,
-      input_mid_usd: formData.input_mid_usd,
-      input_max_usd: formData.input_max_usd,
-      max_at_pct: round(formData.max_at_pct / 100, 4),
-      min_profit_usd: formData.min_profit_usd,
+      target_apy: isCashFund ? 0 : round(formData.target_apy / 100, 4),
+      interval_days: isCashFund ? 1 : formData.interval_days,
+      input_min_usd: isCashFund ? 0 : formData.input_min_usd,
+      input_mid_usd: isCashFund ? 0 : formData.input_mid_usd,
+      input_max_usd: isCashFund ? 0 : formData.input_max_usd,
+      max_at_pct: isCashFund ? 0 : round(formData.max_at_pct / 100, 4),
+      min_profit_usd: isCashFund ? 0 : formData.min_profit_usd,
       cash_apy: round(formData.cash_apy / 100, 4),
       margin_apr: round(formData.margin_apr / 100, 4),
       margin_access_usd: formData.margin_access_usd,
-      accumulate: formData.accumulate,
-      manage_cash: formData.manage_cash,
+      accumulate: isCashFund ? true : formData.accumulate,
+      manage_cash: isCashFund ? true : formData.manage_cash,
       auto_apply_cash_apy: formData.auto_apply_cash_apy,
-      margin_enabled: formData.margin_enabled,
+      margin_enabled: isCashFund ? false : formData.margin_enabled,
       dividend_reinvest: formData.dividend_reinvest,
       interest_reinvest: formData.interest_reinvest,
       expense_from_fund: formData.expense_from_fund,
@@ -157,6 +161,31 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-5">
+          {/* Fund Type Selection */}
+          <div>
+            <label className="block text-xs text-slate-400 mb-2">Fund Type</label>
+            <div className="flex gap-2">
+              {(['stock', 'crypto', 'cash'] as FundType[]).map(type => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setFundType(type)}
+                  className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
+                    fundType === type
+                      ? type === 'cash'
+                        ? 'bg-blue-600 text-white'
+                        : type === 'crypto'
+                        ? 'bg-yellow-600 text-white'
+                        : 'bg-green-600 text-white'
+                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  {type === 'stock' ? 'Stock' : type === 'crypto' ? 'Crypto' : 'Cash'}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Platform & Ticker */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -209,7 +238,7 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
               </select>
             </div>
             <div>
-              <label className="block text-xs text-slate-400 mb-1">Fund Size ($)</label>
+              <label className="block text-xs text-slate-400 mb-1">{isCashFund ? 'Balance ($)' : 'Fund Size ($)'}</label>
               <input
                 type="number"
                 value={formData.fund_size_usd}
@@ -237,252 +266,291 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
             </p>
           )}
 
-          {/* Target APY and Interval */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Target APY (%)</label>
-              <input
-                type="number"
-                value={formData.target_apy}
-                onChange={e => setFormData({ ...formData, target_apy: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                step="1"
-                min="0"
-                max="500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Interval (days)</label>
-              <input
-                type="number"
-                value={formData.interval_days}
-                onChange={e => setFormData({ ...formData, interval_days: parseInt(e.target.value) || 1 })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                min="1"
-                required
-              />
-            </div>
-          </div>
-
-          {/* DCA Amounts */}
-          <div>
-            <label className="block text-xs text-slate-400 mb-2">DCA Amounts ($)</label>
-            <div className="grid grid-cols-3 gap-3">
+          {/* Cash Fund: Cash APY section */}
+          {isCashFund && (
+            <div className="border border-slate-600 rounded p-3 space-y-3">
+              <p className="text-sm text-white font-medium">Cash Settings</p>
               <div>
-                <label className="block text-[10px] text-slate-500 mb-1">Min (on target)</label>
+                <label className="block text-xs text-slate-400 mb-1">Cash APY (%)</label>
                 <input
                   type="number"
-                  value={formData.input_min_usd}
-                  onChange={e => setFormData({ ...formData, input_min_usd: parseFloat(e.target.value) || 0 })}
+                  value={formData.cash_apy}
+                  onChange={e => setFormData({ ...formData, cash_apy: parseFloat(e.target.value) || 0 })}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                  step="10"
+                  step="0.01"
                   min="0"
-                  required
                 />
+                <p className="text-[10px] text-slate-500 mt-1">Interest rate earned on cash balance</p>
               </div>
-              <div>
-                <label className="block text-[10px] text-slate-500 mb-1">Mid (below)</label>
+              <div className="flex items-center gap-3">
                 <input
-                  type="number"
-                  value={formData.input_mid_usd}
-                  onChange={e => setFormData({ ...formData, input_mid_usd: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                  step="10"
-                  min="0"
-                  required
+                  type="checkbox"
+                  id="auto_apply_cash_apy"
+                  checked={formData.auto_apply_cash_apy}
+                  onChange={e => setFormData({ ...formData, auto_apply_cash_apy: e.target.checked })}
+                  className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
                 />
-              </div>
-              <div>
-                <label className="block text-[10px] text-slate-500 mb-1">Max (loss)</label>
-                <input
-                  type="number"
-                  value={formData.input_max_usd}
-                  onChange={e => setFormData({ ...formData, input_max_usd: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                  step="10"
-                  min="0"
-                  required
-                />
+                <label htmlFor="auto_apply_cash_apy" className="text-sm text-white">
+                  Auto-Apply Cash Interest
+                  <span className="text-slate-400 text-xs ml-2">(calc on save)</span>
+                </label>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Max At % and Min Profit */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Max DCA Threshold (%)</label>
-              <input
-                type="number"
-                value={formData.max_at_pct}
-                onChange={e => setFormData({ ...formData, max_at_pct: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                step="1"
-                placeholder="e.g., -25"
-              />
-              <p className="text-[10px] text-slate-500 mt-1">Use max DCA when loss exceeds this %</p>
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Min Profit to Sell ($)</label>
-              <input
-                type="number"
-                value={formData.min_profit_usd}
-                onChange={e => setFormData({ ...formData, min_profit_usd: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                step="10"
-                min="0"
-              />
-            </div>
-          </div>
-
-          {/* Accumulate Toggle */}
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="accumulate"
-              checked={formData.accumulate}
-              onChange={e => setFormData({ ...formData, accumulate: e.target.checked })}
-              className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
-            />
-            <label htmlFor="accumulate" className="text-sm text-white">
-              Accumulate Mode
-              <span className="text-slate-400 text-xs ml-2">(sell only DCA amount)</span>
-            </label>
-          </div>
-
-          {/* Cash Management Section */}
-          <div className="border border-slate-600 rounded p-3 space-y-3">
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="manage_cash"
-                checked={formData.manage_cash}
-                onChange={e => setFormData({ ...formData, manage_cash: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
-              />
-              <label htmlFor="manage_cash" className="text-sm text-white font-medium">
-                Manage Cash
-              </label>
-              <span className="text-slate-400 text-xs">(maintain cash pile)</span>
-            </div>
-            {formData.manage_cash && (
-              <div className="ml-7 space-y-3">
+          {/* Trading Fund: Full configuration */}
+          {!isCashFund && (
+            <>
+              {/* Target APY and Interval */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Cash APY (%)</label>
+                  <label className="block text-xs text-slate-400 mb-1">Target APY (%)</label>
                   <input
                     type="number"
-                    value={formData.cash_apy}
-                    onChange={e => setFormData({ ...formData, cash_apy: parseFloat(e.target.value) || 0 })}
+                    value={formData.target_apy}
+                    onChange={e => setFormData({ ...formData, target_apy: parseFloat(e.target.value) || 0 })}
                     className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                    step="0.01"
+                    step="1"
+                    min="0"
+                    max="500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Interval (days)</label>
+                  <input
+                    type="number"
+                    value={formData.interval_days}
+                    onChange={e => setFormData({ ...formData, interval_days: parseInt(e.target.value) || 1 })}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                    min="1"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* DCA Amounts */}
+              <div>
+                <label className="block text-xs text-slate-400 mb-2">DCA Amounts ($)</label>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-1">Min (on target)</label>
+                    <input
+                      type="number"
+                      value={formData.input_min_usd}
+                      onChange={e => setFormData({ ...formData, input_min_usd: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                      step="10"
+                      min="0"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-1">Mid (below)</label>
+                    <input
+                      type="number"
+                      value={formData.input_mid_usd}
+                      onChange={e => setFormData({ ...formData, input_mid_usd: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                      step="10"
+                      min="0"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-1">Max (loss)</label>
+                    <input
+                      type="number"
+                      value={formData.input_max_usd}
+                      onChange={e => setFormData({ ...formData, input_max_usd: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                      step="10"
+                      min="0"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Max At % and Min Profit */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Max DCA Threshold (%)</label>
+                  <input
+                    type="number"
+                    value={formData.max_at_pct}
+                    onChange={e => setFormData({ ...formData, max_at_pct: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                    step="1"
+                    placeholder="e.g., -25"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">Use max DCA when loss exceeds this %</p>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Min Profit to Sell ($)</label>
+                  <input
+                    type="number"
+                    value={formData.min_profit_usd}
+                    onChange={e => setFormData({ ...formData, min_profit_usd: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                    step="10"
                     min="0"
                   />
                 </div>
+              </div>
+
+              {/* Accumulate Toggle */}
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="accumulate"
+                  checked={formData.accumulate}
+                  onChange={e => setFormData({ ...formData, accumulate: e.target.checked })}
+                  className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
+                />
+                <label htmlFor="accumulate" className="text-sm text-white">
+                  Accumulate Mode
+                  <span className="text-slate-400 text-xs ml-2">(sell only DCA amount)</span>
+                </label>
+              </div>
+
+              {/* Cash Management Section */}
+              <div className="border border-slate-600 rounded p-3 space-y-3">
                 <div className="flex items-center gap-3">
                   <input
                     type="checkbox"
-                    id="auto_apply_cash_apy"
-                    checked={formData.auto_apply_cash_apy}
-                    onChange={e => setFormData({ ...formData, auto_apply_cash_apy: e.target.checked })}
+                    id="manage_cash"
+                    checked={formData.manage_cash}
+                    onChange={e => setFormData({ ...formData, manage_cash: e.target.checked })}
                     className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
                   />
-                  <label htmlFor="auto_apply_cash_apy" className="text-sm text-white">
-                    Auto-Apply Cash Interest
-                    <span className="text-slate-400 text-xs ml-2">(calc on save)</span>
+                  <label htmlFor="manage_cash" className="text-sm text-white font-medium">
+                    Manage Cash
                   </label>
+                  <span className="text-slate-400 text-xs">(maintain cash pile)</span>
                 </div>
+                {formData.manage_cash && (
+                  <div className="ml-7 space-y-3">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Cash APY (%)</label>
+                      <input
+                        type="number"
+                        value={formData.cash_apy}
+                        onChange={e => setFormData({ ...formData, cash_apy: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id="auto_apply_cash_apy"
+                        checked={formData.auto_apply_cash_apy}
+                        onChange={e => setFormData({ ...formData, auto_apply_cash_apy: e.target.checked })}
+                        className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
+                      />
+                      <label htmlFor="auto_apply_cash_apy" className="text-sm text-white">
+                        Auto-Apply Cash Interest
+                        <span className="text-slate-400 text-xs ml-2">(calc on save)</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Margin Section */}
-          <div className="border border-slate-600 rounded p-3 space-y-3">
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="margin_enabled"
-                checked={formData.margin_enabled}
-                onChange={e => setFormData({ ...formData, margin_enabled: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
-              />
-              <label htmlFor="margin_enabled" className="text-sm text-white font-medium">
-                Margin Trading
-              </label>
-              <span className="text-slate-400 text-xs">(enable borrowing)</span>
-            </div>
-            {formData.margin_enabled && (
-              <div className="ml-7 grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">Margin APR (%)</label>
+              {/* Margin Section */}
+              <div className="border border-slate-600 rounded p-3 space-y-3">
+                <div className="flex items-center gap-3">
                   <input
-                    type="number"
-                    value={formData.margin_apr}
-                    onChange={e => setFormData({ ...formData, margin_apr: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                    step="0.01"
-                    min="0"
+                    type="checkbox"
+                    id="margin_enabled"
+                    checked={formData.margin_enabled}
+                    onChange={e => setFormData({ ...formData, margin_enabled: e.target.checked })}
+                    className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
                   />
+                  <label htmlFor="margin_enabled" className="text-sm text-white font-medium">
+                    Margin Trading
+                  </label>
+                  <span className="text-slate-400 text-xs">(enable borrowing)</span>
                 </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">Margin Access ($)</label>
-                  <input
-                    type="number"
-                    value={formData.margin_access_usd}
-                    onChange={e => setFormData({ ...formData, margin_access_usd: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                    step="100"
-                    min="0"
-                  />
-                </div>
+                {formData.margin_enabled && (
+                  <div className="ml-7 grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Margin APR (%)</label>
+                      <input
+                        type="number"
+                        value={formData.margin_apr}
+                        onChange={e => setFormData({ ...formData, margin_apr: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Margin Access ($)</label>
+                      <input
+                        type="number"
+                        value={formData.margin_access_usd}
+                        onChange={e => setFormData({ ...formData, margin_access_usd: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                        step="100"
+                        min="0"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Income & Expense Handling */}
-          <div className="border border-slate-600 rounded p-3 space-y-3">
-            <p className="text-sm text-white font-medium">Income & Expense Handling</p>
-            <div className="space-y-2 ml-2">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="dividend_reinvest"
-                  checked={formData.dividend_reinvest}
-                  onChange={e => setFormData({ ...formData, dividend_reinvest: e.target.checked })}
-                  className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
-                />
-                <label htmlFor="dividend_reinvest" className="text-sm text-white">
-                  Reinvest Dividends
-                  <span className="text-slate-400 text-xs ml-2">{formData.dividend_reinvest ? '(adds to fund)' : '(extract)'}</span>
-                </label>
+              {/* Income & Expense Handling */}
+              <div className="border border-slate-600 rounded p-3 space-y-3">
+                <p className="text-sm text-white font-medium">Income & Expense Handling</p>
+                <div className="space-y-2 ml-2">
+                  {fundType === 'stock' && (
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id="dividend_reinvest"
+                        checked={formData.dividend_reinvest}
+                        onChange={e => setFormData({ ...formData, dividend_reinvest: e.target.checked })}
+                        className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
+                      />
+                      <label htmlFor="dividend_reinvest" className="text-sm text-white">
+                        Reinvest Dividends
+                        <span className="text-slate-400 text-xs ml-2">{formData.dividend_reinvest ? '(adds to fund)' : '(extract)'}</span>
+                      </label>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="interest_reinvest"
+                      checked={formData.interest_reinvest}
+                      onChange={e => setFormData({ ...formData, interest_reinvest: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
+                    />
+                    <label htmlFor="interest_reinvest" className="text-sm text-white">
+                      Reinvest Cash Interest
+                      <span className="text-slate-400 text-xs ml-2">{formData.interest_reinvest ? '(adds to fund)' : '(extract)'}</span>
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="expense_from_fund"
+                      checked={formData.expense_from_fund}
+                      onChange={e => setFormData({ ...formData, expense_from_fund: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
+                    />
+                    <label htmlFor="expense_from_fund" className="text-sm text-white">
+                      Expenses From Fund
+                      <span className="text-slate-400 text-xs ml-2">{formData.expense_from_fund ? '(reduces fund)' : '(external)'}</span>
+                    </label>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="interest_reinvest"
-                  checked={formData.interest_reinvest}
-                  onChange={e => setFormData({ ...formData, interest_reinvest: e.target.checked })}
-                  className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
-                />
-                <label htmlFor="interest_reinvest" className="text-sm text-white">
-                  Reinvest Cash Interest
-                  <span className="text-slate-400 text-xs ml-2">{formData.interest_reinvest ? '(adds to fund)' : '(extract)'}</span>
-                </label>
-              </div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="expense_from_fund"
-                  checked={formData.expense_from_fund}
-                  onChange={e => setFormData({ ...formData, expense_from_fund: e.target.checked })}
-                  className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
-                />
-                <label htmlFor="expense_from_fund" className="text-sm text-white">
-                  Expenses From Fund
-                  <span className="text-slate-400 text-xs ml-2">{formData.expense_from_fund ? '(reduces fund)' : '(external)'}</span>
-                </label>
-              </div>
-            </div>
-          </div>
+            </>
+          )}
 
           {/* Delete Section */}
           <div className="border-t border-slate-700 pt-4">

@@ -2,7 +2,7 @@ import { readFile, writeFile, rename, mkdir, readdir, unlink } from 'node:fs/pro
 import { existsSync } from 'node:fs'
 import { dirname, join, basename } from 'node:path'
 import { v4 as uuidv4 } from 'uuid'
-import type { SubFundConfig, Trade, Dividend, Expense } from '@escapemint/engine'
+import type { SubFundConfig, Trade, CashFlow, Dividend, Expense } from '@escapemint/engine'
 
 /**
  * A single row in the fund time-series.
@@ -10,6 +10,7 @@ import type { SubFundConfig, Trade, Dividend, Expense } from '@escapemint/engine
 export interface FundEntry {
   date: string
   value: number
+  cash?: number  // Actual cash available in account (tracked, not calculated)
   action?: 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
   amount?: number
   shares?: number
@@ -35,7 +36,7 @@ export interface FundData {
   entries: FundEntry[]
 }
 
-const ENTRY_HEADERS = ['date', 'value', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'notes']
+const ENTRY_HEADERS = ['date', 'value', 'cash', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'notes']
 
 /**
  * Get the JSON config file path for a TSV file.
@@ -90,6 +91,9 @@ function parseEntry(line: string, headers: string[]): FundEntry {
       case 'value':
         entry.value = parseFloat(val) || 0
         break
+      case 'cash':
+        if (val) entry.cash = parseFloat(val)
+        break
       case 'action':
         if (val === 'BUY' || val === 'SELL' || val === 'HOLD' || val === 'DEPOSIT' || val === 'WITHDRAW') entry.action = val
         break
@@ -136,6 +140,7 @@ function serializeEntry(entry: FundEntry): string {
   const values = [
     entry.date,
     entry.value.toString(),
+    entry.cash?.toString() ?? '',
     entry.action ?? '',
     entry.amount?.toString() ?? '',
     entry.shares?.toString() ?? '',
@@ -359,10 +364,11 @@ export async function readAllFunds(fundsDir: string): Promise<FundData[]> {
 
 /**
  * Convert fund entries to trades for engine calculation.
+ * Only includes BUY and SELL actions (not DEPOSIT, WITHDRAW, or HOLD).
  */
 export function entriesToTrades(entries: FundEntry[]): Trade[] {
   return entries
-    .filter(e => e.action && e.amount)
+    .filter(e => e.amount && (e.action === 'BUY' || e.action === 'SELL'))
     .map(e => ({
       date: e.date,
       amount_usd: e.amount!,
@@ -399,6 +405,20 @@ export function entriesToExpenses(entries: FundEntry[]): Expense[] {
  */
 export function entriesToCashInterest(entries: FundEntry[]): number {
   return entries.reduce((sum, e) => sum + (e.cash_interest ?? 0), 0)
+}
+
+/**
+ * Convert fund entries to cash flows for cash fund TWFS calculation.
+ * Only includes DEPOSIT and WITHDRAW actions.
+ */
+export function entriesToCashFlows(entries: FundEntry[]): CashFlow[] {
+  return entries
+    .filter(e => e.amount && (e.action === 'DEPOSIT' || e.action === 'WITHDRAW'))
+    .map(e => ({
+      date: e.date,
+      amount_usd: e.amount!,
+      type: e.action === 'DEPOSIT' ? 'deposit' as const : 'withdrawal' as const
+    }))
 }
 
 /**
