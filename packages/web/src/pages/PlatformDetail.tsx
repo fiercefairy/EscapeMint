@@ -3,7 +3,6 @@ import { useParams, Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   fetchPlatformMetrics,
-  createPlatform,
   fetchPlatformCashStatus,
   enableCashTracking,
   disableCashTracking,
@@ -11,8 +10,10 @@ import {
   type PlatformCashStatus
 } from '../api/platforms'
 import { notifyFundsChanged } from '../api/funds'
+
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ImportWizard } from '../components/ImportWizard'
+import { FundsTable } from '../components/fundsTable'
 
 export function PlatformDetail() {
   const { platformId } = useParams<{ platformId: string }>()
@@ -237,7 +238,7 @@ export function PlatformDetail() {
       {/* P&L Panel */}
       <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
         <h2 className="text-lg font-semibold text-white mb-4">Platform P&L</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           <div>
             <div className="text-xs text-slate-400 mb-1">Total Fund Size</div>
             <div className="text-lg font-bold text-white">{formatCurrency(metrics.totalFundSize)}</div>
@@ -247,29 +248,35 @@ export function PlatformDetail() {
             <div className="text-lg font-bold text-mint-400">{formatCurrency(metrics.totalValue)}</div>
           </div>
           <div>
-            <div className="text-xs text-slate-400 mb-1">Total Cash</div>
-            <div className="text-lg font-bold text-blue-400">{formatCurrency(metrics.totalCash)}</div>
+            <div className="text-xs text-slate-400 mb-1">Total Invested</div>
+            <div className="text-lg font-bold text-white">{formatCurrency(metrics.totalStartInput)}</div>
           </div>
           <div>
-            <div className="text-xs text-slate-400 mb-1">Total Gain/Loss</div>
+            <div className="text-xs text-slate-400 mb-1">Unrealized</div>
+            <div className={`text-lg font-bold ${metrics.totalUnrealized >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {formatCurrencyPrecise(metrics.totalUnrealized)}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-400 mb-1">Realized</div>
+            <div className={`text-lg font-bold ${metrics.totalRealized >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {formatCurrencyPrecise(metrics.totalRealized)}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-400 mb-1">Liquid P&L</div>
             <div className={`text-lg font-bold ${metrics.totalGainUsd >= 0 ? 'text-green-400' : 'text-red-400'}`}>
               {formatCurrency(metrics.totalGainUsd)}
               <span className="text-sm ml-1">({formatPercent(metrics.totalGainPct)})</span>
             </div>
           </div>
-          <div>
-            <div className="text-xs text-slate-400 mb-1">Realized APY</div>
-            <div className={`text-lg font-bold ${metrics.realizedAPY >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {formatPercent(metrics.realizedAPY)}
-            </div>
-          </div>
         </div>
 
         {/* Breakdown */}
-        <div className="mt-4 pt-4 border-t border-slate-700 grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="mt-4 pt-4 border-t border-slate-700 grid grid-cols-2 sm:grid-cols-5 gap-4">
           <div>
-            <div className="text-xs text-slate-400 mb-1">Total Invested</div>
-            <div className="text-sm text-white">{formatCurrency(metrics.totalStartInput)}</div>
+            <div className="text-xs text-slate-400 mb-1">Total Cash</div>
+            <div className="text-sm text-blue-400">{formatCurrency(metrics.totalCash)}</div>
           </div>
           <div>
             <div className="text-xs text-slate-400 mb-1">Total Dividends</div>
@@ -283,58 +290,21 @@ export function PlatformDetail() {
             <div className="text-xs text-slate-400 mb-1">Total Cash Interest</div>
             <div className="text-sm text-purple-400">{formatCurrencyPrecise(metrics.totalCashInterest)}</div>
           </div>
+          <div>
+            <div className="text-xs text-slate-400 mb-1">Active / Closed</div>
+            <div className="text-sm text-slate-300">{metrics.activeFunds} / {metrics.closedFunds}</div>
+          </div>
         </div>
       </div>
 
-      {/* Funds List */}
-      <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-        <h2 className="text-lg font-semibold text-white mb-4">Funds on this Platform</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-700 text-slate-400">
-                <th className="px-3 py-2 text-left">Fund</th>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-right">Fund Size</th>
-                <th className="px-3 py-2 text-right">Current Value</th>
-                <th className="px-3 py-2 text-right">Gain/Loss</th>
-                <th className="px-3 py-2 text-right">Entries</th>
-              </tr>
-            </thead>
-            <tbody>
-              {metrics.funds.map((fund) => (
-                <tr
-                  key={fund.id}
-                  className="border-b border-slate-700/50 hover:bg-slate-700/30 cursor-pointer"
-                  onClick={() => window.location.href = `/fund/${fund.id}`}
-                >
-                  <td className="px-3 py-2">
-                    <span className="font-medium text-white uppercase">{fund.ticker}</span>
-                  </td>
-                  <td className="px-3 py-2">
-                    <span className={`px-2 py-0.5 rounded text-xs ${
-                      fund.status === 'active'
-                        ? 'bg-green-500/20 text-green-300'
-                        : 'bg-slate-500/20 text-slate-300'
-                    }`}>
-                      {fund.status}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right text-white">{formatCurrency(fund.fundSize)}</td>
-                  <td className="px-3 py-2 text-right text-mint-400">{formatCurrency(fund.currentValue)}</td>
-                  <td className="px-3 py-2 text-right">
-                    <span className={fund.gainUsd >= 0 ? 'text-green-400' : 'text-red-400'}>
-                      {formatCurrency(fund.gainUsd)}
-                      <span className="text-xs ml-1">({formatPercent(fund.gainPct)})</span>
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right text-slate-400">{fund.entries}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Funds Table */}
+      <FundsTable
+        platformId={platformId ?? ''}
+        funds={metrics.funds}
+        savedColumnOrder={metrics.fundsColumnOrder}
+        savedVisibleColumns={metrics.fundsVisibleColumns}
+        onReload={loadData}
+      />
 
       {/* Import Wizard */}
       {showImportWizard && (

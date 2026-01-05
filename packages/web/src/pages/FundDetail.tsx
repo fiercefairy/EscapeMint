@@ -14,8 +14,10 @@ import { formatCurrency, formatPercent } from '../utils/format'
 // Chart data point for P&L and APY charts
 interface ChartDataPoint {
   date: Date
-  pnl: number
-  apy: number
+  liquidPnl: number
+  realizedPnl: number
+  liquidApy: number
+  realizedApy: number
 }
 
 export function FundDetail() {
@@ -150,632 +152,6 @@ export function FundDetail() {
   useEffect(() => {
     loadData()
   }, [loadData])
-
-  // Compute chart data (P&L and APY) for both charts
-  const chartData = useMemo<ChartDataPoint[]>(() => {
-    if (!fund || fund.entries.length === 0) return []
-
-    const startDate = new Date(fund.config.start_date)
-    const sorted = [...fund.entries].sort((a, b) =>
-      new Date(a.date).getTime() - new Date(b.date).getTime()
-    )
-    const isCashFund = fund.config.fund_type === 'cash'
-
-    let totalBuys = 0
-    let totalSells = 0
-    let cumDividends = 0
-    let cumExpenses = 0
-    let cumCashInterest = 0
-    let costBasis = 0
-    let previousCyclesGain = 0
-    let cumShares = 0
-
-    // For cash fund TWAB calculation
-    let twabNumerator = 0
-    let lastCashBalance = 0
-    let lastEntryDate = startDate
-
-    return sorted.map((entry, index) => {
-      const entryDate = new Date(entry.date)
-
-      // For cash fund TWAB: add previous balance * days since last entry
-      if (isCashFund && index > 0) {
-        const daysSinceLast = Math.max(0, (entryDate.getTime() - lastEntryDate.getTime()) / (1000 * 60 * 60 * 24))
-        twabNumerator += lastCashBalance * daysSinceLast
-      }
-      lastEntryDate = entryDate
-      lastCashBalance = entry.cash ?? entry.value ?? 0
-
-      // Track dividends, expenses, cash interest, shares FIRST
-      // All values are positive in data; apply sign based on context
-      if (entry.dividend) cumDividends += Math.abs(entry.dividend)
-      if (entry.expense) cumExpenses += Math.abs(entry.expense)
-      if (entry.cash_interest) cumCashInterest += Math.abs(entry.cash_interest)
-      // Shares: BUY adds, SELL subtracts
-      if (entry.shares) {
-        const sharesAbs = Math.abs(entry.shares)
-        cumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
-      }
-
-      // First entry has no P&L or APY yet
-      if (index === 0) {
-        if (entry.action === 'BUY' && entry.amount) {
-          totalBuys += entry.amount
-          costBasis += entry.amount
-        }
-        return { date: entryDate, pnl: 0, apy: 0 }
-      }
-
-      const daysElapsed = Math.max(1, (entryDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-
-      // For cash funds: P&L is just interest - expenses, APY uses TWAB
-      if (isCashFund) {
-        const realized = cumCashInterest - cumExpenses
-        const twab = daysElapsed > 0 ? twabNumerator / daysElapsed : lastCashBalance
-        const denominator = twab > 0 ? twab : 1
-        const returnPct = realized / denominator
-        const clampedPct = Math.max(-0.99, Math.min(returnPct, 1))
-        const apy = daysElapsed > 0 ? Math.pow(1 + clampedPct, 365 / daysElapsed) - 1 : 0
-        return { date: entryDate, pnl: realized, apy: Math.max(-0.99, Math.min(apy, 10)) }
-      }
-
-      // For trading funds: original calculation
-      // Total return = currentValue + priorSells + dividends + interest - expenses - totalBuys + previousCyclesGain
-      const totalMoneyOut = entry.value + totalSells + cumDividends + cumCashInterest - cumExpenses + previousCyclesGain
-      const totalReturn = totalMoneyOut - totalBuys
-
-      // Simple return = totalReturn / currentValue (if value > 0)
-      const returnPct = entry.value > 0 ? totalReturn / entry.value : 0
-      // Annualize: APY = (1 + returnPct)^(365/days) - 1
-      const clampedReturnPct = Math.max(-0.99, returnPct)
-      const apy = daysElapsed > 0 ? Math.pow(1 + clampedReturnPct, 365 / daysElapsed) - 1 : 0
-
-      // NOW process this row's buy/sell action (for next iteration)
-      if (entry.action === 'BUY' && entry.amount) {
-        totalBuys += entry.amount
-        costBasis += entry.amount
-      } else if (entry.action === 'SELL' && entry.amount) {
-        totalSells += entry.amount
-        // Check for full liquidation
-        // Use cumShares check if fund has share tracking, AND value-based check as fallback
-        // Either condition triggers liquidation (share tracking can accumulate errors over time)
-        const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
-        const sharesLiquidated = hasShareTracking && Math.abs(cumShares) < 0.0001
-        const valueLiquidated = entry.value <= entry.amount + 0.01
-        const isFullLiquidation = sharesLiquidated || valueLiquidated
-        if (isFullLiquidation) {
-          const extracted = entry.amount - costBasis
-          previousCyclesGain += extracted
-          costBasis = 0
-          totalBuys = 0
-          totalSells = 0
-          cumShares = 0
-        } else {
-          // Partial sell - reduce cost basis proportionally
-          const sellProportion = entry.amount / (entry.value + entry.amount)
-          costBasis -= costBasis * sellProportion
-        }
-      }
-
-      return { date: entryDate, pnl: totalReturn, apy: isFinite(apy) ? apy : 0 }
-    })
-  }, [fund])
-
-  // Draw Fund APY chart
-  useEffect(() => {
-    if (!apyChartRef.current || chartData.length === 0) return
-
-    const svg = d3.select(apyChartRef.current)
-    svg.selectAll('*').remove()
-
-    const margin = { top: 10, right: 10, bottom: 25, left: 50 }
-    const width = apyChartRef.current.clientWidth - margin.left - margin.right
-    const height = apyChartRef.current.clientHeight - margin.top - margin.bottom
-
-    const g = svg
-      .append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`)
-
-    const data = chartData.filter(d => isFinite(d.apy))
-
-    if (data.length === 0) return
-
-    // Use state bounds if available, otherwise auto-scale with reasonable limits
-    const yExtent = d3.extent(data, d => d.apy) as [number, number]
-    let yMin = apyBounds.yMin ?? Math.max(-2, yExtent[0])
-    let yMax = apyBounds.yMax ?? Math.min(2, yExtent[1])
-
-    // Ensure a minimum range to avoid collapsed scale when all values are the same
-    if (yMin === yMax) {
-      const padding = Math.abs(yMin) * 0.1 || 0.1
-      yMin = yMin - padding
-      yMax = yMax + padding
-    }
-
-    const x = d3.scaleTime()
-      .domain(d3.extent(data, d => d.date) as [Date, Date])
-      .range([0, width])
-
-    const y = d3.scaleLinear()
-      .domain([yMin, yMax])
-      .nice()
-      .range([height, 0])
-
-    const zeroY = y(Math.max(yMin, Math.min(yMax, 0)))
-
-    // Clip paths for positive and negative regions
-    const clipIdPos = `apy-clip-pos-${Date.now()}`
-    const clipIdNeg = `apy-clip-neg-${Date.now()}`
-
-    const defs = g.append('defs')
-
-    // Positive clip (above zero line)
-    defs.append('clipPath')
-      .attr('id', clipIdPos)
-      .append('rect')
-      .attr('x', 0)
-      .attr('y', 0)
-      .attr('width', width)
-      .attr('height', zeroY)
-
-    // Negative clip (below zero line)
-    defs.append('clipPath')
-      .attr('id', clipIdNeg)
-      .append('rect')
-      .attr('x', 0)
-      .attr('y', zeroY)
-      .attr('width', width)
-      .attr('height', height - zeroY)
-
-    // Positive area (green) - from 0 up to positive values
-    const positiveArea = d3.area<{ date: Date; apy: number }>()
-      .x(d => x(d.date))
-      .y0(zeroY)
-      .y1(d => y(Math.max(0, Math.min(yMax, d.apy))))
-      .curve(d3.curveMonotoneX)
-
-    // Negative area (red) - from 0 down to negative values
-    const negativeArea = d3.area<{ date: Date; apy: number }>()
-      .x(d => x(d.date))
-      .y0(zeroY)
-      .y1(d => y(Math.min(0, Math.max(yMin, d.apy))))
-      .curve(d3.curveMonotoneX)
-
-    // Line
-    const line = d3.line<{ date: Date; apy: number }>()
-      .x(d => x(d.date))
-      .y(d => y(Math.max(yMin, Math.min(yMax, d.apy))))
-      .curve(d3.curveMonotoneX)
-
-    // Draw positive area (green)
-    g.append('path')
-      .datum(data)
-      .attr('fill', 'rgba(16, 185, 129, 0.2)')
-      .attr('clip-path', `url(#${clipIdPos})`)
-      .attr('d', positiveArea)
-
-    // Draw negative area (red)
-    g.append('path')
-      .datum(data)
-      .attr('fill', 'rgba(239, 68, 68, 0.2)')
-      .attr('clip-path', `url(#${clipIdNeg})`)
-      .attr('d', negativeArea)
-
-    // Positive line (green) - clipped to positive region
-    g.append('path')
-      .datum(data)
-      .attr('fill', 'none')
-      .attr('stroke', '#10b981')
-      .attr('stroke-width', 1.5)
-      .attr('clip-path', `url(#${clipIdPos})`)
-      .attr('d', line)
-
-    // Negative line (red) - clipped to negative region
-    g.append('path')
-      .datum(data)
-      .attr('fill', 'none')
-      .attr('stroke', '#a72e2eff')
-      .attr('stroke-width', 1.5)
-      .attr('clip-path', `url(#${clipIdNeg})`)
-      .attr('d', line)
-
-    // Zero line
-    if (yMin < 0 && yMax > 0) {
-      g.append('line')
-        .attr('x1', 0)
-        .attr('x2', width)
-        .attr('y1', y(0))
-        .attr('y2', y(0))
-        .attr('stroke', '#64748b')
-        .attr('stroke-dasharray', '3,3')
-    }
-
-    // Axes
-    g.append('g')
-      .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(x).ticks(4).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
-      .selectAll('text')
-      .attr('fill', '#64748b')
-      .attr('font-size', '9px')
-
-    g.append('g')
-      .call(d3.axisLeft(y).ticks(4).tickFormat(d => `${((d as number) * 100).toFixed(0)}%`))
-      .selectAll('text')
-      .attr('fill', '#64748b')
-      .attr('font-size', '9px')
-
-    svg.selectAll('.domain').attr('stroke', '#334155')
-    svg.selectAll('.tick line').attr('stroke', '#334155')
-
-    // Hover tooltip elements
-    const focus = g.append('g').style('display', 'none')
-
-    focus.append('line')
-      .attr('class', 'hover-line')
-      .attr('y1', 0)
-      .attr('y2', height)
-      .attr('stroke', '#94a3b8')
-      .attr('stroke-width', 1)
-      .attr('stroke-dasharray', '3,3')
-
-    focus.append('circle')
-      .attr('class', 'hover-circle')
-      .attr('r', 4)
-      .attr('fill', '#10b981')
-      .attr('stroke', '#fff')
-      .attr('stroke-width', 2)
-
-    const tooltip = focus.append('g').attr('class', 'tooltip-group')
-
-    tooltip.append('rect')
-      .attr('class', 'tooltip-bg')
-      .attr('fill', '#1e293b')
-      .attr('stroke', '#475569')
-      .attr('rx', 4)
-      .attr('ry', 4)
-
-    tooltip.append('text')
-      .attr('class', 'tooltip-date')
-      .attr('fill', '#94a3b8')
-      .attr('font-size', '9px')
-      .attr('text-anchor', 'middle')
-
-    tooltip.append('text')
-      .attr('class', 'tooltip-value')
-      .attr('fill', '#fff')
-      .attr('font-size', '11px')
-      .attr('font-weight', 'bold')
-      .attr('text-anchor', 'middle')
-
-    const bisect = d3.bisector<{ date: Date; apy: number }, Date>(d => d.date).left
-
-    g.append('rect')
-      .attr('class', 'overlay')
-      .attr('width', width)
-      .attr('height', height)
-      .attr('fill', 'none')
-      .attr('pointer-events', 'all')
-      .on('mouseover', () => focus.style('display', null))
-      .on('mouseout', () => focus.style('display', 'none'))
-      .on('mousemove', function(event) {
-        const [mouseX] = d3.pointer(event)
-        const x0 = x.invert(mouseX)
-        const i = bisect(data, x0, 1)
-        const d0 = data[i - 1]
-        const d1 = data[i]
-        if (!d0) return
-
-        const d = d1 && (x0.getTime() - d0.date.getTime() > d1.date.getTime() - x0.getTime()) ? d1 : d0
-        const xPos = x(d.date)
-        const yPos = y(Math.max(yMin, Math.min(yMax, d.apy)))
-
-        focus.select('.hover-line').attr('x1', xPos).attr('x2', xPos)
-        focus.select('.hover-circle').attr('cx', xPos).attr('cy', yPos)
-
-        const dateStr = d3.timeFormat('%b %d, %Y')(d.date)
-        const pct = d.apy * 100
-        const valueStr = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'
-
-        const tooltipGroup = focus.select('.tooltip-group')
-        const dateText = tooltipGroup.select('.tooltip-date').text(dateStr)
-        const valueText = tooltipGroup.select('.tooltip-value').text(valueStr)
-
-        const dateBBox = (dateText.node() as SVGTextElement).getBBox()
-        const valueBBox = (valueText.node() as SVGTextElement).getBBox()
-        const tooltipWidth = Math.max(dateBBox.width, valueBBox.width) + 16
-        const tooltipHeight = 32
-
-        let tooltipX = xPos
-        const tooltipY = yPos - tooltipHeight - 10
-
-        if (xPos + tooltipWidth / 2 > width) {
-          tooltipX = width - tooltipWidth / 2
-        } else if (xPos - tooltipWidth / 2 < 0) {
-          tooltipX = tooltipWidth / 2
-        }
-
-        tooltipGroup.attr('transform', `translate(${tooltipX}, ${Math.max(0, tooltipY)})`)
-
-        tooltipGroup.select('.tooltip-bg')
-          .attr('x', -tooltipWidth / 2)
-          .attr('y', 0)
-          .attr('width', tooltipWidth)
-          .attr('height', tooltipHeight)
-
-        tooltipGroup.select('.tooltip-date')
-          .attr('x', 0)
-          .attr('y', 11)
-
-        tooltipGroup.select('.tooltip-value')
-          .attr('x', 0)
-          .attr('y', 26)
-      })
-
-  }, [chartData, apyBounds, chartResize])
-
-  // Draw P&L chart
-  useEffect(() => {
-    if (!pnlChartRef.current || chartData.length === 0) return
-
-    const svg = d3.select(pnlChartRef.current)
-    svg.selectAll('*').remove()
-
-    const margin = { top: 10, right: 10, bottom: 25, left: 50 }
-    const width = pnlChartRef.current.clientWidth - margin.left - margin.right
-    const height = pnlChartRef.current.clientHeight - margin.top - margin.bottom
-
-    const g = svg
-      .append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`)
-
-    const data = chartData
-
-    if (data.length === 0) return
-
-    // Use state bounds if available, otherwise auto-scale
-    const yExtent = d3.extent(data, d => d.pnl) as [number, number]
-    let yMin = pnlBounds.yMin ?? yExtent[0]
-    let yMax = pnlBounds.yMax ?? yExtent[1]
-
-    // Ensure a minimum range
-    if (yMin === yMax) {
-      const padding = Math.abs(yMin) * 0.1 || 100
-      yMin = yMin - padding
-      yMax = yMax + padding
-    }
-
-    const x = d3.scaleTime()
-      .domain(d3.extent(data, d => d.date) as [Date, Date])
-      .range([0, width])
-
-    const y = d3.scaleLinear()
-      .domain([yMin, yMax])
-      .nice()
-      .range([height, 0])
-
-    const zeroY = y(Math.max(yMin, Math.min(yMax, 0)))
-
-    // Clip paths for positive and negative regions
-    const clipIdPos = `pnl-clip-pos-${Date.now()}`
-    const clipIdNeg = `pnl-clip-neg-${Date.now()}`
-
-    const defs = g.append('defs')
-
-    // Positive clip (above zero line)
-    defs.append('clipPath')
-      .attr('id', clipIdPos)
-      .append('rect')
-      .attr('x', 0)
-      .attr('y', 0)
-      .attr('width', width)
-      .attr('height', zeroY)
-
-    // Negative clip (below zero line)
-    defs.append('clipPath')
-      .attr('id', clipIdNeg)
-      .append('rect')
-      .attr('x', 0)
-      .attr('y', zeroY)
-      .attr('width', width)
-      .attr('height', height - zeroY)
-
-    // Positive area (green) - from 0 up to positive values
-    const positiveArea = d3.area<ChartDataPoint>()
-      .x(d => x(d.date))
-      .y0(zeroY)
-      .y1(d => y(Math.max(0, Math.min(yMax, d.pnl))))
-      .curve(d3.curveMonotoneX)
-
-    // Negative area (red) - from 0 down to negative values
-    const negativeArea = d3.area<ChartDataPoint>()
-      .x(d => x(d.date))
-      .y0(zeroY)
-      .y1(d => y(Math.min(0, Math.max(yMin, d.pnl))))
-      .curve(d3.curveMonotoneX)
-
-    // Line
-    const line = d3.line<ChartDataPoint>()
-      .x(d => x(d.date))
-      .y(d => y(Math.max(yMin, Math.min(yMax, d.pnl))))
-      .curve(d3.curveMonotoneX)
-
-    // Draw positive area (green)
-    g.append('path')
-      .datum(data)
-      .attr('fill', 'rgba(16, 185, 129, 0.2)')
-      .attr('clip-path', `url(#${clipIdPos})`)
-      .attr('d', positiveArea)
-
-    // Draw negative area (red)
-    g.append('path')
-      .datum(data)
-      .attr('fill', 'rgba(239, 68, 68, 0.2)')
-      .attr('clip-path', `url(#${clipIdNeg})`)
-      .attr('d', negativeArea)
-
-    // Positive line (green) - clipped to positive region
-    g.append('path')
-      .datum(data)
-      .attr('fill', 'none')
-      .attr('stroke', '#10b981')
-      .attr('stroke-width', 1.5)
-      .attr('clip-path', `url(#${clipIdPos})`)
-      .attr('d', line)
-
-    // Negative line (red) - clipped to negative region
-    g.append('path')
-      .datum(data)
-      .attr('fill', 'none')
-      .attr('stroke', '#ef4444')
-      .attr('stroke-width', 1.5)
-      .attr('clip-path', `url(#${clipIdNeg})`)
-      .attr('d', line)
-
-    // Zero line
-    if (yMin < 0 && yMax > 0) {
-      g.append('line')
-        .attr('x1', 0)
-        .attr('x2', width)
-        .attr('y1', y(0))
-        .attr('y2', y(0))
-        .attr('stroke', '#64748b')
-        .attr('stroke-dasharray', '3,3')
-    }
-
-    // Axes
-    g.append('g')
-      .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(x).ticks(4).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
-      .selectAll('text')
-      .attr('fill', '#64748b')
-      .attr('font-size', '9px')
-
-    g.append('g')
-      .call(d3.axisLeft(y).ticks(4).tickFormat(d => {
-        const val = d as number
-        if (Math.abs(val) >= 1000) return `$${(val / 1000).toFixed(0)}K`
-        return `$${val.toFixed(0)}`
-      }))
-      .selectAll('text')
-      .attr('fill', '#64748b')
-      .attr('font-size', '9px')
-
-    svg.selectAll('.domain').attr('stroke', '#334155')
-    svg.selectAll('.tick line').attr('stroke', '#334155')
-
-    // Hover tooltip
-    const focus = g.append('g').style('display', 'none')
-
-    focus.append('line')
-      .attr('class', 'hover-line')
-      .attr('y1', 0)
-      .attr('y2', height)
-      .attr('stroke', '#94a3b8')
-      .attr('stroke-width', 1)
-      .attr('stroke-dasharray', '3,3')
-
-    focus.append('circle')
-      .attr('class', 'hover-circle')
-      .attr('r', 4)
-      .attr('fill', '#10b981')
-      .attr('stroke', '#fff')
-      .attr('stroke-width', 2)
-
-    const tooltip = focus.append('g').attr('class', 'tooltip-group')
-
-    tooltip.append('rect')
-      .attr('class', 'tooltip-bg')
-      .attr('fill', '#1e293b')
-      .attr('stroke', '#475569')
-      .attr('rx', 4)
-      .attr('ry', 4)
-
-    tooltip.append('text')
-      .attr('class', 'tooltip-date')
-      .attr('fill', '#94a3b8')
-      .attr('font-size', '9px')
-      .attr('text-anchor', 'middle')
-
-    tooltip.append('text')
-      .attr('class', 'tooltip-value')
-      .attr('fill', '#fff')
-      .attr('font-size', '11px')
-      .attr('font-weight', 'bold')
-      .attr('text-anchor', 'middle')
-
-    const bisect = d3.bisector<ChartDataPoint, Date>(d => d.date).left
-
-    g.append('rect')
-      .attr('class', 'overlay')
-      .attr('width', width)
-      .attr('height', height)
-      .attr('fill', 'none')
-      .attr('pointer-events', 'all')
-      .on('mouseover', () => focus.style('display', null))
-      .on('mouseout', () => focus.style('display', 'none'))
-      .on('mousemove', function(event) {
-        const [mouseX] = d3.pointer(event)
-        const x0 = x.invert(mouseX)
-        const i = bisect(data, x0, 1)
-        const d0 = data[i - 1]
-        const d1 = data[i]
-        if (!d0) return
-
-        const d = d1 && (x0.getTime() - d0.date.getTime() > d1.date.getTime() - x0.getTime()) ? d1 : d0
-        const xPos = x(d.date)
-        const yPos = y(Math.max(yMin, Math.min(yMax, d.pnl)))
-
-        // Update circle color based on value
-        const pointColor = d.pnl >= 0 ? '#10b981' : '#7a2323ff'
-        focus.select('.hover-circle').attr('fill', pointColor)
-
-        focus.select('.hover-line').attr('x1', xPos).attr('x2', xPos)
-        focus.select('.hover-circle').attr('cx', xPos).attr('cy', yPos)
-
-        const dateStr = d3.timeFormat('%b %d, %Y')(d.date)
-        const valueStr = (d.pnl >= 0 ? '+' : '') + new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: 'USD',
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 0
-        }).format(d.pnl)
-
-        const tooltipGroup = focus.select('.tooltip-group')
-        const dateText = tooltipGroup.select('.tooltip-date').text(dateStr)
-        const valueText = tooltipGroup.select('.tooltip-value').text(valueStr)
-
-        const dateBBox = (dateText.node() as SVGTextElement).getBBox()
-        const valueBBox = (valueText.node() as SVGTextElement).getBBox()
-        const tooltipWidth = Math.max(dateBBox.width, valueBBox.width) + 16
-        const tooltipHeight = 32
-
-        let tooltipX = xPos
-        const tooltipY = yPos - tooltipHeight - 10
-
-        if (xPos + tooltipWidth / 2 > width) {
-          tooltipX = width - tooltipWidth / 2
-        } else if (xPos - tooltipWidth / 2 < 0) {
-          tooltipX = tooltipWidth / 2
-        }
-
-        tooltipGroup.attr('transform', `translate(${tooltipX}, ${Math.max(0, tooltipY)})`)
-
-        tooltipGroup.select('.tooltip-bg')
-          .attr('x', -tooltipWidth / 2)
-          .attr('y', 0)
-          .attr('width', tooltipWidth)
-          .attr('height', tooltipHeight)
-
-        tooltipGroup.select('.tooltip-date')
-          .attr('x', 0)
-          .attr('y', 11)
-
-        tooltipGroup.select('.tooltip-value')
-          .attr('x', 0)
-          .attr('y', 26)
-      })
-
-  }, [chartData, pnlBounds, chartResize])
 
   // Compute running totals and metrics for each entry
   const computedEntries = useMemo(() => {
@@ -1067,6 +443,500 @@ export function FundDetail() {
   const integrityIssueCount = useMemo(() => {
     return computedEntries.filter(e => e.hasIntegrityIssue).length
   }, [computedEntries])
+
+  // Draw Fund APY chart (shows both Liquid and Realized APY)
+  useEffect(() => {
+    if (!apyChartRef.current || computedEntries.length === 0) return
+
+    const svg = d3.select(apyChartRef.current)
+    svg.selectAll('*').remove()
+
+    const margin = { top: 10, right: 10, bottom: 25, left: 50 }
+    const width = apyChartRef.current.clientWidth - margin.left - margin.right
+    const height = apyChartRef.current.clientHeight - margin.top - margin.bottom
+
+    const g = svg
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`)
+
+    // Derive chart data from computedEntries
+    const chartData: ChartDataPoint[] = computedEntries.map(e => ({
+      date: new Date(e.date),
+      liquidPnl: e.liquidPnl,
+      realizedPnl: e.realized,
+      liquidApy: e.liquidApy,
+      realizedApy: e.realizedApy
+    }))
+
+    const data = chartData.filter(d => isFinite(d.liquidApy) && isFinite(d.realizedApy))
+
+    if (data.length === 0) return
+
+    // Use state bounds if available, otherwise auto-scale with reasonable limits
+    const allApyValues = data.flatMap(d => [d.liquidApy, d.realizedApy])
+    const yExtent = d3.extent(allApyValues) as [number, number]
+    let yMin = apyBounds.yMin ?? Math.max(-2, yExtent[0])
+    let yMax = apyBounds.yMax ?? Math.min(2, yExtent[1])
+
+    // Ensure a minimum range to avoid collapsed scale when all values are the same
+    if (yMin === yMax) {
+      const padding = Math.abs(yMin) * 0.1 || 0.1
+      yMin = yMin - padding
+      yMax = yMax + padding
+    }
+
+    const x = d3.scaleTime()
+      .domain(d3.extent(data, d => d.date) as [Date, Date])
+      .range([0, width])
+
+    const y = d3.scaleLinear()
+      .domain([yMin, yMax])
+      .nice()
+      .range([height, 0])
+
+    // Clip path for chart area
+    const clipId = `apy-clip-${Date.now()}`
+    g.append('defs')
+      .append('clipPath')
+      .attr('id', clipId)
+      .append('rect')
+      .attr('x', 0)
+      .attr('y', 0)
+      .attr('width', width)
+      .attr('height', height)
+
+    // Liquid APY line (orange - prominent)
+    const liquidLine = d3.line<ChartDataPoint>()
+      .x(d => x(d.date))
+      .y(d => y(Math.max(yMin, Math.min(yMax, d.liquidApy))))
+      .curve(d3.curveMonotoneX)
+
+    g.append('path')
+      .datum(data)
+      .attr('fill', 'none')
+      .attr('stroke', '#f59e0b')
+      .attr('stroke-width', 2)
+      .attr('clip-path', `url(#${clipId})`)
+      .attr('d', liquidLine)
+
+    // Realized APY line (green - secondary)
+    const realizedLine = d3.line<ChartDataPoint>()
+      .x(d => x(d.date))
+      .y(d => y(Math.max(yMin, Math.min(yMax, d.realizedApy))))
+      .curve(d3.curveMonotoneX)
+
+    g.append('path')
+      .datum(data)
+      .attr('fill', 'none')
+      .attr('stroke', '#10b981')
+      .attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', '4,2')
+      .attr('clip-path', `url(#${clipId})`)
+      .attr('d', realizedLine)
+
+    // Zero line
+    if (yMin < 0 && yMax > 0) {
+      g.append('line')
+        .attr('x1', 0)
+        .attr('x2', width)
+        .attr('y1', y(0))
+        .attr('y2', y(0))
+        .attr('stroke', '#64748b')
+        .attr('stroke-dasharray', '3,3')
+    }
+
+    // Axes
+    g.append('g')
+      .attr('transform', `translate(0,${height})`)
+      .call(d3.axisBottom(x).ticks(4).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
+      .selectAll('text')
+      .attr('fill', '#64748b')
+      .attr('font-size', '9px')
+
+    g.append('g')
+      .call(d3.axisLeft(y).ticks(4).tickFormat(d => `${((d as number) * 100).toFixed(0)}%`))
+      .selectAll('text')
+      .attr('fill', '#64748b')
+      .attr('font-size', '9px')
+
+    svg.selectAll('.domain').attr('stroke', '#334155')
+    svg.selectAll('.tick line').attr('stroke', '#334155')
+
+    // Hover tooltip elements
+    const focus = g.append('g').style('display', 'none')
+
+    focus.append('line')
+      .attr('class', 'hover-line')
+      .attr('y1', 0)
+      .attr('y2', height)
+      .attr('stroke', '#94a3b8')
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '3,3')
+
+    // Two circles for the two lines
+    focus.append('circle')
+      .attr('class', 'hover-circle-liquid')
+      .attr('r', 4)
+      .attr('fill', '#f59e0b')
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 2)
+
+    focus.append('circle')
+      .attr('class', 'hover-circle-realized')
+      .attr('r', 3)
+      .attr('fill', '#10b981')
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 1.5)
+
+    const tooltip = focus.append('g').attr('class', 'tooltip-group')
+
+    tooltip.append('rect')
+      .attr('class', 'tooltip-bg')
+      .attr('fill', '#1e293b')
+      .attr('stroke', '#475569')
+      .attr('rx', 4)
+      .attr('ry', 4)
+
+    tooltip.append('text')
+      .attr('class', 'tooltip-date')
+      .attr('fill', '#94a3b8')
+      .attr('font-size', '9px')
+      .attr('text-anchor', 'middle')
+
+    tooltip.append('text')
+      .attr('class', 'tooltip-liquid')
+      .attr('fill', '#f59e0b')
+      .attr('font-size', '10px')
+      .attr('text-anchor', 'middle')
+
+    tooltip.append('text')
+      .attr('class', 'tooltip-realized')
+      .attr('fill', '#10b981')
+      .attr('font-size', '10px')
+      .attr('text-anchor', 'middle')
+
+    const bisect = d3.bisector<ChartDataPoint, Date>(d => d.date).left
+
+    g.append('rect')
+      .attr('class', 'overlay')
+      .attr('width', width)
+      .attr('height', height)
+      .attr('fill', 'none')
+      .attr('pointer-events', 'all')
+      .on('mouseover', () => focus.style('display', null))
+      .on('mouseout', () => focus.style('display', 'none'))
+      .on('mousemove', function(event) {
+        const [mouseX] = d3.pointer(event)
+        const x0 = x.invert(mouseX)
+        const i = bisect(data, x0, 1)
+        const d0 = data[i - 1]
+        const d1 = data[i]
+        if (!d0) return
+
+        const d = d1 && (x0.getTime() - d0.date.getTime() > d1.date.getTime() - x0.getTime()) ? d1 : d0
+        const xPos = x(d.date)
+        const yPosLiquid = y(Math.max(yMin, Math.min(yMax, d.liquidApy)))
+        const yPosRealized = y(Math.max(yMin, Math.min(yMax, d.realizedApy)))
+
+        focus.select('.hover-line').attr('x1', xPos).attr('x2', xPos)
+        focus.select('.hover-circle-liquid').attr('cx', xPos).attr('cy', yPosLiquid)
+        focus.select('.hover-circle-realized').attr('cx', xPos).attr('cy', yPosRealized)
+
+        const dateStr = d3.timeFormat('%b %d, %Y')(d.date)
+        const liquidPct = d.liquidApy * 100
+        const realizedPct = d.realizedApy * 100
+        const liquidStr = `Liquid: ${liquidPct >= 0 ? '+' : ''}${liquidPct.toFixed(1)}%`
+        const realizedStr = `Realized: ${realizedPct >= 0 ? '+' : ''}${realizedPct.toFixed(1)}%`
+
+        const tooltipGroup = focus.select('.tooltip-group')
+        tooltipGroup.select('.tooltip-date').text(dateStr)
+        tooltipGroup.select('.tooltip-liquid').text(liquidStr)
+        tooltipGroup.select('.tooltip-realized').text(realizedStr)
+
+        const tooltipWidth = 100
+        const tooltipHeight = 46
+
+        let tooltipX = xPos
+        const tooltipY = Math.min(yPosLiquid, yPosRealized) - tooltipHeight - 10
+
+        if (xPos + tooltipWidth / 2 > width) {
+          tooltipX = width - tooltipWidth / 2
+        } else if (xPos - tooltipWidth / 2 < 0) {
+          tooltipX = tooltipWidth / 2
+        }
+
+        tooltipGroup.attr('transform', `translate(${tooltipX}, ${Math.max(0, tooltipY)})`)
+
+        tooltipGroup.select('.tooltip-bg')
+          .attr('x', -tooltipWidth / 2)
+          .attr('y', 0)
+          .attr('width', tooltipWidth)
+          .attr('height', tooltipHeight)
+
+        tooltipGroup.select('.tooltip-date')
+          .attr('x', 0)
+          .attr('y', 11)
+
+        tooltipGroup.select('.tooltip-liquid')
+          .attr('x', 0)
+          .attr('y', 25)
+
+        tooltipGroup.select('.tooltip-realized')
+          .attr('x', 0)
+          .attr('y', 39)
+      })
+
+  }, [computedEntries, apyBounds, chartResize])
+
+  // Draw P&L chart (shows both Liquid and Realized P&L)
+  useEffect(() => {
+    if (!pnlChartRef.current || computedEntries.length === 0) return
+
+    const svg = d3.select(pnlChartRef.current)
+    svg.selectAll('*').remove()
+
+    const margin = { top: 10, right: 10, bottom: 25, left: 50 }
+    const width = pnlChartRef.current.clientWidth - margin.left - margin.right
+    const height = pnlChartRef.current.clientHeight - margin.top - margin.bottom
+
+    const g = svg
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`)
+
+    // Derive chart data from computedEntries
+    const data: ChartDataPoint[] = computedEntries.map(e => ({
+      date: new Date(e.date),
+      liquidPnl: e.liquidPnl,
+      realizedPnl: e.realized,
+      liquidApy: e.liquidApy,
+      realizedApy: e.realizedApy
+    }))
+
+    if (data.length === 0) return
+
+    // Use state bounds if available, otherwise auto-scale
+    const allPnlValues = data.flatMap(d => [d.liquidPnl, d.realizedPnl])
+    const yExtent = d3.extent(allPnlValues) as [number, number]
+    let yMin = pnlBounds.yMin ?? yExtent[0]
+    let yMax = pnlBounds.yMax ?? yExtent[1]
+
+    // Ensure a minimum range
+    if (yMin === yMax) {
+      const padding = Math.abs(yMin) * 0.1 || 100
+      yMin = yMin - padding
+      yMax = yMax + padding
+    }
+
+    const x = d3.scaleTime()
+      .domain(d3.extent(data, d => d.date) as [Date, Date])
+      .range([0, width])
+
+    const y = d3.scaleLinear()
+      .domain([yMin, yMax])
+      .nice()
+      .range([height, 0])
+
+    // Clip path for chart area
+    const clipId = `pnl-clip-${Date.now()}`
+    g.append('defs')
+      .append('clipPath')
+      .attr('id', clipId)
+      .append('rect')
+      .attr('x', 0)
+      .attr('y', 0)
+      .attr('width', width)
+      .attr('height', height)
+
+    // Liquid P&L line (orange - prominent)
+    const liquidLine = d3.line<ChartDataPoint>()
+      .x(d => x(d.date))
+      .y(d => y(Math.max(yMin, Math.min(yMax, d.liquidPnl))))
+      .curve(d3.curveMonotoneX)
+
+    g.append('path')
+      .datum(data)
+      .attr('fill', 'none')
+      .attr('stroke', '#f59e0b')
+      .attr('stroke-width', 2)
+      .attr('clip-path', `url(#${clipId})`)
+      .attr('d', liquidLine)
+
+    // Realized P&L line (green - secondary)
+    const realizedLine = d3.line<ChartDataPoint>()
+      .x(d => x(d.date))
+      .y(d => y(Math.max(yMin, Math.min(yMax, d.realizedPnl))))
+      .curve(d3.curveMonotoneX)
+
+    g.append('path')
+      .datum(data)
+      .attr('fill', 'none')
+      .attr('stroke', '#10b981')
+      .attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', '4,2')
+      .attr('clip-path', `url(#${clipId})`)
+      .attr('d', realizedLine)
+
+    // Zero line
+    if (yMin < 0 && yMax > 0) {
+      g.append('line')
+        .attr('x1', 0)
+        .attr('x2', width)
+        .attr('y1', y(0))
+        .attr('y2', y(0))
+        .attr('stroke', '#64748b')
+        .attr('stroke-dasharray', '3,3')
+    }
+
+    // Axes
+    g.append('g')
+      .attr('transform', `translate(0,${height})`)
+      .call(d3.axisBottom(x).ticks(4).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
+      .selectAll('text')
+      .attr('fill', '#64748b')
+      .attr('font-size', '9px')
+
+    g.append('g')
+      .call(d3.axisLeft(y).ticks(4).tickFormat(d => {
+        const val = d as number
+        if (Math.abs(val) >= 1000) return `$${(val / 1000).toFixed(0)}K`
+        return `$${val.toFixed(0)}`
+      }))
+      .selectAll('text')
+      .attr('fill', '#64748b')
+      .attr('font-size', '9px')
+
+    svg.selectAll('.domain').attr('stroke', '#334155')
+    svg.selectAll('.tick line').attr('stroke', '#334155')
+
+    // Hover tooltip
+    const focus = g.append('g').style('display', 'none')
+
+    focus.append('line')
+      .attr('class', 'hover-line')
+      .attr('y1', 0)
+      .attr('y2', height)
+      .attr('stroke', '#94a3b8')
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '3,3')
+
+    // Two circles for the two lines
+    focus.append('circle')
+      .attr('class', 'hover-circle-liquid')
+      .attr('r', 4)
+      .attr('fill', '#f59e0b')
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 2)
+
+    focus.append('circle')
+      .attr('class', 'hover-circle-realized')
+      .attr('r', 3)
+      .attr('fill', '#10b981')
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 1.5)
+
+    const tooltip = focus.append('g').attr('class', 'tooltip-group')
+
+    tooltip.append('rect')
+      .attr('class', 'tooltip-bg')
+      .attr('fill', '#1e293b')
+      .attr('stroke', '#475569')
+      .attr('rx', 4)
+      .attr('ry', 4)
+
+    tooltip.append('text')
+      .attr('class', 'tooltip-date')
+      .attr('fill', '#94a3b8')
+      .attr('font-size', '9px')
+      .attr('text-anchor', 'middle')
+
+    tooltip.append('text')
+      .attr('class', 'tooltip-liquid')
+      .attr('fill', '#f59e0b')
+      .attr('font-size', '10px')
+      .attr('text-anchor', 'middle')
+
+    tooltip.append('text')
+      .attr('class', 'tooltip-realized')
+      .attr('fill', '#10b981')
+      .attr('font-size', '10px')
+      .attr('text-anchor', 'middle')
+
+    const bisect = d3.bisector<ChartDataPoint, Date>(d => d.date).left
+
+    g.append('rect')
+      .attr('class', 'overlay')
+      .attr('width', width)
+      .attr('height', height)
+      .attr('fill', 'none')
+      .attr('pointer-events', 'all')
+      .on('mouseover', () => focus.style('display', null))
+      .on('mouseout', () => focus.style('display', 'none'))
+      .on('mousemove', function(event) {
+        const [mouseX] = d3.pointer(event)
+        const x0 = x.invert(mouseX)
+        const i = bisect(data, x0, 1)
+        const d0 = data[i - 1]
+        const d1 = data[i]
+        if (!d0) return
+
+        const d = d1 && (x0.getTime() - d0.date.getTime() > d1.date.getTime() - x0.getTime()) ? d1 : d0
+        const xPos = x(d.date)
+        const yPosLiquid = y(Math.max(yMin, Math.min(yMax, d.liquidPnl)))
+        const yPosRealized = y(Math.max(yMin, Math.min(yMax, d.realizedPnl)))
+
+        focus.select('.hover-line').attr('x1', xPos).attr('x2', xPos)
+        focus.select('.hover-circle-liquid').attr('cx', xPos).attr('cy', yPosLiquid)
+        focus.select('.hover-circle-realized').attr('cx', xPos).attr('cy', yPosRealized)
+
+        const dateStr = d3.timeFormat('%b %d, %Y')(d.date)
+        const formatCurr = (v: number) => (v >= 0 ? '+' : '') + new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0
+        }).format(v)
+        const liquidStr = `Liquid: ${formatCurr(d.liquidPnl)}`
+        const realizedStr = `Realized: ${formatCurr(d.realizedPnl)}`
+
+        const tooltipGroup = focus.select('.tooltip-group')
+        tooltipGroup.select('.tooltip-date').text(dateStr)
+        tooltipGroup.select('.tooltip-liquid').text(liquidStr)
+        tooltipGroup.select('.tooltip-realized').text(realizedStr)
+
+        const tooltipWidth = 110
+        const tooltipHeight = 46
+
+        let tooltipX = xPos
+        const tooltipY = Math.min(yPosLiquid, yPosRealized) - tooltipHeight - 10
+
+        if (xPos + tooltipWidth / 2 > width) {
+          tooltipX = width - tooltipWidth / 2
+        } else if (xPos - tooltipWidth / 2 < 0) {
+          tooltipX = tooltipWidth / 2
+        }
+
+        tooltipGroup.attr('transform', `translate(${tooltipX}, ${Math.max(0, tooltipY)})`)
+
+        tooltipGroup.select('.tooltip-bg')
+          .attr('x', -tooltipWidth / 2)
+          .attr('y', 0)
+          .attr('width', tooltipWidth)
+          .attr('height', tooltipHeight)
+
+        tooltipGroup.select('.tooltip-date')
+          .attr('x', 0)
+          .attr('y', 11)
+
+        tooltipGroup.select('.tooltip-liquid')
+          .attr('x', 0)
+          .attr('y', 25)
+
+        tooltipGroup.select('.tooltip-realized')
+          .attr('x', 0)
+          .attr('y', 39)
+      })
+
+  }, [computedEntries, pnlBounds, chartResize])
 
   if (loading) {
     return (
@@ -1377,7 +1247,19 @@ export function FundDetail() {
                 {/* P&L Chart */}
                 <div className="bg-slate-700/50 rounded-lg p-3 flex flex-col h-full">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-white">P&L</h3>
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-sm font-semibold text-white">P&L</h3>
+                      <div className="flex gap-2">
+                        <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#f59e0b' }} />
+                          Liquid
+                        </span>
+                        <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                          <span className="w-2 h-0.5" style={{ backgroundColor: '#10b981' }} />
+                          Realized
+                        </span>
+                      </div>
+                    </div>
                     <ChartSettings bounds={pnlBounds} onChange={updatePnlBounds} />
                   </div>
                   <svg
@@ -1390,7 +1272,19 @@ export function FundDetail() {
                 {/* Fund APY Chart */}
                 <div className="bg-slate-700/50 rounded-lg p-3 flex flex-col h-full">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-white">APY</h3>
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-sm font-semibold text-white">APY</h3>
+                      <div className="flex gap-2">
+                        <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#f59e0b' }} />
+                          Liquid
+                        </span>
+                        <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                          <span className="w-2 h-0.5" style={{ backgroundColor: '#10b981' }} />
+                          Realized
+                        </span>
+                      </div>
+                    </div>
                     <ChartSettings bounds={apyBounds} onChange={updateApyBounds} isPercent />
                   </div>
                   <svg
@@ -1466,6 +1360,7 @@ export function FundDetail() {
             existingEntries={fund.entries.slice(0, editingEntry.index)}
             calculatedFundSize={editingEntry.calculatedFundSize}
             fundType={fund.config.fund_type}
+            manageCash={fund.config.manage_cash}
             onClose={() => setEditingEntry(null)}
             onUpdated={handleFundUpdate}
           />

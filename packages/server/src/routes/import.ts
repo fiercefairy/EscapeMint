@@ -124,6 +124,51 @@ interface CryptoStatementInfo {
 }
 
 // ============================================================================
+// Crypto Statement Filename Helpers
+// ============================================================================
+
+const MONTH_TO_NUM: Record<string, string> = {
+  january: '01', february: '02', march: '03', april: '04',
+  may: '05', june: '06', july: '07', august: '08',
+  september: '09', october: '10', november: '11', december: '12'
+}
+
+/**
+ * Convert "November 2025" or "November-2025" to "Crypto-Statement-2025-11.pdf"
+ */
+const monthYearToStatementFilename = (monthYear: string): string => {
+  const cleaned = monthYear.replace(/[-–—]/g, ' ').trim()
+  const match = cleaned.match(/^([A-Za-z]+)\s+(\d{4})$/)
+  if (!match || !match[1] || !match[2]) return `Crypto-Statement-unknown.pdf`
+  const month = match[1]
+  const year = match[2]
+  const mm = MONTH_TO_NUM[month.toLowerCase()] ?? '00'
+  return `Crypto-Statement-${year}-${mm}.pdf`
+}
+
+/**
+ * Parse both old format "November-2025-Robinhood-..." and new format "Crypto-Statement-2025-11.pdf"
+ * Returns display month/year like "November 2025"
+ */
+const parseStatementFilename = (filename: string): string => {
+  // New format: Crypto-Statement-YYYY-MM.pdf
+  const newMatch = filename.match(/^Crypto-Statement-(\d{4})-(\d{2})\.pdf$/)
+  if (newMatch) {
+    const [, year, mm] = newMatch
+    const monthName = Object.entries(MONTH_TO_NUM).find(([, num]) => num === mm)?.[0]
+    if (monthName) {
+      return `${monthName.charAt(0).toUpperCase()}${monthName.slice(1)} ${year}`
+    }
+  }
+  // Old format: Month-Year-Robinhood-...
+  const oldMatch = filename.match(/^([A-Za-z]+)-(\d{4})/)
+  if (oldMatch) {
+    return `${oldMatch[1]} ${oldMatch[2]}`
+  }
+  return filename
+}
+
+// ============================================================================
 // CSV Parsing (functional, no external deps)
 // ============================================================================
 
@@ -596,11 +641,16 @@ const fundExists = (fundId: string, funds: FundData[]): boolean => {
 /**
  * POST /import/robinhood/preview
  * Parse CSV and return preview with fund mappings.
+ *
+ * Options:
+ * - includeCashImpact: When true, generates CASH entries for all cash-affecting
+ *   transactions (BUY→WITHDRAW, SELL→DEPOSIT, DIVIDEND→DEPOSIT, etc.)
  */
 importRouter.post('/robinhood/preview', async (req, res, next) => {
-  const { csvContent, platform = 'robinhood' } = req.body as {
+  const { csvContent, platform = 'robinhood', includeCashImpact = false } = req.body as {
     csvContent?: string
     platform?: string
+    includeCashImpact?: boolean
   }
 
   if (!csvContent) {
@@ -615,6 +665,8 @@ importRouter.post('/robinhood/preview', async (req, res, next) => {
 
   // Load existing funds
   const funds = await readAllFunds(FUNDS_DIR).catch(() => [])
+  const cashFundId = `${platform.toLowerCase().replace(/-cash$/, '')}-cash`
+  const cashFundExists = fundExists(cashFundId, funds)
 
   // Parse and map transactions
   const transactions: ParsedTransaction[] = []
@@ -627,13 +679,46 @@ importRouter.post('/robinhood/preview', async (req, res, next) => {
     // Determine fund ID for trades, dividends, options, etc.
     let fundId: string | null = null
     let exists = false
+    let effectiveSymbol = parsed.symbol
 
     // Actions that should be associated with a symbol/fund
     const symbolActions: ParsedTransaction['action'][] = [
       'BUY', 'SELL', 'DIVIDEND', 'OPTION', 'STOCK_LENDING', 'SPLIT', 'MERGER', 'REINVEST', 'CRYPTO'
     ]
 
-    if (parsed.symbol && symbolActions.includes(action)) {
+    // Cash transactions (no symbol) should be routed to the cash fund
+    const cashActions: ParsedTransaction['action'][] = ['DEPOSIT', 'WITHDRAW', 'INTEREST']
+    const isCashTransaction = !parsed.symbol && cashActions.includes(action)
+
+    // Actions that affect cash balance (for includeCashImpact mode)
+    const cashImpactActions: ParsedTransaction['action'][] = [
+      'BUY', 'SELL', 'DIVIDEND', 'STOCK_LENDING', 'FEE'
+    ]
+
+    if (isCashTransaction) {
+      // Route to platform's cash fund (e.g., robinhood-cash)
+      fundId = cashFundId
+      exists = cashFundExists
+      effectiveSymbol = 'CASH'
+
+      // Track by CASH symbol
+      if (!bySymbol['CASH']) {
+        bySymbol['CASH'] = { count: 0, fundId, fundExists: exists }
+      }
+      bySymbol['CASH']!.count++
+
+      transactions.push({
+        date: parsed.activityDate,
+        action,
+        symbol: effectiveSymbol,
+        quantity: parsed.quantity,
+        price: parsed.price,
+        amount: parsed.amount || (parsed.quantity * parsed.price),
+        description: parsed.description,
+        fundId,
+        fundExists: exists
+      })
+    } else if (parsed.symbol && symbolActions.includes(action)) {
       fundId = buildFundId(platform, parsed.symbol)
       exists = fundExists(fundId, funds)
 
@@ -642,19 +727,63 @@ importRouter.post('/robinhood/preview', async (req, res, next) => {
         bySymbol[parsed.symbol] = { count: 0, fundId, fundExists: exists }
       }
       bySymbol[parsed.symbol]!.count++
-    }
 
-    transactions.push({
-      date: parsed.activityDate,
-      action,
-      symbol: parsed.symbol,
-      quantity: parsed.quantity,
-      price: parsed.price,
-      amount: parsed.amount || (parsed.quantity * parsed.price),
-      description: parsed.description,
-      fundId,
-      fundExists: exists
-    })
+      transactions.push({
+        date: parsed.activityDate,
+        action,
+        symbol: effectiveSymbol,
+        quantity: parsed.quantity,
+        price: parsed.price,
+        amount: parsed.amount || (parsed.quantity * parsed.price),
+        description: parsed.description,
+        fundId,
+        fundExists: exists
+      })
+
+      // If includeCashImpact, also create a CASH entry for cash-affecting transactions
+      if (includeCashImpact && cashImpactActions.includes(action) && parsed.amount > 0) {
+        // Convert action to cash impact: BUY→WITHDRAW, SELL/DIVIDEND/STOCK_LENDING→DEPOSIT
+        let cashAction: ParsedTransaction['action']
+        let cashDescription: string
+
+        if (action === 'BUY') {
+          cashAction = 'WITHDRAW'
+          cashDescription = `Trade: Buy ${parsed.symbol} (${parsed.quantity} @ $${parsed.price.toFixed(2)})`
+        } else if (action === 'SELL') {
+          cashAction = 'DEPOSIT'
+          cashDescription = `Trade: Sell ${parsed.symbol} (${parsed.quantity} @ $${parsed.price.toFixed(2)})`
+        } else if (action === 'DIVIDEND') {
+          cashAction = 'DEPOSIT'
+          cashDescription = `Dividend: ${parsed.symbol}`
+        } else if (action === 'STOCK_LENDING') {
+          cashAction = 'DEPOSIT'
+          cashDescription = `Stock Lending: ${parsed.symbol}`
+        } else if (action === 'FEE') {
+          cashAction = 'WITHDRAW'
+          cashDescription = `Fee: ${parsed.symbol} - ${parsed.description}`
+        } else {
+          continue // Skip other actions
+        }
+
+        // Track as CASH
+        if (!bySymbol['CASH']) {
+          bySymbol['CASH'] = { count: 0, fundId: cashFundId, fundExists: cashFundExists }
+        }
+        bySymbol['CASH']!.count++
+
+        transactions.push({
+          date: parsed.activityDate,
+          action: cashAction,
+          symbol: 'CASH',
+          quantity: 0,
+          price: 0,
+          amount: parsed.amount,
+          description: cashDescription,
+          fundId: cashFundId,
+          fundExists: cashFundExists
+        })
+      }
+    }
   }
 
   // Sort by date
@@ -685,9 +814,10 @@ importRouter.post('/robinhood/preview', async (req, res, next) => {
  * Apply confirmed transactions to existing funds.
  */
 importRouter.post('/robinhood/apply', async (req, res, next) => {
-  const { transactions, skipUnmatched = true } = req.body as {
+  const { transactions, skipUnmatched = true, clearBeforeImport = false } = req.body as {
     transactions?: ParsedTransaction[]
     skipUnmatched?: boolean
+    clearBeforeImport?: boolean
   }
 
   if (!transactions || !Array.isArray(transactions)) {
@@ -697,6 +827,27 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
   // Load existing funds to verify
   const funds = await readAllFunds(FUNDS_DIR).catch(() => [])
   const fundMap = new Map(funds.map(f => [f.id, f]))
+
+  // If clearBeforeImport, clear all entries from target funds first
+  if (clearBeforeImport) {
+    const targetFundIds = new Set(transactions.map(tx => tx.fundId).filter(Boolean))
+    for (const fundId of targetFundIds) {
+      const fund = fundMap.get(fundId!)
+      if (fund) {
+        // Write empty entries to clear the fund
+        const filePath = join(FUNDS_DIR, `${fundId}.tsv`)
+        // Re-read fund to get config, then write with empty entries
+        const existingFund = funds.find(f => f.id === fundId)
+        if (existingFund) {
+          // Import writeFund from storage
+          const { writeFund } = await import('@escapemint/storage')
+          await writeFund(filePath, { ...existingFund, entries: [] })
+          // Update the map with cleared entries
+          fundMap.set(fundId!, { ...existingFund, entries: [] })
+        }
+      }
+    }
+  }
 
   const result: ImportResult = {
     applied: 0,
@@ -725,7 +876,7 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
     // Convert to FundEntry
     const entry: FundEntry = {
       date: tx.date,
-      value: 0, // Will need to be updated with current market value
+      value: 0, // Will be updated for cash funds
       notes: `Imported from Robinhood: ${tx.description}`
     }
 
@@ -744,15 +895,25 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
       entry.amount = tx.amount
     } else if (tx.action === 'WITHDRAW') {
       entry.action = 'WITHDRAW'
-      entry.amount = tx.amount
+      entry.amount = Math.abs(tx.amount) // Ensure positive for withdraw
     }
 
-    // Check for duplicate (same date, action, amount)
-    const isDuplicate = fund.entries.some(e =>
-      e.date === entry.date &&
-      e.action === entry.action &&
-      e.amount === entry.amount
-    )
+    // Check for duplicate based on transaction type
+    let isDuplicate = false
+    if (tx.action === 'INTEREST') {
+      // For interest, check date and cash_interest amount
+      isDuplicate = fund.entries.some(e =>
+        e.date === entry.date &&
+        e.cash_interest === entry.cash_interest
+      )
+    } else {
+      // For other actions, check date, action, and amount
+      isDuplicate = fund.entries.some(e =>
+        e.date === entry.date &&
+        e.action === entry.action &&
+        e.amount === entry.amount
+      )
+    }
 
     if (isDuplicate) {
       result.skipped++
@@ -768,6 +929,51 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
 
     if (appendResult !== null) {
       result.applied++
+    }
+  }
+
+  // Post-process: Update running balances for cash funds
+  if (result.applied > 0) {
+    const cashFundIds = new Set(
+      transactions
+        .filter(tx => tx.fundId?.endsWith('-cash'))
+        .map(tx => tx.fundId!)
+    )
+
+    for (const cashFundId of cashFundIds) {
+      const filePath = join(FUNDS_DIR, `${cashFundId}.tsv`)
+      // Re-read the fund to get all entries including newly added ones
+      const { readFund, writeFund } = await import('@escapemint/storage')
+      const updatedFund = await readFund(filePath).catch(() => null)
+
+      if (updatedFund && updatedFund.entries.length > 0) {
+        // Sort entries by date
+        updatedFund.entries.sort((a, b) => a.date.localeCompare(b.date))
+
+        // Calculate running balance and update value/fund_size fields
+        let runningBalance = 0
+        for (const entry of updatedFund.entries) {
+          if (entry.action === 'DEPOSIT' && entry.amount) {
+            runningBalance += entry.amount
+          } else if (entry.action === 'WITHDRAW' && entry.amount) {
+            runningBalance -= entry.amount
+          }
+          if (entry.cash_interest) {
+            runningBalance += entry.cash_interest
+          }
+          if (entry.expense) {
+            runningBalance -= entry.expense
+          }
+
+          // Set value, cash, and fund_size to the running balance
+          entry.value = Math.round(runningBalance * 100) / 100
+          entry.cash = entry.value
+          entry.fund_size = entry.value
+        }
+
+        // Write back the updated fund
+        await writeFund(filePath, updatedFund)
+      }
     }
   }
 
@@ -1476,21 +1682,25 @@ importRouter.get('/archive/:platform', async (req, res) => {
   let oldestDate = ''
   let newestDate = ''
 
+  // Track cash transactions separately (deposit, withdrawal, interest without symbol)
+  const cashTypes = ['deposit', 'withdrawal', 'interest']
+
   for (const tx of archive.transactions) {
     // By type
     byType[tx.type] = (byType[tx.type] ?? 0) + 1
     if (tx.type === 'other') unknownCount++
 
-    // By symbol
-    if (tx.symbol) {
-      if (!bySymbol[tx.symbol]) {
-        bySymbol[tx.symbol] = { count: 0, types: [], totalAmount: 0 }
+    // By symbol - or CASH for cash transactions without symbol
+    const effectiveSymbol = tx.symbol || (cashTypes.includes(tx.type) ? 'CASH' : null)
+    if (effectiveSymbol) {
+      if (!bySymbol[effectiveSymbol]) {
+        bySymbol[effectiveSymbol] = { count: 0, types: [], totalAmount: 0 }
       }
-      bySymbol[tx.symbol]!.count++
-      if (!bySymbol[tx.symbol]!.types.includes(tx.type)) {
-        bySymbol[tx.symbol]!.types.push(tx.type)
+      bySymbol[effectiveSymbol]!.count++
+      if (!bySymbol[effectiveSymbol]!.types.includes(tx.type)) {
+        bySymbol[effectiveSymbol]!.types.push(tx.type)
       }
-      bySymbol[tx.symbol]!.totalAmount += tx.amount
+      bySymbol[effectiveSymbol]!.totalAmount += tx.amount
     }
 
     // By year
@@ -1864,13 +2074,13 @@ importRouter.post('/robinhood/scrape', async (req, res, next) => {
   const funds = await readAllFunds(FUNDS_DIR).catch(() => [])
 
   const transactions: ParsedTransaction[] = archive.transactions.map(tx => {
-    // For M1 cash transactions (interest, deposit, withdrawal), route to the platform's cash fund
-    // These don't have a symbol but should map to m1-cash fund
-    const isM1CashTransaction = platform === 'm1-cash' &&
-      ['interest', 'deposit', 'withdrawal'].includes(tx.type)
+    // For cash transactions (interest, deposit, withdrawal) without a symbol,
+    // route to the platform's cash fund (e.g., robinhood-cash, m1-cash)
+    const isCashTransaction = !tx.symbol && ['interest', 'deposit', 'withdrawal'].includes(tx.type)
+    const cashFundId = `${platform.toLowerCase().replace(/-cash$/, '')}-cash`
 
-    const fundId = isM1CashTransaction
-      ? 'm1-cash'
+    const fundId = isCashTransaction
+      ? cashFundId
       : (tx.symbol ? buildFundId(platform, tx.symbol) : null)
     const exists = fundId ? fundExists(fundId, funds) : false
 
@@ -1896,7 +2106,7 @@ importRouter.post('/robinhood/scrape', async (req, res, next) => {
     return {
       date: tx.date,
       action: actionMap[tx.type] ?? 'OTHER',
-      symbol: tx.symbol ?? '',
+      symbol: tx.symbol || (isCashTransaction ? 'CASH' : ''),
       quantity: tx.shares ?? 0,
       price: tx.pricePerShare ?? 0,
       amount: tx.amount,
@@ -2155,20 +2365,26 @@ importRouter.get('/crypto/statements', async (_req, res, next) => {
   const existingFiles: string[] = await readdir(CRYPTO_STATEMENTS_DIR).catch(() => [] as string[])
 
   // Extract statement links
-  const statements: CryptoStatementInfo[] = await page.evaluate(() => {
+  const statementsRaw = await page.evaluate(() => {
     const links = document.querySelectorAll('a[download*="Robinhood Crypto Account Statement"]')
     return Array.from(links).map(link => {
       const downloadAttr = link.getAttribute('download') ?? ''
       // Extract month/year from download attribute like "November 2025 – Robinhood Crypto Account Statement"
       const monthYearMatch = downloadAttr.match(/^([A-Za-z]+\s+\d{4})/)
       return {
-        filename: downloadAttr.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '-') + '.pdf',
         monthYear: monthYearMatch?.[1] ?? downloadAttr,
-        downloadUrl: link.getAttribute('href') ?? '',
-        downloaded: false
+        downloadUrl: link.getAttribute('href') ?? ''
       }
     })
   })
+
+  // Convert to CryptoStatementInfo with new filename format
+  const statements: CryptoStatementInfo[] = statementsRaw.map(s => ({
+    filename: monthYearToStatementFilename(s.monthYear),
+    monthYear: s.monthYear,
+    downloadUrl: s.downloadUrl,
+    downloaded: false
+  }))
 
   // Mark which ones are already downloaded
   for (const stmt of statements) {
@@ -2268,7 +2484,10 @@ importRouter.get('/crypto/download-stream', async (req, res) => {
     const link = statementLinks[i]
     if (!link) continue
     const downloadAttr = await link.getAttribute('download') ?? ''
-    const filename = downloadAttr.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '-') + '.pdf'
+    // Extract month/year like "November 2025" from "November 2025 – Robinhood Crypto Account Statement"
+    const monthYearMatch = downloadAttr.match(/^([A-Za-z]+\s+\d{4})/)
+    const monthYear = monthYearMatch?.[1] ?? downloadAttr
+    const filename = monthYearToStatementFilename(monthYear)
 
     // Skip if already downloaded (unless all=true)
     if (all !== 'true' && existingFiles.includes(filename)) {
@@ -2336,16 +2555,15 @@ importRouter.get('/crypto/local-statements', async (_req, res) => {
 
   const statements = files
     .filter(f => f.endsWith('.pdf'))
-    .map(filename => {
-      // Extract month/year from filename like "November-2025-Robinhood-Crypto-Account-Statement.pdf"
-      const monthYearMatch = filename.match(/^([A-Za-z]+-\d{4})/)
-      return {
-        filename,
-        monthYear: monthYearMatch?.[1]?.replace('-', ' ') ?? filename,
-        path: join(CRYPTO_STATEMENTS_DIR, filename)
-      }
+    .map(filename => ({
+      filename,
+      monthYear: parseStatementFilename(filename),
+      path: join(CRYPTO_STATEMENTS_DIR, filename)
+    }))
+    .sort((a, b) => {
+      // Sort by filename for chronological order (Crypto-Statement-YYYY-MM.pdf sorts correctly)
+      return b.filename.localeCompare(a.filename)
     })
-    .sort((a, b) => b.monthYear.localeCompare(a.monthYear))
 
   res.json({
     count: statements.length,

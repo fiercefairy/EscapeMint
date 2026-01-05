@@ -165,37 +165,18 @@ export function EditFundConfigModal({ fundId, fundPlatform, fundTicker, config, 
             </p>
           )}
 
-          {/* Status, Fund Size, and Start Date */}
-          <div className="grid grid-cols-3 gap-4">
+          {/* Status and Start Date - Fund Size is tracked in entries, not config */}
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm text-slate-400 mb-1">Status</label>
               <select
                 value={formData.status}
-                onChange={e => {
-                  const newStatus = e.target.value as FundStatus
-                  // Auto-set fund_size to 0 when marking as closed
-                  if (newStatus === 'closed' && formData.fund_size_usd > 0) {
-                    setFormData({ ...formData, status: newStatus, fund_size_usd: 0 })
-                  } else {
-                    setFormData({ ...formData, status: newStatus })
-                  }
-                }}
+                onChange={e => setFormData({ ...formData, status: e.target.value as FundStatus })}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
               >
                 <option value="active">Active</option>
                 <option value="closed">Closed</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Fund Size ($)</label>
-              <input
-                type="number"
-                value={formData.fund_size_usd}
-                onChange={e => setFormData({ ...formData, fund_size_usd: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                step="100"
-                required
-              />
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Start Date</label>
@@ -208,11 +189,6 @@ export function EditFundConfigModal({ fundId, fundPlatform, fundTicker, config, 
               />
             </div>
           </div>
-          {formData.status === 'closed' && formData.fund_size_usd > 0 && (
-            <p className="text-xs text-amber-400 -mt-2">
-              Closed funds should have a fund size of $0
-            </p>
-          )}
 
           {/* Target APY and Interval */}
           <div className="grid grid-cols-2 gap-4">

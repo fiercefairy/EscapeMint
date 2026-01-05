@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { updateFund, deleteFund, notifyFundsChanged, type FundConfig, type FundStatus, type FundType } from '../api/funds'
+import { updateFund, deleteFund, syncFromSubfunds, notifyFundsChanged, type FundConfig, type FundStatus, type FundType } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
 
 interface EditFundPanelProps {
@@ -22,6 +22,7 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [platforms, setPlatforms] = useState<Platform[]>([])
   const [selectedPlatform, setSelectedPlatform] = useState(fundPlatform.toLowerCase())
@@ -131,6 +132,26 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
     }
   }
 
+  const handleSyncFromSubfunds = async () => {
+    setSyncing(true)
+    const result = await syncFromSubfunds(fundId)
+
+    if (result.error) {
+      toast.error(result.error)
+    } else if (result.data) {
+      const { added, skipped, finalBalance, subFundsSynced } = result.data
+      if (added > 0) {
+        toast.success(`Synced ${added} entries from ${subFundsSynced.length} sub-funds. Balance: $${finalBalance.toFixed(2)}`)
+      } else if (skipped > 0) {
+        toast.info(`No new entries to sync (${skipped} already existed)`)
+      } else {
+        toast.info('No trading activity found in sub-funds')
+      }
+      onUpdated()
+    }
+    setSyncing(false)
+  }
+
   return (
     <>
       {/* Backdrop */}
@@ -215,37 +236,18 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
             </p>
           )}
 
-          {/* Status, Fund Size, Start Date */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* Status and Start Date - Fund Size is tracked in entries, not config */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-slate-400 mb-1">Status</label>
               <select
                 value={formData.status}
-                onChange={e => {
-                  const newStatus = e.target.value as FundStatus
-                  if (newStatus === 'closed' && formData.fund_size_usd > 0) {
-                    setFormData({ ...formData, status: newStatus, fund_size_usd: 0 })
-                  } else {
-                    setFormData({ ...formData, status: newStatus })
-                  }
-                }}
+                onChange={e => setFormData({ ...formData, status: e.target.value as FundStatus })}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
               >
                 <option value="active">Active</option>
                 <option value="closed">Closed</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">{isCashFund ? 'Balance ($)' : 'Fund Size ($)'}</label>
-              <input
-                type="number"
-                value={formData.fund_size_usd}
-                onChange={e => setFormData({ ...formData, fund_size_usd: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                step="100"
-                min="0"
-                required
-              />
             </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1">Start Date</label>
@@ -258,11 +260,6 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
               />
             </div>
           </div>
-          {formData.status === 'closed' && formData.fund_size_usd > 0 && (
-            <p className="text-xs text-amber-400 -mt-3">
-              Closed funds should have a fund size of $0
-            </p>
-          )}
 
           {/* Cash Fund: Cash APY section */}
           {isCashFund && (
@@ -522,6 +519,25 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
                 </div>
               </div>
             </>
+          )}
+
+          {/* Sync from Sub-funds (Cash funds only) */}
+          {isCashFund && (
+            <div className="border border-blue-600/30 rounded p-3 bg-blue-900/10">
+              <p className="text-sm text-white font-medium mb-2">Sync Trading Activity</p>
+              <p className="text-xs text-slate-400 mb-3">
+                Import BUY/SELL activity from related sub-funds (e.g., {fundPlatform.toLowerCase()}-btc, {fundPlatform.toLowerCase()}-eth).
+                BUYs become withdrawals, SELLs become deposits.
+              </p>
+              <button
+                type="button"
+                onClick={handleSyncFromSubfunds}
+                disabled={syncing}
+                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                {syncing ? 'Syncing...' : 'Sync from Sub-funds'}
+              </button>
+            </div>
           )}
 
           {/* Delete Section */}

@@ -11,11 +11,12 @@ interface EditEntryModalProps {
   existingEntries?: FundEntry[]
   calculatedFundSize?: number | undefined
   fundType?: FundType
+  manageCash?: boolean
   onClose: () => void
   onUpdated: (fund?: FundDetail) => void
 }
 
-export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existingEntries = [], calculatedFundSize, fundType = 'stock', onClose, onUpdated }: EditEntryModalProps) {
+export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existingEntries = [], calculatedFundSize, fundType = 'stock', manageCash = true, onClose, onUpdated }: EditEntryModalProps) {
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -81,6 +82,7 @@ export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existing
             baseFundSize={baseFundSize}
             showFundSizeAdjustment={true}
             fundType={fundType}
+            manageCash={manageCash}
           />
 
           {/* Buttons */}

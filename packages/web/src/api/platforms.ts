@@ -64,12 +64,23 @@ export async function renamePlatform(id: string, newId: string, newName?: string
 export interface PlatformFundMetrics {
   id: string
   ticker: string
+  fundType: string
   status: string
   fundSize: number
   currentValue: number
-  gainUsd: number
-  gainPct: number
+  cash: number
+  startInput: number
+  daysActive: number
+  dividends: number
+  expenses: number
+  cashInterest: number
+  unrealized: number
+  realized: number
+  liquidPnl: number
+  realizedAPY: number
+  liquidAPY: number
   entries: number
+  audited?: string
 }
 
 export interface CashInterestHistory {
@@ -88,13 +99,17 @@ export interface PlatformMetrics {
   totalDividends: number
   totalExpenses: number
   totalCashInterest: number
+  totalRealized: number
+  totalUnrealized: number
   totalGainUsd: number
   totalGainPct: number
-  realizedAPY: number
   activeFunds: number
   closedFunds: number
   cashInterestHistory: CashInterestHistory[]
   funds: PlatformFundMetrics[]
+  // Table configuration
+  fundsColumnOrder?: string[]
+  fundsVisibleColumns?: string[]
 }
 
 export async function fetchPlatformMetrics(id: string): Promise<ApiResult<PlatformMetrics>> {
@@ -171,6 +186,28 @@ export async function disableCashTracking(platformId: string, targetFundId?: str
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: { message: 'Failed to disable cash tracking' } }))
     return { error: error.error?.message ?? 'Failed to disable cash tracking' }
+  }
+  const data = await response.json()
+  return { data }
+}
+
+export interface PlatformConfigUpdate {
+  funds_column_order?: string[]
+  funds_visible_columns?: string[]
+  color?: string
+  url?: string
+  notes?: string
+}
+
+export async function updatePlatformConfig(platformId: string, config: PlatformConfigUpdate): Promise<ApiResult<{ success: boolean }>> {
+  const response = await fetch(`${API_BASE}/platforms/${platformId}/config`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config)
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Failed to update platform config' } }))
+    return { error: error.error?.message ?? 'Failed to update platform config' }
   }
   const data = await response.json()
   return { data }

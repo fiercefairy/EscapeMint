@@ -3,10 +3,11 @@ import { join } from 'node:path'
 import { readFile, writeFile, rename, mkdir, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { v4 as uuidv4 } from 'uuid'
-import { readAllFunds, writeFund, updateFundConfig, entriesToTrades, entriesToDividends, entriesToExpenses, entriesToCashInterest } from '@escapemint/storage'
+import { readAllFunds, writeFund, updateFundConfig, entriesToCashInterest } from '@escapemint/storage'
 import type { FundData, FundEntry } from '@escapemint/storage'
 import type { SubFundConfig } from '@escapemint/engine'
 import { badRequest, notFound } from '../middleware/error-handler.js'
+import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
 
 export const platformsRouter = Router()
 
@@ -29,6 +30,10 @@ interface PlatformConfig {
   notes?: string
   /** When true, platform manages a shared cash pool via a {platform}-cash fund */
   manage_cash?: boolean
+  /** Column order for funds table */
+  funds_column_order?: string[]
+  /** Visible columns for funds table */
+  funds_visible_columns?: string[]
 }
 
 interface Platform extends PlatformConfig {
@@ -225,6 +230,8 @@ platformsRouter.put('/:id/rename', async (req, res, next) => {
 
 /**
  * GET /platforms/:id/metrics - Get aggregate metrics for a platform
+ * Uses computeFundFinalMetrics to calculate each fund's metrics once,
+ * then aggregates for platform totals.
  */
 platformsRouter.get('/:id/metrics', async (req, res, next) => {
   const platformId = req.params['id']?.toLowerCase() ?? ''
@@ -241,73 +248,51 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
     return next(notFound(`Platform '${platformId}' has no funds`))
   }
 
-  // Calculate aggregate metrics
+  // Build cash interest history
+  const interestByDate: Record<string, { balance: number; interest: number }> = {}
+
+  // Aggregate totals
   let totalFundSize = 0
   let totalValue = 0
   let totalCash = 0
-  let totalStartInput = 0
+  let totalInvested = 0
   let totalDividends = 0
   let totalExpenses = 0
   let totalCashInterest = 0
-  let totalRealizedGains = 0
+  let totalRealized = 0
+  let totalUnrealized = 0
+  let activeFunds = 0
+  let closedFunds = 0
 
-  // Build cash interest history from all entries
-  const interestByDate: Record<string, { balance: number; interest: number }> = {}
-
-  const fundMetrics: Array<{
+  // Fund metrics for the table
+  const fundMetricsForTable: Array<{
     id: string
     ticker: string
+    fundType: string
     status: string
     fundSize: number
     currentValue: number
-    gainUsd: number
-    gainPct: number
+    cash: number
+    startInput: number
+    daysActive: number
+    dividends: number
+    expenses: number
+    cashInterest: number
+    unrealized: number
+    realized: number
+    liquidPnl: number
+    realizedAPY: number
+    liquidAPY: number
     entries: number
+    audited?: string
   }> = []
 
   for (const fund of platformFunds) {
-    const latestEntry = fund.entries[fund.entries.length - 1]
-    // Use fund_size from latest entry instead of static config value
-    const fundSize = latestEntry?.fund_size ?? fund.config.fund_size_usd
     const isCashFund = fund.config.fund_type === 'cash'
+    const isClosed = fund.config.status === 'closed'
 
-    // For cash funds, calculate current balance from entries (value is PRE-ACTION)
-    // For trading funds, use the value field directly
-    let currentValue = latestEntry?.value ?? 0
-    let currentCash = latestEntry?.cash ?? 0
-
-    if (isCashFund && latestEntry) {
-      // Calculate post-action balance for cash funds
-      let cashBalance = 0
-      for (const entry of fund.entries) {
-        if (entry.action === 'DEPOSIT' && entry.amount) cashBalance += entry.amount
-        if (entry.action === 'WITHDRAW' && entry.amount) cashBalance -= entry.amount
-        if (entry.cash_interest) cashBalance += entry.cash_interest
-        if (entry.expense) cashBalance -= entry.expense
-      }
-      currentValue = round2(cashBalance)
-      currentCash = currentValue  // For cash funds, cash balance IS the value
-    }
-
-    totalFundSize += fundSize
-    totalValue += currentValue
-    totalCash += currentCash
-
-    // Calculate from entries
-    const trades = entriesToTrades(fund.entries)
-    const dividends = entriesToDividends(fund.entries)
-    const expenses = entriesToExpenses(fund.entries)
-    const cashInterest = entriesToCashInterest(fund.entries)
-
-    // Start input is sum of buys minus sells
-    const startInput = trades.reduce((sum, t) => sum + (t.type === 'buy' ? t.amount_usd : -t.amount_usd), 0)
-    totalStartInput += startInput
-
-    const fundDividends = dividends.reduce((sum, d) => sum + d.amount_usd, 0)
-    const fundExpenses = expenses.reduce((sum, e) => sum + e.amount_usd, 0)
-    totalDividends += fundDividends
-    totalExpenses += fundExpenses
-    totalCashInterest += cashInterest
+    // Compute metrics using shared utility
+    const metrics = computeFundFinalMetrics(fund)
 
     // Track cash interest history by date
     for (const entry of fund.entries) {
@@ -316,53 +301,58 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
           interestByDate[entry.date] = { balance: 0, interest: 0 }
         }
         interestByDate[entry.date]!.interest += entry.cash_interest
-        // For cash funds, use value as the balance; for trading funds, use cash field
         interestByDate[entry.date]!.balance += isCashFund ? (entry.value ?? 0) : (entry.cash ?? 0)
       }
     }
 
-    // Realized gains for closed funds or from sells
-    if (fund.config.status === 'closed') {
-      totalRealizedGains += currentValue - startInput + fundDividends - fundExpenses + cashInterest
+    // Aggregate totals (skip closed funds for size/value)
+    if (isClosed) {
+      closedFunds++
+    } else {
+      activeFunds++
+      totalFundSize += metrics.fundSize
+      totalValue += metrics.currentValue
+      totalCash += metrics.cash
+      totalInvested += metrics.totalInvested
     }
+    totalDividends += metrics.cumDividends
+    totalExpenses += metrics.cumExpenses
+    totalCashInterest += metrics.cumCashInterest
+    totalRealized += metrics.realized
+    totalUnrealized += metrics.unrealized
 
-    // Gain includes dividends, cash interest, minus expenses
-    const gainUsd = currentValue - startInput + fundDividends + cashInterest - fundExpenses
-    const gainPct = startInput > 0 ? gainUsd / startInput : 0
-
-    fundMetrics.push({
+    // Build fund metrics for table
+    fundMetricsForTable.push({
       id: fund.id,
       ticker: fund.ticker,
+      fundType: fund.config.fund_type ?? 'stock',
       status: fund.config.status ?? 'active',
-      fundSize,
-      currentValue,
-      gainUsd,
-      gainPct,
-      entries: fund.entries.length
+      fundSize: metrics.fundSize,
+      currentValue: metrics.currentValue,
+      cash: metrics.cash,
+      startInput: metrics.totalInvested,
+      daysActive: metrics.daysActive,
+      dividends: metrics.cumDividends,
+      expenses: metrics.cumExpenses,
+      cashInterest: metrics.cumCashInterest,
+      unrealized: metrics.unrealized,
+      realized: metrics.realized,
+      liquidPnl: metrics.liquidPnl,
+      realizedAPY: metrics.realizedApy,
+      liquidAPY: metrics.liquidApy,
+      entries: fund.entries.length,
+      ...(fund.config.audited && { audited: fund.config.audited })
     })
   }
+
+  // Calculate aggregate gains and APY
+  const totalLiquidPnl = totalRealized + totalUnrealized
+  const totalGainPct = totalInvested > 0 ? totalLiquidPnl / totalInvested : 0
 
   // Sort interest history by date
   const cashInterestHistory = Object.entries(interestByDate)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, data]) => ({ date, ...data }))
-
-  // Calculate aggregate P&L
-  const totalGainUsd = totalValue - totalStartInput + totalDividends - totalExpenses + totalCashInterest
-  const totalGainPct = totalStartInput > 0 ? totalGainUsd / totalStartInput : 0
-
-  // Calculate realized APY (simplified - assumes average of 1 year)
-  const avgDays = platformFunds.reduce((sum, f) => {
-    const firstEntry = f.entries[0]
-    const lastEntry = f.entries[f.entries.length - 1]
-    if (!firstEntry || !lastEntry) return sum
-    const days = Math.ceil((new Date(lastEntry.date).getTime() - new Date(firstEntry.date).getTime()) / (1000 * 60 * 60 * 24))
-    return sum + Math.max(1, days)
-  }, 0) / (platformFunds.length || 1)
-
-  const realizedAPY = avgDays > 0 && totalStartInput > 0
-    ? (totalGainUsd / totalStartInput) * (365 / avgDays)
-    : 0
 
   res.json({
     platformId,
@@ -370,18 +360,65 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
     totalFundSize,
     totalValue,
     totalCash,
-    totalStartInput,
+    totalStartInput: totalInvested,
     totalDividends,
     totalExpenses,
     totalCashInterest,
-    totalGainUsd,
+    totalRealized,
+    totalUnrealized,
+    totalGainUsd: totalLiquidPnl,
     totalGainPct,
-    realizedAPY,
-    activeFunds: fundMetrics.filter(f => f.status !== 'closed').length,
-    closedFunds: fundMetrics.filter(f => f.status === 'closed').length,
+    activeFunds,
+    closedFunds,
     cashInterestHistory,
-    funds: fundMetrics
+    funds: fundMetricsForTable,
+    // Table configuration
+    fundsColumnOrder: platformConfig?.funds_column_order,
+    fundsVisibleColumns: platformConfig?.funds_visible_columns
   })
+})
+
+/**
+ * PATCH /platforms/:id/config - Update platform configuration
+ */
+platformsRouter.patch('/:id/config', async (req, res, next) => {
+  const platformId = req.params['id']?.toLowerCase() ?? ''
+  const updates = req.body as Partial<PlatformConfig>
+
+  const data = await readPlatformsData().catch(() => ({} as PlatformsData))
+  let platformConfig = data[platformId]
+
+  if (!platformConfig) {
+    // Auto-create if platform has funds
+    const allFunds = await readAllFunds(FUNDS_DIR).catch(() => [])
+    const platformFunds = allFunds.filter(f => f.platform.toLowerCase() === platformId)
+    if (platformFunds.length === 0) {
+      return next(notFound(`Platform '${platformId}' not found`))
+    }
+    platformConfig = { name: platformId.charAt(0).toUpperCase() + platformId.slice(1) }
+  }
+
+  // Only allow updating specific fields
+  if (updates.funds_column_order !== undefined) {
+    platformConfig.funds_column_order = updates.funds_column_order
+  }
+  if (updates.funds_visible_columns !== undefined) {
+    platformConfig.funds_visible_columns = updates.funds_visible_columns
+  }
+  if (updates.color !== undefined) {
+    platformConfig.color = updates.color
+  }
+  if (updates.url !== undefined) {
+    platformConfig.url = updates.url
+  }
+  if (updates.notes !== undefined) {
+    platformConfig.notes = updates.notes
+  }
+
+  data[platformId] = platformConfig
+  await writePlatformsData(data)
+
+  res.json({ success: true, config: platformConfig })
 })
 
 /**
@@ -698,6 +735,7 @@ platformsRouter.post('/:id/enable-cash-tracking', async (req, res, next) => {
     input_max_usd: 0,
     max_at_pct: 0,
     min_profit_usd: 0,
+    cash_apy: 0.04,
     margin_apr: 0,
     margin_access_usd: latestMarginAvailable,
     accumulate: true,

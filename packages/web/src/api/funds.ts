@@ -510,3 +510,24 @@ export async function fetchHistory(includeTest = false): Promise<ApiResult<Histo
   const data = await response.json()
   return { data }
 }
+
+export interface SyncFromSubfundsResult {
+  success: boolean
+  message: string
+  added: number
+  skipped: number
+  subFundsSynced: string[]
+  finalBalance: number
+}
+
+export async function syncFromSubfunds(id: string): Promise<ApiResult<SyncFromSubfundsResult>> {
+  const response = await fetch(`${API_BASE}/funds/${id}/sync-from-subfunds`, {
+    method: 'POST'
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Failed to sync from sub-funds' } }))
+    return { error: error.error?.message ?? 'Failed to sync from sub-funds' }
+  }
+  const data = await response.json()
+  return { data }
+}

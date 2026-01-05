@@ -597,14 +597,14 @@ fundsRouter.post('/', async (req, res, next) => {
         fund_type: 'cash',
         status: 'active',
         fund_size_usd: 0,
-        target_apy: platformConfig.cash_apy ?? 0.04,
+        target_apy: 0.04,
         interval_days: 1,
         input_min_usd: 0,
         input_mid_usd: 0,
         input_max_usd: 0,
         max_at_pct: 0,
         min_profit_usd: 0,
-        cash_apy: platformConfig.cash_apy ?? 0.04,
+        cash_apy: 0.04,
         margin_apr: 0,
         margin_access_usd: 0,
         accumulate: true,
@@ -1347,5 +1347,159 @@ fundsRouter.post('/:id/interpolate', async (req, res, next) => {
     column,
     totalEntries: fund.entries.length,
     knownValues: knownIndices.length
+  })
+})
+
+/**
+ * POST /funds/:id/sync-from-subfunds
+ * For cash funds, sync trading activity from related sub-funds.
+ * Creates WITHDRAW entries for BUYs and DEPOSIT entries for SELLs/dividends.
+ */
+fundsRouter.post('/:id/sync-from-subfunds', async (req, res, next) => {
+  const { id } = req.params
+  const filePath = join(FUNDS_DIR, `${id}.tsv`)
+
+  // Read the cash fund
+  const cashFund = await readFund(filePath).catch(next)
+  if (!cashFund) {
+    return next(notFound('Fund'))
+  }
+
+  // Verify this is a cash fund
+  if (cashFund.config.fund_type !== 'cash') {
+    return res.status(400).json({
+      error: 'This endpoint is only for cash funds'
+    })
+  }
+
+  // Extract platform from fund ID (e.g., robinhood-cash -> robinhood)
+  const platform = cashFund.platform.toLowerCase()
+
+  // Find all sub-funds for this platform
+  const allFunds = await readAllFunds(FUNDS_DIR)
+  const subFunds = allFunds.filter(f =>
+    f.platform.toLowerCase() === platform &&
+    f.config.fund_type !== 'cash' &&
+    f.id !== id
+  )
+
+  if (subFunds.length === 0) {
+    return res.json({
+      success: true,
+      message: 'No sub-funds found for this platform',
+      added: 0,
+      skipped: 0
+    })
+  }
+
+  // Build a set of existing entries to avoid duplicates
+  // Key: date|action|amount|notes_prefix
+  const existingKeys = new Set<string>()
+  for (const entry of cashFund.entries) {
+    const notesPrefix = entry.notes?.substring(0, 50) ?? ''
+    const key = `${entry.date}|${entry.action}|${entry.amount?.toFixed(2)}|${notesPrefix}`
+    existingKeys.add(key)
+  }
+
+  const newEntries: FundEntry[] = []
+  let skipped = 0
+
+  for (const subFund of subFunds) {
+    for (const entry of subFund.entries) {
+      // Skip entries without amounts
+      if (!entry.amount || entry.amount === 0) continue
+
+      let cashEntry: FundEntry | null = null
+
+      if (entry.action === 'BUY') {
+        // BUY in sub-fund = WITHDRAW from cash
+        cashEntry = {
+          date: entry.date,
+          value: 0, // Will be recalculated
+          action: 'WITHDRAW',
+          amount: entry.amount,
+          notes: `Trade: Buy ${subFund.ticker.toUpperCase()} (${entry.shares ?? ''} shares @ $${entry.price ?? ''})`
+        }
+      } else if (entry.action === 'SELL') {
+        // SELL in sub-fund = DEPOSIT to cash
+        cashEntry = {
+          date: entry.date,
+          value: 0, // Will be recalculated
+          action: 'DEPOSIT',
+          amount: entry.amount,
+          notes: `Trade: Sell ${subFund.ticker.toUpperCase()} (${entry.shares ?? ''} shares @ $${entry.price ?? ''})`
+        }
+      }
+
+      // Also capture dividends
+      if (entry.dividend && entry.dividend > 0) {
+        const divEntry: FundEntry = {
+          date: entry.date,
+          value: 0,
+          action: 'DEPOSIT',
+          amount: entry.dividend,
+          notes: `Dividend: ${subFund.ticker.toUpperCase()}`
+        }
+        const divNotesPrefix = divEntry.notes?.substring(0, 50) ?? ''
+        const divKey = `${divEntry.date}|${divEntry.action}|${divEntry.amount?.toFixed(2)}|${divNotesPrefix}`
+        if (!existingKeys.has(divKey)) {
+          newEntries.push(divEntry)
+          existingKeys.add(divKey)
+        } else {
+          skipped++
+        }
+      }
+
+      if (cashEntry) {
+        const notesPrefix = cashEntry.notes?.substring(0, 50) ?? ''
+        const key = `${cashEntry.date}|${cashEntry.action}|${cashEntry.amount?.toFixed(2)}|${notesPrefix}`
+        if (!existingKeys.has(key)) {
+          newEntries.push(cashEntry)
+          existingKeys.add(key)
+        } else {
+          skipped++
+        }
+      }
+    }
+  }
+
+  // Add new entries to the fund
+  for (const entry of newEntries) {
+    cashFund.entries.push(entry)
+  }
+
+  // Sort entries by date
+  cashFund.entries.sort((a, b) => a.date.localeCompare(b.date))
+
+  // Recalculate running balance
+  let runningBalance = 0
+  for (const entry of cashFund.entries) {
+    if (entry.action === 'DEPOSIT' && entry.amount) {
+      runningBalance += entry.amount
+    } else if (entry.action === 'WITHDRAW' && entry.amount) {
+      runningBalance -= entry.amount
+    }
+    if (entry.cash_interest) {
+      runningBalance += entry.cash_interest
+    }
+    if (entry.expense) {
+      runningBalance -= entry.expense
+    }
+
+    entry.value = Math.round(runningBalance * 100) / 100
+    entry.cash = entry.value
+    entry.fund_size = entry.value
+  }
+
+  // Write back the updated fund
+  await writeFund(filePath, cashFund).catch(next)
+
+  res.json({
+    success: true,
+    message: `Synced trading activity from ${subFunds.length} sub-funds`,
+    added: newEntries.length,
+    skipped,
+    subFundsSynced: subFunds.map(f => f.id),
+    finalBalance: runningBalance
   })
 })

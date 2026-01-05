@@ -124,15 +124,19 @@ export interface BrowserStatus {
 /**
  * Preview Robinhood CSV import without applying changes.
  * Returns parsed transactions with fund mappings.
+ *
+ * @param includeCashImpact - When true, generates CASH entries for all cash-affecting
+ *   transactions (BUY→WITHDRAW, SELL→DEPOSIT, DIVIDEND→DEPOSIT, etc.)
  */
 export async function previewRobinhoodImport(
   csvContent: string,
-  platform = 'robinhood'
+  platform = 'robinhood',
+  includeCashImpact = false
 ): Promise<ApiResult<ImportPreview>> {
   const response = await fetch(`${API_BASE}/import/robinhood/preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ csvContent, platform })
+    body: JSON.stringify({ csvContent, platform, includeCashImpact })
   })
 
   if (!response.ok) {
@@ -149,12 +153,13 @@ export async function previewRobinhoodImport(
  */
 export async function applyRobinhoodImport(
   transactions: ParsedTransaction[],
-  skipUnmatched = true
+  skipUnmatched = true,
+  clearBeforeImport = false
 ): Promise<ApiResult<ImportResult>> {
   const response = await fetch(`${API_BASE}/import/robinhood/apply`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ transactions, skipUnmatched })
+    body: JSON.stringify({ transactions, skipUnmatched, clearBeforeImport })
   })
 
   if (!response.ok) {

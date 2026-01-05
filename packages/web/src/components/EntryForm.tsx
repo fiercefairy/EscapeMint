@@ -475,14 +475,29 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               </p>
             )}
           </div>
-          {/* Cash/Deposit/Withdrawal managed at platform level for trading funds */}
-          <div className={isCryptoFund ? 'col-span-3' : 'col-span-2'}>
-            <div className="flex items-center h-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg">
-              <span className="text-sm text-slate-400">
-                Cash is managed at the platform level. Use the platform's cash fund for deposits/withdrawals.
-              </span>
+          {/* Cash field - only show when fund manages its own cash */}
+          {manageCash ? (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Cash ($)</label>
+              <input
+                type="number"
+                value={formData.cash}
+                onChange={e => setFormData(prev => ({ ...prev, cash: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                placeholder="Optional"
+                step="0.01"
+                min="0"
+              />
             </div>
-          </div>
+          ) : (
+            <div className={isCryptoFund ? 'col-span-3' : 'col-span-2'}>
+              <div className="flex items-center h-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg">
+                <span className="text-sm text-slate-400">
+                  Cash is managed at the platform level. Use the platform's cash fund for deposits/withdrawals.
+                </span>
+              </div>
+            </div>
+          )}
           {!isCryptoFund && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">Dividend ($)</label>

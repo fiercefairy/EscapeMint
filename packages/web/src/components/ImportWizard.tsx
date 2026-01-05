@@ -88,6 +88,8 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
   const [archive, setArchive] = useState<ScrapeArchive | null>(null)
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set())
   const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set())
+  const [clearBeforeImport, setClearBeforeImport] = useState(false)
+  const [includeCashImpact, setIncludeCashImpact] = useState(false)
   const [scrapeProgress, setScrapeProgress] = useState<ScrapeProgress>({
     status: '',
     phase: 'navigating',
@@ -472,7 +474,7 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
       return
     }
 
-    const result = await previewRobinhoodImport(content, 'robinhood')
+    const result = await previewRobinhoodImport(content, 'robinhood', includeCashImpact)
     setIsProcessing(false)
 
     if (result.error) {
@@ -488,13 +490,17 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
     }
 
     setPreview(result.data)
-    const matched = new Set<number>()
-    result.data.transactions.forEach((tx, i) => {
-      if (tx.fundExists) matched.add(i)
-    })
-    setSelectedTransactions(matched)
+    // Pre-select symbols that have matching funds
+    const matchedSymbols = new Set<string>()
+    if (result.data.summary?.bySymbol) {
+      Object.entries(result.data.summary.bySymbol).forEach(([symbol, data]) => {
+        if (data.fundExists) matchedSymbols.add(symbol)
+      })
+    }
+    setSelectedSymbols(matchedSymbols)
+    setClearBeforeImport(false)
     setStep('preview')
-  }, [])
+  }, [includeCashImpact])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -546,14 +552,15 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
   const handleApply = useCallback(async () => {
     if (!preview) return
 
-    const selected = preview.transactions.filter((_, i) => selectedTransactions.has(i))
+    // Filter transactions by selected symbols
+    const selected = preview.transactions.filter(tx => selectedSymbols.has(tx.symbol))
     if (selected.length === 0) {
       toast.error('No transactions selected')
       return
     }
 
     setIsProcessing(true)
-    const result = await applyRobinhoodImport(selected, true)
+    const result = await applyRobinhoodImport(selected, true, clearBeforeImport)
     setIsProcessing(false)
 
     if (result.error) {
@@ -578,7 +585,7 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
         toast.info(`No new transactions imported (${skipped} skipped as duplicates)`)
       }
     }
-  }, [preview, selectedTransactions, method, onImported, onClose])
+  }, [preview, selectedSymbols, clearBeforeImport, method, onImported, onClose])
 
   const handleBack = useCallback(() => {
     if (step === 'upload' || step === 'browser' || step === 'archive' || step === 'crypto-pdf' || step === 'm1-statements') {
@@ -2105,6 +2112,26 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
               >
                 Select File
               </label>
+
+              {/* Include cash impact option */}
+              <div className="mt-6 p-4 bg-slate-700/30 rounded-lg text-left max-w-md mx-auto">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeCashImpact}
+                    onChange={(e) => setIncludeCashImpact(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 rounded border-slate-600 text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-800"
+                  />
+                  <div>
+                    <span className="text-white font-medium">Include cash impact from all trading</span>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Generate cash entries for all BUY/SELL/DIVIDEND transactions.
+                      Use this for platforms like Robinhood where cash and investing are unified.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
               <p className="text-slate-500 text-xs mt-4">
                 Export from Robinhood: Account → Documents → Account Statements → Transaction History
               </p>
@@ -2251,129 +2278,138 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
 
           {/* Preview Step */}
           {step === 'preview' && preview && (
-            <div className="space-y-4">
-              {/* Summary */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="bg-slate-700/50 rounded p-4">
-                  <div className="text-2xl font-bold text-white">{preview.summary.total}</div>
-                  <div className="text-sm text-slate-400">Total Transactions</div>
-                </div>
-                <div className="bg-slate-700/50 rounded p-4">
-                  <div className="text-2xl font-bold text-green-400">{preview.summary.matched}</div>
-                  <div className="text-sm text-slate-400">Matched to Funds</div>
-                </div>
-                <div className="bg-slate-700/50 rounded p-4">
-                  <div className="text-2xl font-bold text-amber-400">{preview.summary.unmatched}</div>
-                  <div className="text-sm text-slate-400">Unmatched</div>
-                </div>
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="text-center">
+                <div className="text-4xl mb-2">📊</div>
+                <h3 className="text-lg font-medium text-white">Select Funds to Import</h3>
+                <p className="text-sm text-slate-400 mt-1">
+                  {preview.summary.total} transactions found • Click to select/deselect funds
+                </p>
               </div>
 
-              {/* By Symbol */}
+              {/* Matched Funds (fundExists = true) */}
               {Object.keys(preview.summary.bySymbol).length > 0 && (
-                <div className="bg-slate-700/30 rounded p-4">
-                  <h3 className="text-sm font-medium text-slate-300 mb-2">By Symbol</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(preview.summary.bySymbol).map(([symbol, data]) => (
-                      <div
-                        key={symbol}
-                        className={`px-3 py-1 rounded text-sm ${
-                          data.fundExists
-                            ? 'bg-green-500/20 text-green-300'
-                            : 'bg-amber-500/20 text-amber-300'
-                        }`}
-                      >
-                        {symbol}: {data.count} txns
-                        {data.fundId && <span className="text-slate-400 ml-1">→ {data.fundId}</span>}
+                <div className="space-y-4">
+                  {/* Matched funds section */}
+                  {Object.entries(preview.summary.bySymbol).some(([, d]) => d.fundExists) && (
+                    <div>
+                      <h4 className="text-sm font-medium text-green-400 mb-2">Matched Funds</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(preview.summary.bySymbol)
+                          .filter(([, data]) => data.fundExists)
+                          .sort(([, a], [, b]) => b.count - a.count)
+                          .map(([symbol, data]) => {
+                            const isSelected = selectedSymbols.has(symbol)
+                            return (
+                              <button
+                                key={symbol}
+                                onClick={() => {
+                                  const next = new Set(selectedSymbols)
+                                  if (isSelected) next.delete(symbol)
+                                  else next.add(symbol)
+                                  setSelectedSymbols(next)
+                                }}
+                                className={`px-3 py-2 rounded text-sm transition-colors ${
+                                  isSelected
+                                    ? 'bg-green-500/30 text-green-300 border border-green-500/50'
+                                    : 'bg-slate-700/50 text-slate-400 border border-transparent hover:border-slate-500'
+                                }`}
+                                title={`${data.fundId} - ${data.count} transactions`}
+                              >
+                                <span className="font-medium">{symbol}</span>
+                                <span className="text-slate-400 ml-2">{data.count}</span>
+                              </button>
+                            )
+                          })}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
+
+                  {/* Unmatched funds section */}
+                  {Object.entries(preview.summary.bySymbol).some(([, d]) => !d.fundExists) && (
+                    <div>
+                      <h4 className="text-sm font-medium text-amber-400 mb-2">Unmatched (no fund exists)</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(preview.summary.bySymbol)
+                          .filter(([, data]) => !data.fundExists)
+                          .sort(([, a], [, b]) => b.count - a.count)
+                          .map(([symbol, data]) => (
+                            <div
+                              key={symbol}
+                              className="px-3 py-2 rounded text-sm bg-slate-800/50 text-slate-500 border border-slate-700"
+                              title={`Would map to ${data.fundId} - create fund first`}
+                            >
+                              <span>{symbol}</span>
+                              <span className="ml-2">{data.count}</span>
+                              <span className="ml-1 text-amber-500">⚠</span>
+                            </div>
+                          ))}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-2">
+                        Create funds for these symbols to enable import
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Unmatched warning */}
-              {preview.summary.unmatched > 0 && (
-                <div className="bg-amber-500/10 border border-amber-500/30 rounded p-4">
-                  <p className="text-amber-300 text-sm">
-                    <strong>Note:</strong> {preview.summary.unmatched} transaction(s) have no matching fund.
-                    Create funds for these symbols first to import them.
+              {/* Quick actions */}
+              <div className="flex gap-2 justify-center">
+                <button
+                  onClick={() => {
+                    const all = new Set<string>()
+                    Object.entries(preview.summary.bySymbol).forEach(([symbol, data]) => {
+                      if (data.fundExists) all.add(symbol)
+                    })
+                    setSelectedSymbols(all)
+                  }}
+                  className="px-3 py-1 text-xs bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition-colors"
+                >
+                  Select All Matched
+                </button>
+                <button
+                  onClick={() => setSelectedSymbols(new Set())}
+                  className="px-3 py-1 text-xs bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition-colors"
+                >
+                  Deselect All
+                </button>
+              </div>
+
+              {/* Clear before import toggle */}
+              <div className="bg-slate-700/30 rounded-lg p-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={clearBeforeImport}
+                    onChange={(e) => setClearBeforeImport(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-600 text-mint-500 focus:ring-mint-500 focus:ring-offset-slate-800"
+                  />
+                  <div>
+                    <span className="text-white font-medium">Clear fund entries before import</span>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Delete all existing entries in selected funds before importing new data
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Import summary */}
+              {selectedSymbols.size > 0 && (
+                <div className="bg-mint-500/10 border border-mint-500/30 rounded p-4 text-center">
+                  <p className="text-mint-300">
+                    Ready to import{' '}
+                    <strong>
+                      {preview.transactions.filter(tx => selectedSymbols.has(tx.symbol)).length}
+                    </strong>{' '}
+                    transactions from{' '}
+                    <strong>{selectedSymbols.size}</strong> fund{selectedSymbols.size !== 1 ? 's' : ''}
+                    {clearBeforeImport && (
+                      <span className="text-amber-400 ml-1">(funds will be cleared first)</span>
+                    )}
                   </p>
                 </div>
               )}
-
-              {/* Transactions table */}
-              <div className="border border-slate-700 rounded overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-700/50">
-                    <tr>
-                      <th className="p-2 text-left">
-                        <input
-                          type="checkbox"
-                          checked={selectedCount === matchedCount && matchedCount > 0}
-                          onChange={(e) => toggleAll(e.target.checked)}
-                          className="rounded border-slate-600"
-                        />
-                      </th>
-                      <th className="p-2 text-left text-slate-300">Date</th>
-                      <th className="p-2 text-left text-slate-300">Action</th>
-                      <th className="p-2 text-left text-slate-300">Symbol</th>
-                      <th className="p-2 text-right text-slate-300">Qty</th>
-                      <th className="p-2 text-right text-slate-300">Price</th>
-                      <th className="p-2 text-right text-slate-300">Amount</th>
-                      <th className="p-2 text-left text-slate-300">Fund</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.transactions.map((tx, i) => (
-                      <tr
-                        key={i}
-                        className={`border-t border-slate-700 ${!tx.fundExists ? 'opacity-50' : ''}`}
-                      >
-                        <td className="p-2">
-                          <input
-                            type="checkbox"
-                            checked={selectedTransactions.has(i)}
-                            onChange={() => toggleTransaction(i)}
-                            disabled={!tx.fundExists}
-                            className="rounded border-slate-600"
-                          />
-                        </td>
-                        <td className="p-2 text-slate-300">{tx.date}</td>
-                        <td className="p-2">
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            tx.action === 'BUY' ? 'bg-green-500/20 text-green-300' :
-                            tx.action === 'SELL' ? 'bg-red-500/20 text-red-300' :
-                            tx.action === 'DIVIDEND' ? 'bg-blue-500/20 text-blue-300' :
-                            tx.action === 'INTEREST' ? 'bg-purple-500/20 text-purple-300' :
-                            'bg-slate-500/20 text-slate-300'
-                          }`}>
-                            {tx.action}
-                          </span>
-                        </td>
-                        <td className="p-2 text-white font-medium">{tx.symbol || '-'}</td>
-                        <td className="p-2 text-right text-slate-300">
-                          {tx.quantity > 0 ? tx.quantity.toFixed(6) : '-'}
-                        </td>
-                        <td className="p-2 text-right text-slate-300">
-                          {tx.price > 0 ? formatCurrency(tx.price) : '-'}
-                        </td>
-                        <td className="p-2 text-right text-white">
-                          {formatCurrency(tx.amount)}
-                        </td>
-                        <td className="p-2">
-                          {tx.fundId ? (
-                            <span className={tx.fundExists ? 'text-green-400' : 'text-amber-400'}>
-                              {tx.fundId}
-                              {!tx.fundExists && ' (missing)'}
-                            </span>
-                          ) : (
-                            <span className="text-slate-500">-</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             </div>
           )}
         </div>
@@ -2381,8 +2417,11 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
         {/* Footer */}
         <div className="p-6 border-t border-slate-700 flex justify-between items-center">
           <div className="text-sm text-slate-400">
-            {step === 'preview' && selectedCount > 0 && (
-              <span>{selectedCount} transaction{selectedCount !== 1 ? 's' : ''} selected</span>
+            {step === 'preview' && selectedSymbols.size > 0 && preview && (
+              <span>
+                {selectedSymbols.size} fund{selectedSymbols.size !== 1 ? 's' : ''} selected
+                ({preview.transactions.filter(tx => selectedSymbols.has(tx.symbol)).length} transactions)
+              </span>
             )}
             {step === 'scraping' && scrapeProgress.newCount > 0 && (
               <span className="text-green-400">
@@ -2413,10 +2452,10 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
               <button
                 type="button"
                 onClick={handleApply}
-                disabled={isProcessing || selectedCount === 0}
+                disabled={isProcessing || selectedSymbols.size === 0}
                 className="px-4 py-2 bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors disabled:opacity-50"
               >
-                {isProcessing ? 'Importing...' : `Import ${selectedCount} Transaction${selectedCount !== 1 ? 's' : ''}`}
+                {isProcessing ? 'Importing...' : `Import ${selectedSymbols.size} Fund${selectedSymbols.size !== 1 ? 's' : ''}`}
               </button>
             )}
           </div>
