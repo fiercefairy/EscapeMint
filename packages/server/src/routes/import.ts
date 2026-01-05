@@ -13,7 +13,9 @@ export const importRouter = Router()
 const DATA_DIR = process.env['DATA_DIR'] ?? './data'
 const FUNDS_DIR = join(DATA_DIR, 'funds')
 const SCRAPE_ARCHIVE_DIR = join(DATA_DIR, 'scrape-archives')
-const CRYPTO_STATEMENTS_DIR = join(DATA_DIR, 'crypto-statements')
+const STATEMENTS_DIR = join(DATA_DIR, 'statements')
+const CRYPTO_STATEMENTS_DIR = join(STATEMENTS_DIR, 'robinhood')
+const M1_STATEMENTS_DIR = join(STATEMENTS_DIR, 'm1')
 
 // CDP connection for browser scraping
 let connectedBrowser: Browser | null = null
@@ -776,11 +778,108 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
 })
 
 // ============================================================================
+// M1 Cash Import Apply
+// ============================================================================
+
+/**
+ * POST /import/m1-cash/apply
+ * Apply M1 cash transactions (interest, deposit, withdrawal) to the m1-cash fund.
+ * Transfers are stored separately for later reconciliation with trading funds.
+ */
+importRouter.post('/m1-cash/apply', async (req, res, next) => {
+  const { transactions, skipDuplicates = true } = req.body as {
+    transactions?: ParsedTransaction[]
+    skipDuplicates?: boolean
+  }
+
+  if (!transactions || !Array.isArray(transactions)) {
+    return next(badRequest('transactions array is required'))
+  }
+
+  // Load the m1-cash fund
+  const funds = await readAllFunds(FUNDS_DIR).catch(() => [])
+  const cashFund = funds.find(f => f.id === 'm1-cash')
+
+  if (!cashFund) {
+    return next(badRequest('m1-cash fund not found. Please create it first.'))
+  }
+
+  const result: ImportResult = {
+    applied: 0,
+    skipped: 0,
+    errors: []
+  }
+
+  const filePath = join(FUNDS_DIR, 'm1-cash.tsv')
+
+  for (const tx of transactions) {
+    // Only process cash-related transactions
+    const cashActions = ['INTEREST', 'DEPOSIT', 'WITHDRAW']
+    if (!cashActions.includes(tx.action)) {
+      // Skip non-cash transactions (like transfers) for now
+      result.skipped++
+      continue
+    }
+
+    // Create the fund entry based on transaction type
+    const entry: FundEntry = {
+      date: tx.date,
+      value: 0,  // Will be recalculated by the UI from entries
+      notes: `Imported from M1 Finance: ${tx.description}`
+    }
+
+    if (tx.action === 'INTEREST') {
+      // Interest goes into cash_interest field
+      entry.cash_interest = tx.amount
+    } else if (tx.action === 'DEPOSIT') {
+      entry.action = 'DEPOSIT'
+      entry.amount = tx.amount
+    } else if (tx.action === 'WITHDRAW') {
+      entry.action = 'WITHDRAW'
+      entry.amount = tx.amount
+    }
+
+    // Check for duplicates
+    if (skipDuplicates) {
+      const isDuplicate = cashFund.entries.some(e => {
+        // Match by date and type
+        if (e.date !== entry.date) return false
+        if (tx.action === 'INTEREST') {
+          return e.cash_interest === entry.cash_interest
+        }
+        return e.action === entry.action && e.amount === entry.amount
+      })
+
+      if (isDuplicate) {
+        result.skipped++
+        continue
+      }
+    }
+
+    // Append entry
+    const appendResult = await appendEntry(filePath, entry).catch((err: Error) => {
+      result.errors.push(`Failed to add ${tx.action} entry: ${err.message}`)
+      return null
+    })
+
+    if (appendResult !== null) {
+      result.applied++
+    }
+  }
+
+  res.json({
+    success: result.errors.length === 0,
+    result
+  })
+})
+
+// ============================================================================
 // Browser Scraping (CDP Connection)
 // ============================================================================
 
 // Use a dedicated port and profile to avoid conflicts with other browser automation
-const DEFAULT_CDP_URL = 'http://localhost:9232'
+const CDP_PORT = process.env['CDP_PORT'] ?? '5549'
+const DEFAULT_CDP_URL = `http://localhost:${CDP_PORT}`
 const BROWSER_USER_DATA_DIR = join(process.cwd(), '.browser')
 
 /**
@@ -1118,25 +1217,6 @@ const getChromePath = (): string => {
   }
 }
 
-/**
- * GET /import/browser/status
- * Check if browser is connected via CDP.
- */
-importRouter.get('/browser/status', async (_req, res) => {
-  const connected = connectedBrowser?.isConnected() ?? false
-  const launched = launchedChromeProcess !== null && !launchedChromeProcess.killed
-  res.json({
-    connected,
-    launched,
-    cdpUrl: DEFAULT_CDP_URL,
-    instructions: connected
-      ? 'Browser connected. Ready to scrape.'
-      : launched
-        ? 'Chrome launched. Please log into Robinhood, then click Connect.'
-        : 'Click Launch Browser to start Chrome with remote debugging.'
-  })
-})
-
 // Platform-specific login URLs
 const PLATFORM_LOGIN_URLS: Record<string, string> = {
   robinhood: 'https://robinhood.com/login',
@@ -1192,7 +1272,7 @@ importRouter.post('/browser/launch', async (req, res, next) => {
 
   // Launch Chrome with remote debugging on dedicated port with persistent profile
   const args = [
-    '--remote-debugging-port=9232',
+    `--remote-debugging-port=${CDP_PORT}`,
     '--no-first-run',
     '--no-default-browser-check',
     `--user-data-dir=${BROWSER_USER_DATA_DIR}`,
@@ -1253,7 +1333,7 @@ importRouter.post('/browser/connect', async (req, res, next) => {
   const { cdpUrl = DEFAULT_CDP_URL } = req.body as { cdpUrl?: string }
 
   const browser = await connectToBrowser(cdpUrl).catch((err: Error) => {
-    return next(badRequest(`Failed to connect to browser: ${err.message}. Start Chrome with: chrome --remote-debugging-port=9232`))
+    return next(badRequest(`Failed to connect to browser: ${err.message}. Start Chrome with: chrome --remote-debugging-port=${CDP_PORT}`))
   })
 
   if (!browser) return
@@ -1262,6 +1342,119 @@ importRouter.post('/browser/connect', async (req, res, next) => {
     success: true,
     message: 'Connected to browser',
     pages: (await browser.contexts()[0]?.pages())?.length ?? 0
+  })
+})
+
+/**
+ * GET /import/browser/status
+ * Check if CDP browser is running and get login status for platforms.
+ */
+importRouter.get('/browser/status', async (req, res) => {
+  const { platform } = req.query as { platform?: string }
+
+  // Check if browser is running by trying to connect
+  const browser = await connectToBrowser().catch(() => null)
+
+  if (!browser) {
+    res.json({
+      connected: false,
+      message: 'Browser not running. Start with: pm2 start escapemint-browser'
+    })
+    return
+  }
+
+  // Browser is connected, check for platform-specific login status
+  const contexts = browser.contexts()
+  const pages: Array<{ url: string; title: string }> = []
+
+  for (const context of contexts) {
+    for (const page of context.pages()) {
+      pages.push({ url: page.url(), title: await page.title().catch(() => '') })
+    }
+  }
+
+  // Check login status for specific platform
+  let loggedIn = false
+  let loginUrl = ''
+  let pageFound = false
+
+  if (platform === 'm1') {
+    const m1Page = pages.find(p => p.url.includes('m1.com'))
+    pageFound = !!m1Page
+    loggedIn = !!m1Page && m1Page.url.includes('dashboard.m1.com') && !m1Page.url.includes('/login')
+    loginUrl = 'https://dashboard.m1.com'
+  } else if (platform === 'robinhood') {
+    const rhPage = pages.find(p => p.url.includes('robinhood.com'))
+    pageFound = !!rhPage
+    loggedIn = !!rhPage && !rhPage.url.includes('/login')
+    loginUrl = 'https://robinhood.com'
+  }
+
+  res.json({
+    connected: true,
+    pageCount: pages.length,
+    pages,
+    platform: platform ?? null,
+    pageFound,
+    loggedIn,
+    loginUrl
+  })
+})
+
+/**
+ * POST /import/browser/navigate
+ * Navigate to a URL in the browser and wait for login if needed.
+ */
+importRouter.post('/browser/navigate', async (req, res) => {
+  const { url, platform } = req.body as { url: string; platform?: string }
+
+  const browser = await connectToBrowser().catch(() => null)
+  if (!browser) {
+    res.status(400).json({ error: 'Browser not running' })
+    return
+  }
+
+  // Find or create a page for this platform
+  let page = null
+  const contexts = browser.contexts()
+
+  for (const context of contexts) {
+    for (const p of context.pages()) {
+      const pageUrl = p.url()
+      if (platform === 'm1' && pageUrl.includes('m1.com')) {
+        page = p
+        break
+      } else if (platform === 'robinhood' && pageUrl.includes('robinhood.com')) {
+        page = p
+        break
+      }
+    }
+    if (page) break
+  }
+
+  // If no existing page, create one
+  if (!page && contexts.length > 0) {
+    page = await contexts[0]!.newPage()
+  }
+
+  if (!page) {
+    res.status(400).json({ error: 'Could not create page' })
+    return
+  }
+
+  // Navigate to URL
+  await page.goto(url, { waitUntil: 'load', timeout: 30000 }).catch(() => null)
+  await page.waitForTimeout(2000)
+
+  const currentUrl = page.url()
+  const isLoggedIn = platform === 'm1'
+    ? currentUrl.includes('dashboard.m1.com') && !currentUrl.includes('/login')
+    : !currentUrl.includes('/login')
+
+  res.json({
+    success: true,
+    currentUrl,
+    isLoggedIn
   })
 })
 
@@ -1338,6 +1531,18 @@ importRouter.get('/archive/:platform', async (req, res) => {
     }
   }
 
+  // For m1-cash platform, add special handling to show that cash transactions
+  // can be imported to the m1-cash fund (they don't have symbols)
+  let cashFundExists = false
+  let cashTransactionCount = 0
+  if (platform === 'm1-cash') {
+    cashFundExists = funds.some(f => f.id === 'm1-cash')
+    // Count cash-related transactions (interest, deposit, withdrawal)
+    cashTransactionCount = archive.transactions.filter(tx =>
+      ['interest', 'deposit', 'withdrawal'].includes(tx.type)
+    ).length
+  }
+
   res.json({
     platform: archive.platform,
     createdAt: archive.createdAt,
@@ -1349,7 +1554,13 @@ importRouter.get('/archive/:platform', async (req, res) => {
       dateRange: { oldest: oldestDate, newest: newestDate },
       byType,
       bySymbol: bySymbolWithFunds,
-      byYear
+      byYear,
+      // M1 cash-specific: indicate cash fund exists and count of importable transactions
+      ...(platform === 'm1-cash' && {
+        cashFundId: 'm1-cash',
+        cashFundExists,
+        cashTransactionCount
+      })
     },
     // Return all transactions if full=true, otherwise first 50
     transactions: full === 'true' ? archive.transactions : archive.transactions.slice(0, 50)
@@ -1653,7 +1864,14 @@ importRouter.post('/robinhood/scrape', async (req, res, next) => {
   const funds = await readAllFunds(FUNDS_DIR).catch(() => [])
 
   const transactions: ParsedTransaction[] = archive.transactions.map(tx => {
-    const fundId = tx.symbol ? buildFundId(platform, tx.symbol) : null
+    // For M1 cash transactions (interest, deposit, withdrawal), route to the platform's cash fund
+    // These don't have a symbol but should map to m1-cash fund
+    const isM1CashTransaction = platform === 'm1-cash' &&
+      ['interest', 'deposit', 'withdrawal'].includes(tx.type)
+
+    const fundId = isM1CashTransaction
+      ? 'm1-cash'
+      : (tx.symbol ? buildFundId(platform, tx.symbol) : null)
     const exists = fundId ? fundExists(fundId, funds) : false
 
     const actionMap: Record<ScrapedTransaction['type'], ParsedTransaction['action']> = {
@@ -2854,4 +3072,1068 @@ importRouter.get('/m1-cash/scrape-stream', async (req, res) => {
   }
 
   res.end()
+})
+
+// ============================================================================
+// M1 Finance PDF Statement Import
+// ============================================================================
+
+/**
+ * M1 statement transaction from PDF parsing
+ */
+interface M1StatementTransaction {
+  date: string  // YYYY-MM-DD
+  description: string
+  amount: number  // Positive for credits, negative for debits
+  type: 'interest' | 'deposit' | 'withdrawal' | 'transfer' | 'fee' | 'other'
+}
+
+/**
+ * Parsed M1 statement data
+ */
+interface M1StatementData {
+  filename: string
+  accountType: 'earn' | 'invest' | 'crypto' | 'unknown'
+  periodStart: string
+  periodEnd: string
+  beginningBalance: number
+  endingBalance: number
+  totalDeposits: number
+  totalWithdrawals: number
+  totalInterest: number
+  transactions: M1StatementTransaction[]
+}
+
+/**
+ * M1 statement info for listing
+ */
+interface M1StatementInfo {
+  filename: string
+  accountType: string
+  monthYear: string
+  downloaded: boolean
+  path?: string
+}
+
+/**
+ * Determine M1 transaction type from PDF description
+ */
+const determineM1StatementTransactionType = (description: string): M1StatementTransaction['type'] => {
+  const descLower = description.toLowerCase()
+
+  if (descLower.includes('interest application') || descLower.includes('interest payment')) {
+    return 'interest'
+  }
+  if (descLower.includes('transfer from linked bank') || descLower.includes('ach credit') || descLower.includes('deposit')) {
+    return 'deposit'
+  }
+  if (descLower.includes('transfer to linked bank') || descLower.includes('ach debit')) {
+    return 'withdrawal'
+  }
+  if (descLower.includes('transfer to m1') || descLower.includes('transfer from m1') || descLower.includes('instant transfer')) {
+    return 'transfer'
+  }
+  if (descLower.includes('membership') || descLower.includes('fee')) {
+    return 'fee'
+  }
+  return 'other'
+}
+
+/**
+ * Parse M1 Earn/Save PDF statement
+ */
+const parseM1StatementPDF = async (pdfBuffer: Buffer, filename: string): Promise<M1StatementData> => {
+  const parser = new PDFParse({ data: pdfBuffer })
+  const result = await parser.getText()
+  const text = result.text
+  await parser.destroy()
+
+  // Determine account type from filename or content
+  let accountType: M1StatementData['accountType'] = 'unknown'
+  const filenameLower = filename.toLowerCase()
+  if (filenameLower.includes('earn') || filenameLower.includes('save')) {
+    accountType = 'earn'
+  } else if (filenameLower.includes('invest') || filenameLower.includes('brokerage')) {
+    accountType = 'invest'
+  } else if (filenameLower.includes('crypto')) {
+    accountType = 'crypto'
+  } else if (text.toLowerCase().includes('m1 save') || text.toLowerCase().includes('m1 earn')) {
+    accountType = 'earn'
+  } else if (text.toLowerCase().includes('brokerage')) {
+    accountType = 'invest'
+  }
+
+  // Extract summary section values
+  // M1 format: "Beginning Balance as of DATE \t$0.00" or "Ending Balance as of DATE $X"
+  const beginningMatch = text.match(/beginning\s+balance(?:\s+as\s+of\s+\S+)?\s*[\t:]*\s*\$?([\d,.]+)/i)
+  const endingMatch = text.match(/ending\s+balance(?:\s+as\s+of\s+\S+)?\s*[\t:]*\s*\$?([\d,.]+)/i)
+  const depositsMatch = text.match(/deposits\s+(?:and\s+other\s+credits\s+)?\s*[\t:]*\s*\$?([\d,.]+)/i)
+  const withdrawalsMatch = text.match(/withdrawals\s+(?:and\s+other\s+debits\s+)?\s*[\t:]*\s*\$?([\d,.]+)/i)
+  const interestMatch = text.match(/(?:total\s+)?interest(?:\s+earned)?\s*[\t:]*\s*\$?([\d,.]+)/i)
+
+  const beginningBalance = parseFloat(beginningMatch?.[1]?.replace(/,/g, '') ?? '0')
+  const endingBalance = parseFloat(endingMatch?.[1]?.replace(/,/g, '') ?? '0')
+  const totalDeposits = parseFloat(depositsMatch?.[1]?.replace(/,/g, '') ?? '0')
+  const totalWithdrawals = parseFloat(withdrawalsMatch?.[1]?.replace(/,/g, '') ?? '0')
+  const totalInterest = parseFloat(interestMatch?.[1]?.replace(/,/g, '') ?? '0')
+
+  // Extract period dates from filename or content
+  // Filename pattern: "M1 Save Account Statement-2025-09.pdf"
+  const filenameMonthMatch = filename.match(/(\d{4})-(\d{2})\.pdf$/i)
+  let periodStart = ''
+  let periodEnd = ''
+
+  if (filenameMonthMatch) {
+    const year = filenameMonthMatch[1]!
+    const month = filenameMonthMatch[2]!
+    periodStart = `${year}-${month}-01`
+    // Calculate last day of month
+    const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate()
+    periodEnd = `${year}-${month}-${lastDay.toString().padStart(2, '0')}`
+  } else {
+    // Try to extract from content
+    const periodMatch = text.match(/(\w+\s+\d{1,2},?\s+\d{4})\s*(?:to|through|-)\s*(\w+\s+\d{1,2},?\s+\d{4})/i)
+    if (periodMatch) {
+      periodStart = parseM1Date(periodMatch[1]!)
+      periodEnd = parseM1Date(periodMatch[2]!)
+    }
+  }
+
+  // Parse transactions from Activity section
+  const transactions: M1StatementTransaction[] = []
+
+  // Split text into lines and look for transaction patterns
+  const lines = text.split('\n')
+
+  for (let i = 0; i < lines.length; i++) {
+    const currentLine = lines[i]
+    if (!currentLine) continue
+    const line = currentLine.trim()
+
+    // Look for date pattern at start of line (YYYY-MM-DD)
+    const dateMatch = line.match(/^(\d{4}-\d{2}-\d{2})/)
+    if (!dateMatch) continue
+
+    const date = dateMatch[1]!
+
+    // Try to extract description and amount from same line or next line
+    // Pattern: DATE DESCRIPTION AMOUNT
+    // Amount may be negative (e.g., -$500.00) or positive ($500.00)
+
+    let fullLine = line
+    const nextLine = lines[i + 1]
+    if (nextLine && !nextLine.match(/^\d{4}-\d{2}-\d{2}/)) {
+      fullLine += ' ' + nextLine.trim()
+    }
+
+    // Extract amount (look for $X,XXX.XX pattern, optionally with minus)
+    const amountMatch = fullLine.match(/(-?\$?[\d,]+\.\d{2})/)
+    if (!amountMatch) continue
+
+    const amountStr = amountMatch[1]!
+    const amount = parseFloat(amountStr.replace(/[$,]/g, ''))
+
+    // Extract description (everything between date and amount)
+    const description = fullLine
+      .replace(date, '')
+      .replace(amountStr, '')
+      .trim()
+      .replace(/\s+/g, ' ')
+
+    if (description) {
+      transactions.push({
+        date,
+        description,
+        amount,
+        type: determineM1StatementTransactionType(description)
+      })
+    }
+  }
+
+  // Sort transactions by date
+  transactions.sort((a, b) => a.date.localeCompare(b.date))
+
+  return {
+    filename,
+    accountType,
+    periodStart,
+    periodEnd,
+    beginningBalance,
+    endingBalance,
+    totalDeposits,
+    totalWithdrawals,
+    totalInterest,
+    transactions
+  }
+}
+
+/**
+ * Find M1 Finance page in browser
+ */
+const findM1StatementsPage = async (browser: Browser): Promise<Page | null> => {
+  const contexts = browser.contexts()
+
+  for (const context of contexts) {
+    const pages = context.pages()
+    for (const page of pages) {
+      const url = page.url()
+      if (url.includes('dashboard.m1.com') || url.includes('m1.com')) {
+        return page
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * GET /import/m1-statements/debug-text
+ * Debug endpoint to see raw PDF text content.
+ */
+importRouter.get('/m1-statements/debug-text', async (req, res, next) => {
+  const { filename } = req.query as { filename?: string }
+  if (!filename) {
+    return next(badRequest('filename is required'))
+  }
+
+  const filePath = join(M1_STATEMENTS_DIR, filename)
+  const pdfBuffer = await readFile(filePath).catch(() => null)
+
+  if (!pdfBuffer) {
+    return next(badRequest(`File not found: ${filename}`))
+  }
+
+  const parser = new PDFParse({ data: pdfBuffer })
+  const result = await parser.getText()
+  await parser.destroy()
+
+  // Check what we can match (M1 format: "Beginning Balance as of DATE \t$0.00")
+  const text = result.text
+  const beginningMatch = text.match(/beginning\s+balance(?:\s+as\s+of\s+\S+)?\s*[\t:]*\s*\$?([\d,.]+)/i)
+  const endingMatch = text.match(/ending\s+balance(?:\s+as\s+of\s+\S+)?\s*[\t:]*\s*\$?([\d,.]+)/i)
+
+  res.json({
+    filename,
+    textLength: text.length,
+    firstChars: text.slice(0, 2000),
+    beginningMatch: beginningMatch ? beginningMatch[0] : null,
+    endingMatch: endingMatch ? endingMatch[0] : null
+  })
+})
+
+/**
+ * GET /import/m1-statements/list
+ * Scrape the M1 statements page to get list of available PDFs.
+ */
+importRouter.get('/m1-statements/list', async (_req, res, next) => {
+  const browser = await connectToBrowser().catch((err: Error) => {
+    return next(badRequest(`Failed to connect to browser: ${err.message}`))
+  })
+  if (!browser) return
+
+  const page = await findM1StatementsPage(browser)
+  if (!page) {
+    return next(badRequest('No M1 Finance page found. Please log in first.'))
+  }
+
+  // Navigate to statements page
+  const statementsUrl = 'https://dashboard.m1.com/d/settings/documents/statements'
+  if (!page.url().includes('documents/statements')) {
+    const navResult = await page.goto(statementsUrl, { waitUntil: 'networkidle', timeout: 30000 }).catch((err: Error) => err)
+    if (navResult instanceof Error) {
+      return next(badRequest(`Failed to navigate to statements: ${navResult.message}`))
+    }
+  }
+
+  // Wait for statements to load
+  await page.waitForTimeout(2000)
+
+  // Get list of existing downloaded files
+  await mkdir(M1_STATEMENTS_DIR, { recursive: true })
+  const existingFiles: string[] = await readdir(M1_STATEMENTS_DIR).catch(() => [] as string[])
+
+  // Extract statement info from the page
+  // M1 has a year dropdown and then lists statements for that year
+  const statements: M1StatementInfo[] = await page.evaluate(() => {
+    const results: M1StatementInfo[] = []
+
+    // Look for download links or statement rows
+    const links = document.querySelectorAll('a[href*="statement"], a[download*="Statement"]')
+    links.forEach(link => {
+      const download = link.getAttribute('download') ?? ''
+      const text = link.textContent?.trim() ?? ''
+
+      // Try to extract account type and date from the link or text
+      let accountType = 'unknown'
+      if (download.toLowerCase().includes('save') || download.toLowerCase().includes('earn')) {
+        accountType = 'earn'
+      } else if (download.toLowerCase().includes('invest') || download.toLowerCase().includes('brokerage')) {
+        accountType = 'invest'
+      } else if (download.toLowerCase().includes('crypto')) {
+        accountType = 'crypto'
+      }
+
+      // Extract month/year from download name or text
+      const dateMatch = download.match(/(\d{4})-(\d{2})/) ?? text.match(/(\w+)\s+(\d{4})/)
+      const monthYear = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}` : text
+
+      results.push({
+        filename: download || `${text.replace(/\s+/g, '-')}.pdf`,
+        accountType,
+        monthYear,
+        downloaded: false
+      })
+    })
+
+    return results
+  })
+
+  // Mark which are already downloaded
+  statements.forEach(s => {
+    s.downloaded = existingFiles.some(f => f.toLowerCase() === s.filename.toLowerCase())
+    if (s.downloaded) {
+      s.path = join(M1_STATEMENTS_DIR, s.filename)
+    }
+  })
+
+  res.json({
+    count: statements.length,
+    statements,
+    downloadDir: M1_STATEMENTS_DIR
+  })
+})
+
+/**
+ * GET /import/m1-statements/download-stream
+ * Download M1 statement PDFs with SSE progress.
+ */
+importRouter.get('/m1-statements/download-stream', async (req, res) => {
+  console.log('[M1 Statements] Download stream started')
+  const { all, year, accountType } = req.query as { all?: string; year?: string; accountType?: string }
+  console.log(`[M1 Statements] Params: all=${all}, year=${year}, accountType=${accountType}`)
+
+  // Set up SSE headers
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+
+  const sendEvent = (event: string, data: unknown) => {
+    console.log(`[M1 Statements] Event: ${event}`, JSON.stringify(data))
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+  }
+
+  console.log('[M1 Statements] Connecting to browser...')
+  const browser = await connectToBrowser().catch((err: Error) => {
+    console.log(`[M1 Statements] Browser connection failed: ${err.message}`)
+    sendEvent('error', { message: `Failed to connect to browser: ${err.message}` })
+    res.end()
+    return null
+  })
+  if (!browser) return
+  console.log('[M1 Statements] Browser connected')
+
+  console.log('[M1 Statements] Finding M1 page...')
+  const page = await findM1StatementsPage(browser)
+  if (!page) {
+    console.log('[M1 Statements] No M1 page found')
+    sendEvent('error', { message: 'No M1 Finance page found. Please log in first.' })
+    res.end()
+    return
+  }
+  console.log(`[M1 Statements] Found M1 page: ${page.url()}`)
+
+  sendEvent('status', { message: 'Navigating to statements page...', phase: 'navigating' })
+
+  // Navigate to statements page
+  const statementsUrl = 'https://dashboard.m1.com/d/settings/documents/statements'
+  console.log(`[M1 Statements] Current URL: ${page.url()}`)
+
+  if (!page.url().includes('documents/statements')) {
+    console.log(`[M1 Statements] Navigating to ${statementsUrl}`)
+    // Use 'load' instead of 'networkidle' to avoid timeout issues
+    const navResult = await page.goto(statementsUrl, { waitUntil: 'load', timeout: 30000 }).catch((err: Error) => err)
+    if (navResult instanceof Error) {
+      console.log(`[M1 Statements] Navigation failed: ${navResult.message}`)
+      sendEvent('error', { message: `Failed to navigate: ${navResult.message}` })
+      res.end()
+      return
+    }
+    console.log(`[M1 Statements] Navigation successful`)
+  } else {
+    console.log(`[M1 Statements] Already on statements page`)
+  }
+
+  // Wait for page content to load
+  await page.waitForTimeout(3000)
+  console.log(`[M1 Statements] Page loaded, current URL: ${page.url()}`)
+
+  // Get list of existing downloaded files
+  await mkdir(M1_STATEMENTS_DIR, { recursive: true })
+  let existingFiles: string[] = await readdir(M1_STATEMENTS_DIR).catch(() => [] as string[])
+
+  let totalDownloaded = 0
+  let totalSkipped = 0
+  let totalProcessed = 0
+
+  // Helper to select a year using React Select dropdown
+  const selectYear = async (targetYear: string): Promise<boolean> => {
+    console.log(`[M1 Statements] Attempting to select year ${targetYear}`)
+
+    // React Select dropdown - click on the control area to open
+    // The control div has classes like "css-*-control"
+    const dropdownSelectors = [
+      'div[class*="-control"]',  // React Select control
+      'input#year',              // Hidden input
+      'label[for="year"]',       // Label
+    ]
+
+    let dropdownOpened = false
+
+    for (const selector of dropdownSelectors) {
+      const element = await page.$(selector).catch(() => null)
+      if (element) {
+        await element.click()
+        await page.waitForTimeout(800)
+        dropdownOpened = true
+        console.log(`[M1 Statements] Clicked dropdown using selector: ${selector}`)
+        break
+      }
+    }
+
+    if (!dropdownOpened) {
+      // Try clicking the span showing current year
+      const currentYearSpan = await page.$('span:has-text("202")').catch(() => null)
+      if (currentYearSpan) {
+        await currentYearSpan.click()
+        await page.waitForTimeout(800)
+        dropdownOpened = true
+        console.log(`[M1 Statements] Clicked year span`)
+      }
+    }
+
+    // Wait for dropdown menu to appear
+    await page.waitForTimeout(500)
+
+    // Find and click the target year option
+    // React Select options have classes like "css-*-option"
+    const optionSelectors = [
+      `div[class*="-option"]:has-text("${targetYear}")`,
+      `div[class*="option"]:has-text("${targetYear}")`,
+      `[role="option"]:has-text("${targetYear}")`,
+    ]
+
+    for (const selector of optionSelectors) {
+      const option = await page.$(selector).catch(() => null)
+      if (option) {
+        await option.click()
+        await page.waitForTimeout(1500) // Wait for table to update
+        console.log(`[M1 Statements] Selected year ${targetYear} using selector: ${selector}`)
+        return true
+      }
+    }
+
+    // Fallback: Use keyboard navigation
+    // Clear any existing input first, then type the year to filter options
+    console.log(`[M1 Statements] Trying keyboard input for year ${targetYear}`)
+    // Select all and clear any existing text (Meta for macOS, Control for others)
+    await page.keyboard.press('Meta+a')
+    await page.waitForTimeout(100)
+    await page.keyboard.press('Backspace')
+    await page.waitForTimeout(100)
+    await page.keyboard.type(targetYear)
+    await page.waitForTimeout(500)
+    await page.keyboard.press('Enter')
+    await page.waitForTimeout(1500)
+
+    // Check if year changed by looking at the displayed value
+    const displayedYear = await page.evaluate(() => {
+      const yearSpan = document.querySelector('div[class*="-control"] span')
+      return yearSpan?.textContent?.trim() ?? ''
+    })
+
+    console.log(`[M1 Statements] Displayed year after selection: ${displayedYear}`)
+    return displayedYear === targetYear
+  }
+
+  // Get available years from dropdown
+  const getAvailableYears = async (): Promise<string[]> => {
+    console.log(`[M1 Statements] Getting available years from dropdown`)
+
+    // Click to open dropdown
+    const dropdownSelectors = [
+      'div[class*="-control"]',
+      'input#year',
+      'label[for="year"]',
+    ]
+
+    for (const selector of dropdownSelectors) {
+      const element = await page.$(selector).catch(() => null)
+      if (element) {
+        await element.click()
+        await page.waitForTimeout(800)
+        console.log(`[M1 Statements] Opened dropdown using: ${selector}`)
+        break
+      }
+    }
+
+    // Wait for menu to appear
+    await page.waitForTimeout(500)
+
+    // Get all year options from the dropdown menu
+    const years = await page.evaluate(() => {
+      const yearList: string[] = []
+      // React Select options
+      const options = document.querySelectorAll('div[class*="-option"], div[class*="option"], [role="option"]')
+      options.forEach(opt => {
+        const text = opt.textContent?.trim()
+        if (text && /^\d{4}$/.test(text)) {
+          yearList.push(text)
+        }
+      })
+      return yearList
+    })
+
+    console.log(`[M1 Statements] Found years in dropdown: ${years.join(', ')}`)
+
+    // Close dropdown by pressing Escape
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(300)
+
+    return years
+  }
+
+  // Get years to process
+  sendEvent('status', { message: 'Finding available years...', phase: 'scanning' })
+  let yearsToProcess = await getAvailableYears()
+
+  // If no years found from dropdown, try generating a range
+  if (yearsToProcess.length === 0) {
+    const currentYear = new Date().getFullYear()
+    yearsToProcess = Array.from({ length: 10 }, (_, i) => String(currentYear - i))
+    sendEvent('status', { message: `Using default year range: ${currentYear} to ${currentYear - 9}`, phase: 'scanning' })
+  } else {
+    sendEvent('status', { message: `Found ${yearsToProcess.length} years to scan`, phase: 'scanning' })
+  }
+
+  // Sort years descending (newest first)
+  yearsToProcess.sort((a, b) => parseInt(b) - parseInt(a))
+
+  // If specific year requested, only process that year
+  if (year) {
+    yearsToProcess = yearsToProcess.filter(y => y === year)
+    if (yearsToProcess.length === 0) {
+      yearsToProcess = [year]
+    }
+  }
+
+  // Process each year
+  for (const currentYear of yearsToProcess) {
+    sendEvent('status', { message: `Processing year ${currentYear}...`, phase: 'downloading', year: currentYear })
+
+    // Select the year
+    const selected = await selectYear(currentYear)
+    if (!selected) {
+      sendEvent('status', { message: `Could not select year ${currentYear}, skipping...`, phase: 'downloading' })
+      continue
+    }
+
+    await page.waitForTimeout(1000)
+
+    // Click "Load more" button repeatedly until all statements are loaded
+    let loadMoreClicks = 0
+    const maxLoadMoreClicks = 20 // Safety limit
+    while (loadMoreClicks < maxLoadMoreClicks) {
+      const loadMoreBtn = await page.$('button:has(span:text("Load more")), button:has-text("Load more")').catch(() => null)
+      if (!loadMoreBtn) {
+        break
+      }
+      console.log(`[M1 Statements] Clicking "Load more" button (click ${loadMoreClicks + 1})`)
+      await loadMoreBtn.click()
+      await page.waitForTimeout(1500) // Wait for more statements to load
+      loadMoreClicks++
+    }
+    if (loadMoreClicks > 0) {
+      console.log(`[M1 Statements] Clicked "Load more" ${loadMoreClicks} times for year ${currentYear}`)
+      sendEvent('status', { message: `Loaded all statements for ${currentYear} (${loadMoreClicks} pages)`, phase: 'downloading', year: currentYear })
+    }
+
+    // Check if there are any statements (look for "No documents" message)
+    const noDocsMessage = await page.$('td:has-text("No documents")').catch(() => null)
+    if (noDocsMessage) {
+      sendEvent('status', { message: `No statements for ${currentYear}`, phase: 'downloading', year: currentYear })
+      continue
+    }
+
+    // Find all table rows with statements
+    const tableRows = await page.$$('tbody tr').catch(() => [])
+    console.log(`[M1 Statements] Found ${tableRows.length} table rows for ${currentYear}`)
+
+    // Collect all PDF URLs first by intercepting requests
+    const pdfUrls: Array<{ url: string; filename: string; rowText: string }> = []
+
+    for (let i = 0; i < tableRows.length; i++) {
+      const row = tableRows[i]!
+      const rowText = await row.textContent().catch(() => '') ?? ''
+      console.log(`[M1 Statements] Row ${i + 1} text: "${rowText.substring(0, 100)}"`)
+
+      // Skip rows that say "No documents"
+      if (rowText.includes('No documents')) {
+        console.log(`[M1 Statements] Skipping row ${i + 1} - No documents`)
+        continue
+      }
+
+      // Filter by account type if specified
+      if (accountType) {
+        const rowLower = rowText.toLowerCase()
+        const typeMatches =
+          (accountType === 'earn' && (rowLower.includes('earn') || rowLower.includes('save') || rowLower.includes('hysa'))) ||
+          (accountType === 'invest' && (rowLower.includes('invest') || rowLower.includes('individual') || rowLower.includes('brokerage'))) ||
+          (accountType === 'crypto' && rowLower.includes('crypto'))
+        if (!typeMatches) {
+          console.log(`[M1 Statements] Skipping row ${i + 1} - doesn't match accountType ${accountType}`)
+          totalSkipped++
+          continue
+        }
+      }
+
+      // Generate filename from row content
+      const monthMatch = rowText.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i)
+      const accountMatch = rowText.match(/(Save|Earn|Invest|Crypto|Individual|Brokerage)/i)
+      // Convert month name to number (01-12)
+      const monthNames: Record<string, string> = {
+        jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+        jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+      }
+      const month = monthMatch?.[1] ? (monthNames[monthMatch[1].toLowerCase()] ?? `row${i + 1}`) : `row${i + 1}`
+      const account = accountMatch ? accountMatch[1] : 'Statement'
+      const filename = `M1-${account}-${currentYear}-${month}.pdf`
+
+      // Check if already downloaded
+      if (all !== 'true' && existingFiles.some(f => f.toLowerCase().includes(filename.toLowerCase().replace('.pdf', '')))) {
+        console.log(`[M1 Statements] Skipping row ${i + 1} - already downloaded: ${filename}`)
+        totalSkipped++
+        totalProcessed++
+        sendEvent('progress', {
+          current: totalProcessed,
+          total: totalProcessed + tableRows.length - i,
+          downloaded: totalDownloaded,
+          skipped: totalSkipped,
+          filename,
+          status: 'skipped',
+          year: currentYear
+        })
+        continue
+      }
+
+      // Try to find button or link in this row
+      const clickable = await row.$('button, a').catch(() => null)
+      if (!clickable) {
+        console.log(`[M1 Statements] No clickable element in row ${i + 1}`)
+        continue
+      }
+
+      // Get href if it's a link
+      const href = await clickable.getAttribute('href').catch(() => null)
+      console.log(`[M1 Statements] Row ${i + 1} href: ${href}`)
+
+      // Accept any valid URL - M1 uses external document providers like apexclearing.com
+      if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+        // Direct link - we can fetch it
+        pdfUrls.push({ url: href, filename, rowText })
+        console.log(`[M1 Statements] Found direct URL: ${href.substring(0, 80)}...`)
+      } else if (href && href.startsWith('/')) {
+        // Relative URL
+        const fullUrl = `https://dashboard.m1.com${href}`
+        pdfUrls.push({ url: fullUrl, filename, rowText })
+        console.log(`[M1 Statements] Found relative URL: ${fullUrl}`)
+      } else {
+        // Need to click and intercept the new tab/request
+        console.log(`[M1 Statements] Clicking row ${i + 1} to get PDF URL...`)
+
+        // Set up request interception to capture PDF URL
+        let capturedPdfUrl: string | null = null
+        const requestHandler = (request: { url: () => string }) => {
+          const url = request.url()
+          if (url.includes('.pdf') || url.includes('/documents/') || url.includes('/statement')) {
+            capturedPdfUrl = url
+            console.log(`[M1 Statements] Captured PDF request: ${url}`)
+          }
+        }
+        page.on('request', requestHandler)
+
+        // Listen for new page (popup)
+        const context = page.context()
+        const popupPromise = context.waitForEvent('page', { timeout: 10000 }).catch(() => null)
+
+        await clickable.click()
+        await page.waitForTimeout(2000)
+
+        // Check if we got a popup
+        const popup = await popupPromise
+        if (popup) {
+          const popupUrl = popup.url()
+          console.log(`[M1 Statements] Popup opened: ${popupUrl}`)
+
+          // Wait for it to load
+          await popup.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {})
+          const finalUrl = popup.url()
+          console.log(`[M1 Statements] Popup final URL: ${finalUrl}`)
+
+          if (finalUrl && finalUrl !== 'about:blank') {
+            pdfUrls.push({ url: finalUrl, filename, rowText })
+          }
+
+          // Close the popup
+          await popup.close().catch(() => {})
+        } else if (capturedPdfUrl) {
+          pdfUrls.push({ url: capturedPdfUrl, filename, rowText })
+        }
+
+        page.off('request', requestHandler)
+      }
+    }
+
+    console.log(`[M1 Statements] Collected ${pdfUrls.length} PDF URLs for ${currentYear}`)
+    sendEvent('status', { message: `Found ${pdfUrls.length} statements for ${currentYear}`, phase: 'downloading' })
+
+    // Now download all the PDFs
+    for (const { url, filename } of pdfUrls) {
+      console.log(`[M1 Statements] Downloading: ${url} -> ${filename}`)
+
+      const filePath = join(M1_STATEMENTS_DIR, filename)
+
+      // Use fetch with the page's cookies
+      const cookies = await page.context().cookies()
+      const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ')
+
+      const response = await fetch(url, {
+        headers: {
+          'Cookie': cookieHeader,
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        },
+      }).catch(err => {
+        console.log(`[M1 Statements] Fetch error: ${err}`)
+        return null
+      })
+
+      if (response && response.ok) {
+        const buffer = Buffer.from(await response.arrayBuffer())
+        await writeFile(filePath, buffer)
+        console.log(`[M1 Statements] Saved: ${filePath} (${buffer.length} bytes)`)
+        totalDownloaded++
+        existingFiles.push(filename)
+        sendEvent('progress', {
+          current: totalProcessed + 1,
+          total: totalProcessed + pdfUrls.length,
+          downloaded: totalDownloaded,
+          skipped: totalSkipped,
+          filename,
+          status: 'downloaded',
+          year: currentYear
+        })
+      } else {
+        console.log(`[M1 Statements] Failed to download: ${url} - ${response?.status}`)
+        totalSkipped++
+      }
+
+      totalProcessed++
+      await page.waitForTimeout(500)
+    }
+  }
+
+  sendEvent('complete', {
+    total: totalProcessed,
+    downloaded: totalDownloaded,
+    skipped: totalSkipped,
+    message: `Downloaded ${totalDownloaded} statements across ${yearsToProcess.length} years, skipped ${totalSkipped}`
+  })
+
+  res.end()
+})
+
+/**
+ * GET /import/m1-statements/local
+ * List locally stored M1 statement PDFs.
+ */
+importRouter.get('/m1-statements/local', async (_req, res) => {
+  await mkdir(M1_STATEMENTS_DIR, { recursive: true })
+  const files = await readdir(M1_STATEMENTS_DIR).catch(() => [])
+
+  const statements = files
+    .filter(f => f.endsWith('.pdf'))
+    .map(filename => {
+      // Parse account type from filename
+      const fnLower = filename.toLowerCase()
+      let accountType = 'unknown'
+      if (fnLower.includes('earn') || fnLower.includes('save')) {
+        accountType = 'earn'
+      } else if (fnLower.includes('invest')) {
+        accountType = 'invest'
+      } else if (fnLower.includes('crypto')) {
+        accountType = 'crypto'
+      }
+
+      // Parse month/year from filename
+      const dateMatch = filename.match(/(\d{4})-(\d{2})/)
+      const monthYear = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}` : filename
+
+      return {
+        filename,
+        accountType,
+        monthYear,
+        downloaded: true,
+        path: join(M1_STATEMENTS_DIR, filename)
+      }
+    })
+    .sort((a, b) => b.monthYear.localeCompare(a.monthYear))
+
+  res.json({
+    count: statements.length,
+    statements,
+    directory: M1_STATEMENTS_DIR
+  })
+})
+
+/**
+ * POST /import/m1-statements/parse
+ * Parse a single M1 statement PDF.
+ */
+importRouter.post('/m1-statements/parse', async (req, res, next) => {
+  const { filename } = req.body as { filename?: string }
+
+  if (!filename) {
+    return next(badRequest('filename is required'))
+  }
+
+  const filePath = join(M1_STATEMENTS_DIR, filename)
+  const pdfBuffer = await readFile(filePath).catch(() => null)
+
+  if (!pdfBuffer) {
+    return next(badRequest(`File not found: ${filename}`))
+  }
+
+  const result = await parseM1StatementPDF(pdfBuffer, filename).catch((err: Error) => {
+    return next(badRequest(`Failed to parse PDF: ${err.message}`))
+  })
+
+  if (!result) return
+
+  res.json(result)
+})
+
+/**
+ * POST /import/m1-statements/parse-all
+ * Parse all local M1 statement PDFs and return combined transactions.
+ */
+importRouter.post('/m1-statements/parse-all', async (req, res) => {
+  const { accountType } = req.body as { accountType?: string }
+
+  await mkdir(M1_STATEMENTS_DIR, { recursive: true })
+  const files = await readdir(M1_STATEMENTS_DIR).catch(() => [])
+  let pdfFiles = files.filter(f => f.endsWith('.pdf'))
+
+  // Filter by account type if specified
+  if (accountType) {
+    pdfFiles = pdfFiles.filter(f => {
+      const fnLower = f.toLowerCase()
+      return (accountType === 'earn' && (fnLower.includes('earn') || fnLower.includes('save'))) ||
+             (accountType === 'invest' && fnLower.includes('invest')) ||
+             (accountType === 'crypto' && fnLower.includes('crypto'))
+    })
+  }
+
+  const allTransactions: M1StatementTransaction[] = []
+  const statements: M1StatementData[] = []
+  const errors: string[] = []
+
+  for (const filename of pdfFiles) {
+    const filePath = join(M1_STATEMENTS_DIR, filename)
+    const pdfBuffer = await readFile(filePath).catch(() => null)
+
+    if (!pdfBuffer) {
+      errors.push(`Failed to read ${filename}`)
+      continue
+    }
+
+    const result = await parseM1StatementPDF(pdfBuffer, filename).catch((err: Error) => {
+      errors.push(`Failed to parse ${filename}: ${err.message}`)
+      return null
+    })
+
+    if (result) {
+      statements.push(result)
+      allTransactions.push(...result.transactions)
+    }
+  }
+
+  // Sort all transactions by date
+  allTransactions.sort((a, b) => a.date.localeCompare(b.date))
+
+  // Aggregate by type
+  const byType: Record<string, { count: number; total: number }> = {}
+  for (const tx of allTransactions) {
+    if (!byType[tx.type]) {
+      byType[tx.type] = { count: 0, total: 0 }
+    }
+    byType[tx.type]!.count++
+    byType[tx.type]!.total += tx.amount
+  }
+
+  // Sort statements by period start for continuity checking
+  statements.sort((a, b) => a.periodStart.localeCompare(b.periodStart))
+
+  res.json({
+    statementCount: statements.length,
+    transactionCount: allTransactions.length,
+    transactions: allTransactions,
+    statements: statements.map(s => ({
+      filename: s.filename,
+      periodStart: s.periodStart,
+      periodEnd: s.periodEnd,
+      beginningBalance: s.beginningBalance,
+      endingBalance: s.endingBalance,
+      totalDeposits: s.totalDeposits,
+      totalWithdrawals: s.totalWithdrawals,
+      totalInterest: s.totalInterest,
+      transactionCount: s.transactions.length
+    })),
+    byType,
+    dateRange: allTransactions.length > 0 ? {
+      oldest: allTransactions[0]!.date,
+      newest: allTransactions[allTransactions.length - 1]!.date
+    } : null,
+    errors: errors.length > 0 ? errors : undefined
+  })
+})
+
+/**
+ * POST /import/m1-statements/apply
+ * Apply parsed M1 statement transactions to the m1-cash fund.
+ */
+importRouter.post('/m1-statements/apply', async (req, res, next) => {
+  const { transactions } = req.body as {
+    transactions: M1StatementTransaction[]
+  }
+
+  if (!transactions || !Array.isArray(transactions)) {
+    return next(badRequest('transactions array is required'))
+  }
+
+  // Read m1-cash fund
+  const allFunds = await readAllFunds(FUNDS_DIR).catch(() => [] as FundData[])
+  const fund = allFunds.find(f => f.id === 'm1-cash')
+
+  if (!fund) {
+    return next(badRequest('m1-cash fund not found. Please create it first.'))
+  }
+
+  // Group transactions by date and consolidate
+  const byDate = new Map<string, {
+    deposits: number
+    withdrawals: number
+    interest: number
+    fees: number
+    notes: string[]
+  }>()
+
+  for (const tx of transactions) {
+    let day = byDate.get(tx.date)
+    if (!day) {
+      day = { deposits: 0, withdrawals: 0, interest: 0, fees: 0, notes: [] }
+      byDate.set(tx.date, day)
+    }
+
+    if (tx.type === 'interest') {
+      day.interest += tx.amount
+    } else if (tx.type === 'deposit') {
+      day.deposits += tx.amount
+    } else if (tx.type === 'withdrawal') {
+      day.withdrawals += Math.abs(tx.amount)
+    } else if (tx.type === 'fee') {
+      day.fees += Math.abs(tx.amount)
+    } else if (tx.type === 'transfer') {
+      if (tx.amount > 0) {
+        day.deposits += tx.amount
+      } else {
+        day.withdrawals += Math.abs(tx.amount)
+      }
+    }
+    day.notes.push(tx.description)
+  }
+
+  // Sort dates chronologically
+  const sortedDates = Array.from(byDate.keys()).sort()
+
+  let applied = 0
+  const errors: string[] = []
+  let runningBalance = 0
+
+  for (const date of sortedDates) {
+    const day = byDate.get(date)!
+    const netFlow = day.deposits - day.withdrawals + day.interest - day.fees
+
+    // value = equity at START of day (before transaction)
+    // cash = equity at END of day (after transaction)
+    const startBalance = runningBalance
+    runningBalance += netFlow
+    const endBalance = runningBalance
+
+    // Create single consolidated entry for this day
+    const entry: FundEntry = {
+      date,
+      value: startBalance,   // Equity Start (before action)
+      cash: endBalance,      // Equity End (after action)
+      notes: day.notes.join('; ')
+    }
+
+    // Set action based on primary activity
+    if (day.deposits > 0 && day.withdrawals === 0) {
+      entry.action = 'DEPOSIT'
+      entry.amount = day.deposits
+    } else if (day.withdrawals > 0 && day.deposits === 0) {
+      entry.action = 'WITHDRAW'
+      entry.amount = day.withdrawals
+    } else if (day.deposits > day.withdrawals) {
+      // Net deposit
+      entry.action = 'DEPOSIT'
+      entry.amount = day.deposits - day.withdrawals
+    } else if (day.withdrawals > day.deposits) {
+      // Net withdrawal
+      entry.action = 'WITHDRAW'
+      entry.amount = day.withdrawals - day.deposits
+    } else {
+      // Only interest/fees or balanced deposits/withdrawals
+      entry.action = 'HOLD'
+    }
+
+    // Always include interest and fees if present
+    if (day.interest > 0) {
+      entry.cash_interest = day.interest
+    }
+    if (day.fees > 0) {
+      entry.expense = day.fees
+    }
+
+    // Append entry
+    const fundPath = join(FUNDS_DIR, 'm1-cash.tsv')
+    const appendResult = await appendEntry(fundPath, entry).catch((err: Error) => {
+      errors.push(`Failed to add entry for ${date}: ${err.message}`)
+      return false
+    })
+
+    if (appendResult !== false) {
+      applied++
+    }
+  }
+
+  res.json({
+    result: {
+      applied,
+      skipped: 0,
+      originalTransactions: transactions.length,
+      consolidatedEntries: applied,
+      errors
+    }
+  })
 })

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { toast } from 'sonner'
-import { updateFundConfig, updateFundEntry, recalculateFund, type FundEntry, type FundType } from '../../api/funds'
+import { updateFundConfig, updateFundEntry, recalculateFund, interpolateColumn, type FundEntry, type FundType, type InterpolatableColumn } from '../../api/funds'
 import { getColumnsForFundType, getDefaultColumns, getDefaultColumnOrder, type ColumnId, type ComputedEntry } from './types'
 import { PasteColumnModal } from './PasteColumnModal'
 import { useSettings } from '../../contexts/SettingsContext'
@@ -48,7 +48,9 @@ export function EntriesTable({
     return getDefaultColumnOrder(fundType)
   })
   const [draggedColumn, setDraggedColumn] = useState<ColumnId | null>(null)
+  const [showInterpolateMenu, setShowInterpolateMenu] = useState(false)
   const columnMenuRef = useRef<HTMLDivElement>(null)
+  const interpolateMenuRef = useRef<HTMLDivElement>(null)
 
   // Sync column preferences from props
   useEffect(() => {
@@ -80,6 +82,19 @@ export function EntriesTable({
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [showColumnMenu])
+
+  // Close interpolate menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (interpolateMenuRef.current && !interpolateMenuRef.current.contains(e.target as Node)) {
+        setShowInterpolateMenu(false)
+      }
+    }
+    if (showInterpolateMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showInterpolateMenu])
 
   // Save column preferences to fund config
   const saveColumnPrefs = useCallback(async (order: ColumnId[], visible: Set<ColumnId>) => {
@@ -310,6 +325,46 @@ export function EntriesTable({
               >
                 Paste Column
               </button>
+              <div className="relative" ref={interpolateMenuRef}>
+                <button
+                  onClick={() => setShowInterpolateMenu(!showInterpolateMenu)}
+                  className="px-2 py-1 text-xs bg-slate-600 text-white rounded hover:bg-slate-500 transition-colors font-medium flex items-center gap-1"
+                  title="Interpolate missing values in a column"
+                >
+                  Interpolate
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showInterpolateMenu && (
+                  <div className="absolute right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-lg py-1 z-20 min-w-[140px]">
+                    {(['margin_available', 'margin_borrowed', 'fund_size', 'value'] as InterpolatableColumn[]).map((col) => (
+                      <button
+                        key={col}
+                        onClick={async () => {
+                          setShowInterpolateMenu(false)
+                          const result = await interpolateColumn(fundId, col)
+                          if (result.error) {
+                            toast.error(result.error)
+                            return
+                          }
+                          if (result.data) {
+                            if (result.data.interpolated > 0) {
+                              toast.success(result.data.message)
+                              onReload()
+                            } else {
+                              toast.info(`No ${col.replace(/_/g, ' ')} values needed interpolation`)
+                            }
+                          }
+                        }}
+                        className="w-full px-3 py-1.5 text-left text-xs text-slate-300 hover:bg-slate-700 transition-colors"
+                      >
+                        {col.replace(/_/g, ' ')}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={handleRecalculate}
                 disabled={recalculating}

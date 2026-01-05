@@ -3,8 +3,10 @@ import { toast } from 'sonner'
 import {
   previewRobinhoodImport,
   applyRobinhoodImport,
+  applyM1CashImport,
   readFileAsText,
   getBrowserStatus,
+  navigateBrowser,
   launchBrowser,
   connectBrowser,
   scrapeRobinhoodHistoryStream,
@@ -15,12 +17,20 @@ import {
   getLocalCryptoStatements,
   parseAllCryptoStatements,
   downloadCryptoStatementsStream,
+  getLocalM1Statements,
+  parseAllM1Statements,
+  applyM1StatementTransactions,
+  downloadM1StatementsStream,
   type ImportPreview,
   type ScrapeProgressEvent,
   type ScrapeStatusEvent,
   type ScrapeArchive,
+  type ParsedTransaction,
   type CryptoParseAllResponse,
-  type CryptoStatementsResponse
+  type CryptoStatementsResponse,
+  type M1StatementsListResponse,
+  type M1StatementsParseAllResponse,
+  type M1StatementTransaction
 } from '../api/import'
 import { notifyFundsChanged } from '../api/funds'
 
@@ -30,16 +40,16 @@ interface ImportWizardProps {
   platform?: string  // Optional platform filter (e.g., 'robinhood', 'm1')
 }
 
-type ImportMethod = 'csv' | 'scrape' | 'archive' | 'crypto-pdf' | 'm1-cash'
-type WizardStep = 'method' | 'archive' | 'browser' | 'url' | 'upload' | 'preview' | 'scraping' | 'importing' | 'done' | 'crypto-pdf' | 'crypto-download' | 'crypto-preview' | 'm1-cash-url'
+type ImportMethod = 'csv' | 'scrape' | 'archive' | 'crypto-pdf' | 'm1-cash' | 'm1-statements'
+type WizardStep = 'method' | 'archive' | 'browser' | 'url' | 'upload' | 'preview' | 'scraping' | 'importing' | 'done' | 'crypto-pdf' | 'crypto-download' | 'crypto-preview' | 'm1-cash-url' | 'm1-statements' | 'm1-statements-download' | 'm1-statements-preview' | 'checking-login'
 type BrowserState = 'idle' | 'launching' | 'launched' | 'connecting' | 'connected'
 
 // Define which import methods are available for each platform
 const PLATFORM_IMPORT_METHODS: Record<string, ImportMethod[]> = {
   robinhood: ['csv', 'scrape', 'archive', 'crypto-pdf'],
-  m1: ['m1-cash'],
+  m1: ['m1-cash', 'm1-statements'],
   // Default: show all methods (for dashboard or unknown platforms)
-  _default: ['csv', 'scrape', 'archive', 'crypto-pdf', 'm1-cash']
+  _default: ['csv', 'scrape', 'archive', 'crypto-pdf', 'm1-cash', 'm1-statements']
 }
 
 // Get available methods for a platform
@@ -95,9 +105,19 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
     downloaded: number
     message: string
   }>({ phase: 'idle', current: 0, total: 0, downloaded: 0, message: '' })
+  const [m1Statements, setM1Statements] = useState<M1StatementsListResponse | null>(null)
+  const [m1ParseResult, setM1ParseResult] = useState<M1StatementsParseAllResponse | null>(null)
+  const [m1DownloadProgress, setM1DownloadProgress] = useState<{
+    phase: 'idle' | 'downloading' | 'complete' | 'error'
+    current: number
+    total: number
+    downloaded: number
+    message: string
+  }>({ phase: 'idle', current: 0, total: 0, downloaded: 0, message: '' })
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const scrapeStreamRef = useRef<{ close: () => void } | null>(null)
   const cryptoStreamRef = useRef<{ close: () => void } | null>(null)
+  const m1StreamRef = useRef<{ close: () => void } | null>(null)
 
   // Cleanup on unmount
   useEffect(() => {
@@ -110,6 +130,9 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
       }
       if (cryptoStreamRef.current) {
         cryptoStreamRef.current.close()
+      }
+      if (m1StreamRef.current) {
+        m1StreamRef.current.close()
       }
     }
   }, [])
@@ -176,6 +199,16 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
           setBrowserState('launched')
         }
       })
+    } else if (m === 'm1-statements') {
+      // M1 Statements PDF import
+      setStep('m1-statements')
+      setIsProcessing(true)
+      // Load existing local PDF statements
+      const result = await getLocalM1Statements()
+      setIsProcessing(false)
+      if (result.data) {
+        setM1Statements(result.data)
+      }
     } else {
       setStep('browser')
       // Check if browser is already running
@@ -191,13 +224,13 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
 
   // Get platform name for display in messages
   const getPlatformDisplayName = (m: ImportMethod | null): string => {
-    if (m === 'm1-cash') return 'M1 Finance'
+    if (m === 'm1-cash' || m === 'm1-statements') return 'M1 Finance'
     return 'Robinhood'
   }
 
   // Get platform identifier for API calls
   const getLaunchPlatform = (m: ImportMethod | null): string => {
-    if (m === 'm1-cash') return 'm1'
+    if (m === 'm1-cash' || m === 'm1-statements') return 'm1'
     return 'robinhood'
   }
 
@@ -548,12 +581,14 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
   }, [preview, selectedTransactions, method, onImported, onClose])
 
   const handleBack = useCallback(() => {
-    if (step === 'upload' || step === 'browser' || step === 'archive' || step === 'crypto-pdf') {
+    if (step === 'upload' || step === 'browser' || step === 'archive' || step === 'crypto-pdf' || step === 'm1-statements') {
       setStep('method')
       setMethod(null)
       setArchive(null)
       setCryptoStatements(null)
       setCryptoParseResult(null)
+      setM1Statements(null)
+      setM1ParseResult(null)
     } else if (step === 'url') {
       setStep('browser')
     } else if (step === 'm1-cash-url') {
@@ -578,9 +613,23 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
       }
       setIsProcessing(false)
       setStep('crypto-pdf')
+    } else if (step === 'm1-statements-download') {
+      // Cancel the download
+      if (m1StreamRef.current) {
+        m1StreamRef.current.close()
+        m1StreamRef.current = null
+      }
+      setIsProcessing(false)
+      setStep('m1-statements')
+    } else if (step === 'checking-login') {
+      setIsProcessing(false)
+      setStep('m1-statements')
     } else if (step === 'crypto-preview') {
       setStep('crypto-pdf')
       setCryptoParseResult(null)
+    } else if (step === 'm1-statements-preview') {
+      setStep('m1-statements')
+      setM1ParseResult(null)
     } else if (step === 'preview') {
       if (method === 'csv') {
         setStep('upload')
@@ -617,11 +666,11 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
   // Step indicator
   const getStepNumber = () => {
     if (step === 'method') return 1
-    if (step === 'upload' || step === 'browser' || step === 'archive' || step === 'crypto-pdf') return 2
-    if (step === 'url' || step === 'crypto-download' || step === 'm1-cash-url') return 3
+    if (step === 'upload' || step === 'browser' || step === 'archive' || step === 'crypto-pdf' || step === 'm1-statements') return 2
+    if (step === 'url' || step === 'crypto-download' || step === 'm1-cash-url' || step === 'm1-statements-download' || step === 'checking-login') return 3
     if (step === 'scraping') return 4
-    if (step === 'crypto-preview') return 3
-    if (step === 'preview' || step === 'importing') return method === 'csv' ? 3 : method === 'archive' ? 3 : method === 'crypto-pdf' ? 3 : method === 'm1-cash' ? 4 : 5
+    if (step === 'crypto-preview' || step === 'm1-statements-preview') return 3
+    if (step === 'preview' || step === 'importing') return method === 'csv' ? 3 : method === 'archive' ? 3 : method === 'crypto-pdf' ? 3 : method === 'm1-statements' ? 3 : method === 'm1-cash' ? 4 : 5
     return 1
   }
 
@@ -629,6 +678,7 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
     if (method === 'csv') return 3
     if (method === 'archive') return 3
     if (method === 'crypto-pdf') return 3
+    if (method === 'm1-statements') return 3
     if (method === 'm1-cash') return 4
     return 5
   }
@@ -757,19 +807,68 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                 )}
 
                 {availableMethods.includes('m1-cash') && (
+                  <>
+                    <button
+                      onClick={async () => {
+                        // Check if we have existing M1 cash data
+                        setIsProcessing(true)
+                        const result = await getScrapeArchive('m1-cash')
+                        setIsProcessing(false)
+                        if (result.data && result.data.transactionCount > 0) {
+                          setMethod('m1-cash')
+                          setArchive(result.data)
+                          setSelectedTypes(new Set(['interest', 'deposit', 'withdrawal']))
+                          setStep('archive')
+                        } else {
+                          // No existing data, go to scrape flow
+                          handleSelectMethod('m1-cash')
+                        }
+                      }}
+                      className="p-6 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-cyan-500 hover:bg-slate-700 transition-all text-left group"
+                    >
+                      <div className="text-4xl mb-3">📦</div>
+                      <h3 className="text-lg font-medium text-white group-hover:text-cyan-400 transition-colors">
+                        View M1 Saved Data
+                      </h3>
+                      <p className="text-sm text-slate-400 mt-1">
+                        View previously scraped M1 cash transactions and import them
+                      </p>
+                      <p className="text-xs text-slate-500 mt-3">
+                        Best for: Importing from existing data
+                      </p>
+                    </button>
+                    <button
+                      onClick={() => handleSelectMethod('m1-cash')}
+                      className="p-6 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-cyan-500 hover:bg-slate-700 transition-all text-left group"
+                    >
+                      <div className="text-4xl mb-3">💰</div>
+                      <h3 className="text-lg font-medium text-white group-hover:text-cyan-400 transition-colors">
+                        Scrape M1 Cash
+                      </h3>
+                      <p className="text-sm text-slate-400 mt-1">
+                        Scrape interest payments from M1 Finance savings account
+                      </p>
+                      <p className="text-xs text-slate-500 mt-3">
+                        Best for: Getting new transaction data
+                      </p>
+                    </button>
+                  </>
+                )}
+
+                {availableMethods.includes('m1-statements') && (
                   <button
-                    onClick={() => handleSelectMethod('m1-cash')}
-                    className="p-6 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-cyan-500 hover:bg-slate-700 transition-all text-left group"
+                    onClick={() => handleSelectMethod('m1-statements')}
+                    className="p-6 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-teal-500 hover:bg-slate-700 transition-all text-left group"
                   >
-                    <div className="text-4xl mb-3">💰</div>
-                    <h3 className="text-lg font-medium text-white group-hover:text-cyan-400 transition-colors">
-                      M1 Cash Interest
+                    <div className="text-4xl mb-3">📑</div>
+                    <h3 className="text-lg font-medium text-white group-hover:text-teal-400 transition-colors">
+                      M1 Statement PDFs
                     </h3>
                     <p className="text-sm text-slate-400 mt-1">
-                      Scrape interest payments from M1 Finance savings account
+                      Parse monthly M1 Earn/Save PDF statements for complete history
                     </p>
                     <p className="text-xs text-slate-500 mt-3">
-                      Best for: Cash account interest tracking
+                      Best for: Complete historical data from PDFs
                     </p>
                   </button>
                 )}
@@ -871,8 +970,38 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                       </div>
                     )}
 
-                    {/* By Symbol */}
-                    {archive.summary?.bySymbol && (
+                    {/* M1 Cash Fund Status */}
+                    {method === 'm1-cash' && (
+                      <div className="mb-4">
+                        <h4 className="text-sm font-medium text-slate-300 mb-2">Cash Fund Status</h4>
+                        <div className={`p-3 rounded ${
+                          (archive.summary as { cashFundExists?: boolean })?.cashFundExists
+                            ? 'bg-green-500/20 border border-green-500/30'
+                            : 'bg-amber-500/20 border border-amber-500/30'
+                        }`}>
+                          {(archive.summary as { cashFundExists?: boolean })?.cashFundExists ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-green-400">✓</span>
+                              <span className="text-green-300">m1-cash fund exists</span>
+                              <span className="text-slate-400 text-sm ml-2">
+                                ({(archive.summary as { cashTransactionCount?: number })?.cashTransactionCount ?? 0} cash transactions can be imported)
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="text-amber-400">⚠</span>
+                              <span className="text-amber-300">m1-cash fund not found</span>
+                              <span className="text-slate-400 text-sm ml-2">
+                                Please create the m1-cash fund first to import transactions
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* By Symbol (not shown for M1 cash) */}
+                    {method !== 'm1-cash' && archive.summary?.bySymbol && (
                       <div>
                         <h4 className="text-sm font-medium text-slate-300 mb-2">By Symbol (click to select for import)</h4>
                         <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
@@ -913,39 +1042,119 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
 
                   {/* Actions */}
                   <div className="flex gap-4">
-                    <button
-                      onClick={async () => {
-                        // Convert archive to preview format for the preview step
-                        setIsProcessing(true)
-                        const result = await scrapeRobinhoodHistory(scrapeUrl, 'robinhood')
-                        setIsProcessing(false)
-                        if (result.data) {
-                          // Filter by selected symbols and types
-                          const filtered = result.data.transactions.filter(tx => {
-                            const typeMatch = selectedTypes.has(tx.action.toLowerCase())
-                            const symbolMatch = !tx.symbol || selectedSymbols.has(tx.symbol)
-                            return typeMatch && symbolMatch
-                          })
-                          setPreview({ ...result.data, transactions: filtered })
-                          const matched = new Set<number>()
-                          filtered.forEach((tx, i) => {
-                            if (tx.fundExists) matched.add(i)
-                          })
-                          setSelectedTransactions(matched)
-                          setStep('preview')
-                        }
-                      }}
-                      disabled={selectedSymbols.size === 0 || selectedTypes.size === 0}
-                      className="flex-1 px-4 py-3 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                    >
-                      Preview {selectedSymbols.size} Symbol{selectedSymbols.size !== 1 ? 's' : ''} for Import
-                    </button>
-                    <button
-                      onClick={() => handleSelectMethod('scrape')}
-                      className="px-4 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors"
-                    >
-                      Add More Data
-                    </button>
+                    {method === 'm1-cash' ? (
+                      <>
+                        <button
+                          onClick={async () => {
+                            // Import M1 cash transactions directly
+                            if (!(archive.summary as { cashFundExists?: boolean })?.cashFundExists) {
+                              toast.error('Please create the m1-cash fund first')
+                              return
+                            }
+
+                            setIsProcessing(true)
+
+                            // Get full archive to get all transactions
+                            const fullArchive = await getScrapeArchive('m1-cash', true)
+                            if (!fullArchive.data) {
+                              toast.error('Failed to load archive')
+                              setIsProcessing(false)
+                              return
+                            }
+
+                            // Filter transactions by selected types
+                            const cashTypes = ['interest', 'deposit', 'withdrawal']
+                            const filteredTxns = fullArchive.data.transactions.filter(tx =>
+                              selectedTypes.has(tx.type) && cashTypes.includes(tx.type)
+                            )
+
+                            // Convert to ParsedTransaction format
+                            const parsedTxns: ParsedTransaction[] = filteredTxns.map(tx => ({
+                              date: tx.date,
+                              action: tx.type === 'interest' ? 'INTEREST' :
+                                      tx.type === 'deposit' ? 'DEPOSIT' :
+                                      tx.type === 'withdrawal' ? 'WITHDRAW' : 'OTHER',
+                              symbol: '',
+                              quantity: 0,
+                              price: 0,
+                              amount: tx.amount,
+                              description: tx.title,
+                              fundId: 'm1-cash',
+                              fundExists: true
+                            }))
+
+                            // Apply the import
+                            const result = await applyM1CashImport(parsedTxns, true)
+                            setIsProcessing(false)
+
+                            if (result.error) {
+                              toast.error(result.error)
+                              return
+                            }
+
+                            if (result.data) {
+                              const { applied, skipped, errors } = result.data
+                              if (errors.length > 0) {
+                                toast.error(`Import completed with errors: ${errors.join(', ')}`)
+                              } else if (applied > 0) {
+                                toast.success(`Imported ${applied} transaction${applied !== 1 ? 's' : ''} (${skipped} skipped)`)
+                                notifyFundsChanged()
+                                onImported?.()
+                                onClose()
+                              } else {
+                                toast.info(`No new transactions imported (${skipped} skipped as duplicates)`)
+                              }
+                            }
+                          }}
+                          disabled={selectedTypes.size === 0 || !(archive.summary as { cashFundExists?: boolean })?.cashFundExists}
+                          className="flex-1 px-4 py-3 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                        >
+                          Import {['interest', 'deposit', 'withdrawal'].filter(t => selectedTypes.has(t)).join(', ')} Transactions
+                        </button>
+                        <button
+                          onClick={() => handleSelectMethod('m1-cash')}
+                          className="px-4 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors"
+                        >
+                          Add More Data
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={async () => {
+                            // Convert archive to preview format for the preview step
+                            setIsProcessing(true)
+                            const result = await scrapeRobinhoodHistory(scrapeUrl, 'robinhood')
+                            setIsProcessing(false)
+                            if (result.data) {
+                              // Filter by selected symbols and types
+                              const filtered = result.data.transactions.filter(tx => {
+                                const typeMatch = selectedTypes.has(tx.action.toLowerCase())
+                                const symbolMatch = !tx.symbol || selectedSymbols.has(tx.symbol)
+                                return typeMatch && symbolMatch
+                              })
+                              setPreview({ ...result.data, transactions: filtered })
+                              const matched = new Set<number>()
+                              filtered.forEach((tx, i) => {
+                                if (tx.fundExists) matched.add(i)
+                              })
+                              setSelectedTransactions(matched)
+                              setStep('preview')
+                            }
+                          }}
+                          disabled={selectedSymbols.size === 0 || selectedTypes.size === 0}
+                          className="flex-1 px-4 py-3 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                        >
+                          Preview {selectedSymbols.size} Symbol{selectedSymbols.size !== 1 ? 's' : ''} for Import
+                        </button>
+                        <button
+                          onClick={() => handleSelectMethod('scrape')}
+                          className="px-4 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors"
+                        >
+                          Add More Data
+                        </button>
+                      </>
+                    )}
                   </div>
 
                   <p className="text-xs text-slate-500 text-center">
@@ -1164,6 +1373,416 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
             </div>
           )}
 
+          {/* Step 2 (M1 Statements): Local PDF Statements */}
+          {step === 'm1-statements' && (
+            <div className="space-y-6">
+              {isProcessing ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin text-4xl mb-4">⏳</div>
+                  <p className="text-slate-400">Loading statements...</p>
+                </div>
+              ) : (
+                <>
+                  <div className="text-center mb-4">
+                    <div className="text-4xl mb-2">📑</div>
+                    <h3 className="text-lg font-medium text-white">M1 Statement PDFs</h3>
+                    <p className="text-sm text-slate-400 mt-1">
+                      {m1Statements && m1Statements.count > 0
+                        ? `Found ${m1Statements.count} PDF statement${m1Statements.count !== 1 ? 's' : ''}`
+                        : 'No PDF statements found locally'}
+                    </p>
+                  </div>
+
+                  {m1Statements && m1Statements.count > 0 && (
+                    <div className="bg-slate-700/30 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-slate-300 mb-3">Downloaded Statements</h4>
+                      <div className="grid grid-cols-4 gap-2 max-h-32 overflow-y-auto">
+                        {m1Statements.statements.map(stmt => (
+                          <div key={stmt.filename} className={`px-3 py-2 rounded text-sm ${
+                            stmt.accountType === 'earn' ? 'bg-teal-600/30 text-teal-300' :
+                            stmt.accountType === 'invest' ? 'bg-blue-600/30 text-blue-300' :
+                            stmt.accountType === 'crypto' ? 'bg-amber-600/30 text-amber-300' :
+                            'bg-slate-600/50 text-white'
+                          }`}>
+                            {stmt.monthYear}
+                            <span className="text-xs text-slate-400 ml-1">
+                              ({stmt.accountType})
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-4">
+                    {m1Statements && m1Statements.count > 0 && (
+                      <button
+                        onClick={async () => {
+                          setIsProcessing(true)
+                          const result = await parseAllM1Statements('earn')
+                          setIsProcessing(false)
+                          if (result.data) {
+                            setM1ParseResult(result.data)
+                            setStep('m1-statements-preview')
+                            if (result.data.errors && result.data.errors.length > 0) {
+                              toast.error(`Parsed with ${result.data.errors.length} error(s)`)
+                            } else {
+                              toast.success(`Parsed ${result.data.transactionCount} transactions from ${result.data.statementCount} statements`)
+                            }
+                          } else if (result.error) {
+                            toast.error(result.error)
+                          }
+                        }}
+                        className="flex-1 px-4 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium"
+                      >
+                        Parse Earn/Save PDFs ({m1Statements.statements.filter(s => s.accountType === 'earn').length})
+                      </button>
+                    )}
+                    <button
+                      onClick={async () => {
+                        // Check browser status and login
+                        setMethod('m1-statements')
+                        setStep('checking-login')
+                        setIsProcessing(true)
+
+                        const status = await getBrowserStatus('m1')
+                        if (status.error || !status.data?.connected) {
+                          toast.error('Browser not running. Start with: pm2 start escapemint-browser')
+                          setStep('m1-statements')
+                          setIsProcessing(false)
+                          return
+                        }
+
+                        // If logged in, go directly to download
+                        if (status.data.loggedIn) {
+                          setIsProcessing(false)
+                          setBrowserState('connected')
+                          setStep('m1-statements-download')
+                          // Trigger download automatically
+                          m1StreamRef.current = downloadM1StatementsStream({}, {
+                            onStatus: (data) => {
+                              setM1DownloadProgress(prev => ({ ...prev, message: data.message, phase: 'downloading' }))
+                            },
+                            onProgress: (data) => {
+                              setM1DownloadProgress(prev => ({ ...prev, ...data, phase: 'downloading' }))
+                            },
+                            onComplete: (data) => {
+                              setM1DownloadProgress(prev => ({ ...prev, ...data, phase: 'complete' }))
+                              // Reload statements list
+                              getLocalM1Statements().then(result => {
+                                if (result.data) setM1Statements(result.data)
+                              })
+                            },
+                            onError: (data) => {
+                              setM1DownloadProgress(prev => ({ ...prev, message: data.message, phase: 'error' }))
+                            }
+                          })
+                          return
+                        }
+
+                        // Not logged in - navigate to M1 and wait for login
+                        const navResult = await navigateBrowser('https://dashboard.m1.com', 'm1')
+                        if (navResult.error) {
+                          toast.error(navResult.error)
+                          setStep('m1-statements')
+                          setIsProcessing(false)
+                          return
+                        }
+
+                        // If navigated and now logged in, proceed
+                        if (navResult.data?.isLoggedIn) {
+                          setIsProcessing(false)
+                          setBrowserState('connected')
+                          setStep('m1-statements-download')
+                          return
+                        }
+
+                        // Still not logged in, keep checking
+                        setIsProcessing(false)
+                        // Stay on checking-login step - it will poll
+                      }}
+                      className="flex-1 px-4 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors"
+                    >
+                      Download More from M1
+                    </button>
+                  </div>
+
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-slate-300 mb-2">How to get PDF statements:</h4>
+                    <ol className="text-sm text-slate-400 space-y-2 list-decimal list-inside">
+                      <li>Log in to M1 Finance in Chrome</li>
+                      <li>Navigate to: Settings → Documents → Statements</li>
+                      <li>Download all monthly PDF statements to <code className="text-teal-400">data/m1-statements/</code></li>
+                      <li>Click "Download More from M1" to automate this process</li>
+                    </ol>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Checking Login Step */}
+          {step === 'checking-login' && (
+            <div className="space-y-6 py-6">
+              <div className="text-center">
+                <div className="text-4xl mb-4 animate-pulse">🔐</div>
+                <h3 className="text-lg font-medium text-white mb-2">
+                  {isProcessing ? 'Checking browser...' : 'Waiting for M1 login...'}
+                </h3>
+                <p className="text-slate-400">
+                  {isProcessing
+                    ? 'Connecting to browser and checking login status'
+                    : 'Please log in to M1 Finance in the browser window'}
+                </p>
+              </div>
+
+              {!isProcessing && (
+                <>
+                  <div className="bg-slate-700/50 rounded-lg p-4 text-center">
+                    <p className="text-sm text-slate-300 mb-3">
+                      A browser window should be open. Log in to M1 Finance to continue.
+                    </p>
+                    <button
+                      onClick={async () => {
+                        setIsProcessing(true)
+                        const status = await getBrowserStatus('m1')
+                        setIsProcessing(false)
+
+                        if (status.data?.loggedIn) {
+                          setBrowserState('connected')
+                          setStep('m1-statements-download')
+                          // Trigger download
+                          m1StreamRef.current = downloadM1StatementsStream({}, {
+                            onStatus: (data) => {
+                              setM1DownloadProgress(prev => ({ ...prev, message: data.message, phase: 'downloading' }))
+                            },
+                            onProgress: (data) => {
+                              setM1DownloadProgress(prev => ({ ...prev, ...data, phase: 'downloading' }))
+                            },
+                            onComplete: (data) => {
+                              setM1DownloadProgress(prev => ({ ...prev, ...data, phase: 'complete' }))
+                              getLocalM1Statements().then(result => {
+                                if (result.data) setM1Statements(result.data)
+                              })
+                            },
+                            onError: (data) => {
+                              setM1DownloadProgress(prev => ({ ...prev, message: data.message, phase: 'error' }))
+                            }
+                          })
+                        } else {
+                          toast.error('Still not logged in. Please log in to M1 Finance.')
+                        }
+                      }}
+                      className="px-6 py-2 bg-teal-600 text-white rounded hover:bg-teal-700 transition-colors"
+                    >
+                      Check Login Status
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => setStep('m1-statements')}
+                    className="w-full px-4 py-2 text-slate-400 hover:text-white transition-colors text-sm"
+                  >
+                    ← Back to statements
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* M1 Statements Download Progress */}
+          {step === 'm1-statements-download' && (
+            <div className="space-y-6 py-6">
+              <div className="text-center">
+                <div className="text-4xl mb-4">
+                  {m1DownloadProgress.phase === 'error' ? '❌' :
+                   m1DownloadProgress.phase === 'complete' ? '✅' :
+                   '📥'}
+                </div>
+                <h3 className="text-lg font-medium text-white mb-2">
+                  {m1DownloadProgress.phase === 'downloading' ? 'Downloading M1 Statements' :
+                   m1DownloadProgress.phase === 'complete' ? 'Download Complete' :
+                   m1DownloadProgress.phase === 'error' ? 'Download Failed' :
+                   'Starting...'}
+                </h3>
+                <p className="text-slate-400">{m1DownloadProgress.message}</p>
+              </div>
+
+              {/* Progress bar */}
+              {m1DownloadProgress.total > 0 && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm text-slate-400">
+                    <span>Progress</span>
+                    <span>{m1DownloadProgress.current} / {m1DownloadProgress.total}</span>
+                  </div>
+                  <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-teal-500 transition-all duration-300"
+                      style={{ width: `${Math.min(100, (m1DownloadProgress.current / m1DownloadProgress.total) * 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-teal-400">{m1DownloadProgress.downloaded} downloaded</span>
+                    <span className="text-slate-500">{m1DownloadProgress.current - m1DownloadProgress.downloaded} skipped</span>
+                  </div>
+                </div>
+              )}
+
+              {m1DownloadProgress.phase === 'complete' && (
+                <div className="text-center text-sm text-slate-400">
+                  Returning to parse statements...
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* M1 Statements Preview */}
+          {step === 'm1-statements-preview' && m1ParseResult && (
+            <div className="space-y-4">
+              {/* Summary */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-slate-700/50 rounded p-4">
+                  <div className="text-2xl font-bold text-white">{m1ParseResult.statementCount}</div>
+                  <div className="text-sm text-slate-400">PDFs Parsed</div>
+                </div>
+                <div className="bg-slate-700/50 rounded p-4">
+                  <div className="text-2xl font-bold text-teal-400">{m1ParseResult.transactionCount}</div>
+                  <div className="text-sm text-slate-400">Transactions</div>
+                </div>
+                <div className="bg-slate-700/50 rounded p-4">
+                  <div className="text-sm text-slate-300">
+                    {m1ParseResult.dateRange ? (
+                      <>{m1ParseResult.dateRange.oldest} → {m1ParseResult.dateRange.newest}</>
+                    ) : '-'}
+                  </div>
+                  <div className="text-sm text-slate-400">Date Range</div>
+                </div>
+              </div>
+
+              {/* By Type Summary */}
+              <div className="bg-slate-700/30 rounded-lg p-4">
+                <h3 className="text-sm font-medium text-slate-300 mb-3">By Transaction Type</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  {Object.entries(m1ParseResult.byType).map(([type, data]) => (
+                    <div key={type} className={`rounded p-3 ${
+                      type === 'interest' ? 'bg-green-500/20' :
+                      type === 'deposit' ? 'bg-blue-500/20' :
+                      type === 'withdrawal' ? 'bg-red-500/20' :
+                      type === 'fee' ? 'bg-amber-500/20' :
+                      'bg-slate-700/50'
+                    }`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-white font-medium capitalize">{type}</span>
+                        <span className="text-sm text-slate-400">{data.count} txns</span>
+                      </div>
+                      <div className={`text-lg font-bold ${
+                        type === 'interest' ? 'text-green-400' :
+                        type === 'deposit' ? 'text-blue-400' :
+                        type === 'withdrawal' ? 'text-red-400' :
+                        type === 'fee' ? 'text-amber-400' :
+                        'text-white'
+                      }`}>
+                        {formatCurrency(data.total)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Transaction Preview */}
+              <div className="border border-slate-700 rounded overflow-hidden">
+                <div className="bg-slate-700/50 p-3 flex justify-between items-center">
+                  <span className="text-sm font-medium text-slate-300">
+                    Transactions (showing first 50)
+                  </span>
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-800 sticky top-0">
+                      <tr>
+                        <th className="p-2 text-left text-slate-400">Date</th>
+                        <th className="p-2 text-left text-slate-400">Type</th>
+                        <th className="p-2 text-left text-slate-400">Description</th>
+                        <th className="p-2 text-right text-slate-400">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {m1ParseResult.transactions.slice(0, 50).map((tx, i) => (
+                        <tr key={i} className="border-t border-slate-700">
+                          <td className="p-2 text-slate-300">{tx.date}</td>
+                          <td className="p-2">
+                            <span className={`px-2 py-0.5 rounded text-xs ${
+                              tx.type === 'interest' ? 'bg-green-500/20 text-green-300' :
+                              tx.type === 'deposit' ? 'bg-blue-500/20 text-blue-300' :
+                              tx.type === 'withdrawal' ? 'bg-red-500/20 text-red-300' :
+                              tx.type === 'fee' ? 'bg-amber-500/20 text-amber-300' :
+                              'bg-slate-500/20 text-slate-300'
+                            }`}>
+                              {tx.type.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="p-2 text-slate-300 truncate max-w-xs">{tx.description}</td>
+                          <td className={`p-2 text-right font-medium ${
+                            tx.amount >= 0 ? 'text-green-400' : 'text-red-400'
+                          }`}>
+                            {formatCurrency(tx.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Errors if any */}
+              {m1ParseResult.errors && m1ParseResult.errors.length > 0 && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded p-4">
+                  <h4 className="text-sm font-medium text-red-400 mb-2">Parse Errors</h4>
+                  <ul className="text-sm text-red-300 space-y-1">
+                    {m1ParseResult.errors.map((err, i) => (
+                      <li key={i}>{err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Apply Button */}
+              <div className="flex gap-4">
+                <button
+                  onClick={async () => {
+                    setIsProcessing(true)
+                    // Filter to just cash-related transactions
+                    const cashTxns = m1ParseResult.transactions.filter(tx =>
+                      ['interest', 'deposit', 'withdrawal', 'fee'].includes(tx.type)
+                    )
+                    const result = await applyM1StatementTransactions(cashTxns, true)
+                    setIsProcessing(false)
+                    if (result.error) {
+                      toast.error(result.error)
+                    } else if (result.data) {
+                      const { applied, skipped, errors } = result.data
+                      if (errors.length > 0) {
+                        toast.error(`Import completed with errors: ${errors.join(', ')}`)
+                      } else if (applied > 0) {
+                        toast.success(`Imported ${applied} transaction${applied !== 1 ? 's' : ''} (${skipped} skipped)`)
+                        notifyFundsChanged()
+                        onImported?.()
+                        onClose()
+                      } else {
+                        toast.info(`No new transactions imported (${skipped} skipped as duplicates)`)
+                      }
+                    }
+                  }}
+                  disabled={isProcessing || m1ParseResult.transactionCount === 0}
+                  className="flex-1 px-4 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                >
+                  {isProcessing ? 'Importing...' : `Import ${m1ParseResult.transactionCount} Transactions to m1-cash`}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Step 2 (Scrape): Browser Launch/Login */}
           {step === 'browser' && (
             <div className="space-y-6">
@@ -1226,7 +1845,7 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                     <div className="text-6xl mb-4">✅</div>
                     <h3 className="text-xl font-medium text-green-400 mb-2">Connected!</h3>
                     <p className="text-slate-400 mb-6">
-                      Successfully connected to Chrome. {method === 'crypto-pdf' ? 'Ready to download crypto statements.' : 'You can now proceed to enter a URL.'}
+                      Successfully connected to Chrome. {method === 'crypto-pdf' ? 'Ready to download crypto statements.' : method === 'm1-statements' ? 'Ready to download M1 statements.' : 'You can now proceed to enter a URL.'}
                     </p>
                     <button
                       onClick={() => {
@@ -1277,13 +1896,60 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                               toast.error(data.message)
                             }
                           })
+                        } else if (method === 'm1-statements') {
+                          // Go directly to M1 statements download
+                          setStep('m1-statements-download')
+                          setM1DownloadProgress({ phase: 'downloading', current: 0, total: 0, downloaded: 0, message: 'Navigating to M1 statements...' })
+                          m1StreamRef.current = downloadM1StatementsStream({ accountType: 'earn' }, {
+                            onStatus: (data) => {
+                              setM1DownloadProgress(prev => ({
+                                ...prev,
+                                message: data.message,
+                                total: data.total ?? prev.total
+                              }))
+                            },
+                            onProgress: (data) => {
+                              setM1DownloadProgress({
+                                phase: 'downloading',
+                                current: data.current,
+                                total: data.total,
+                                downloaded: data.downloaded,
+                                message: data.status
+                              })
+                            },
+                            onComplete: async (data) => {
+                              setM1DownloadProgress({
+                                phase: 'complete',
+                                current: data.total,
+                                total: data.total,
+                                downloaded: data.downloaded,
+                                message: data.message
+                              })
+                              // Refresh local statements list
+                              const result = await getLocalM1Statements()
+                              if (result.data) {
+                                setM1Statements(result.data)
+                              }
+                              toast.success(data.message)
+                              // Go back to m1-statements step to parse
+                              setTimeout(() => setStep('m1-statements'), 1500)
+                            },
+                            onError: (data) => {
+                              setM1DownloadProgress(prev => ({
+                                ...prev,
+                                phase: 'error',
+                                message: data.message
+                              }))
+                              toast.error(data.message)
+                            }
+                          })
                         } else {
                           handleProceedToUrl()
                         }
                       }}
                       className="px-6 py-3 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors font-medium"
                     >
-                      {method === 'crypto-pdf' ? 'Download Crypto Statements' : 'Continue to URL Entry'}
+                      {method === 'crypto-pdf' ? 'Download Crypto Statements' : method === 'm1-statements' ? 'Download M1 Statements' : 'Continue to URL Entry'}
                     </button>
                   </>
                 )}

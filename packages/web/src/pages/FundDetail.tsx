@@ -802,10 +802,21 @@ export function FundDetail() {
       }
 
       // Calculate fund_size: use manual override if set, otherwise calculate dynamically
-      const calculatedFundSize = fund.config.fund_size_usd
-        + cumDeposits - cumWithdrawals
-        + cumDividends + cumCashInterest - cumExpenses
-      const fundSize = entry.fund_size ?? calculatedFundSize
+      // For cash funds, fund_size IS the cash balance (no separate investment pool)
+      // For trading funds, fund_size = base + deposits - withdrawals + dividends + interest - expenses
+      const isCashFundType = fund.config.fund_type === 'cash'
+      const expenseFromFund = fund.config.expense_from_fund !== false
+      let calculatedFundSize: number
+      if (isCashFundType) {
+        // For cash funds, fund_size equals the cash balance
+        calculatedFundSize = entry.cash ?? entry.value
+      } else {
+        calculatedFundSize = fund.config.fund_size_usd
+          + cumDeposits - cumWithdrawals
+          + cumDividends + cumCashInterest - (expenseFromFund ? cumExpenses : 0)
+      }
+      // For cash funds, always use calculated fund_size (ignore stored value)
+      const fundSize = isCashFundType ? calculatedFundSize : (entry.fund_size ?? calculatedFundSize)
 
       // Calculate APY BEFORE processing this row's buy/sell action
       // Total return = currentValue + priorSellProceeds + dividends + interest - expenses - totalBuys + previousCyclesGain
@@ -1031,12 +1042,14 @@ export function FundDetail() {
         <div className="bg-slate-800 rounded-lg p-3 border border-slate-700">
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
-              {/* Title Row */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-lg font-bold text-white">
-                  <span className="capitalize">{fund.platform}</span> - <span className="uppercase">{fund.ticker}</span>
-                </h1>
-                {/* Closed Tag - only show if explicitly closed or legacy (undefined status + zero fund size) */}
+              {/* Breadcrumb with indicators */}
+              <div className="flex items-center gap-2 text-sm flex-wrap">
+                <Link to="/" className="text-slate-400 hover:text-white">Dashboard</Link>
+                <span className="text-slate-600">/</span>
+                <Link to={`/platform/${fund.platform}`} className="text-slate-400 hover:text-white capitalize">{fund.platform}</Link>
+                <span className="text-slate-600">/</span>
+                <span className="text-white font-medium uppercase">{fund.ticker}</span>
+                {/* Closed Tag */}
                 {(fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)) && (
                   <span className="px-2 py-0.5 text-[10px] font-medium bg-slate-700 text-slate-400 rounded">Closed</span>
                 )}
@@ -1065,7 +1078,7 @@ export function FundDetail() {
                         ? 'bg-slate-700/50 text-slate-300 border border-slate-600'
                         : 'bg-orange-900/50 text-orange-300 border border-orange-700'
                     }`}
-                    title={`Cash: ${formatCurrency(state.cash_available ?? 0)}${fund.config.margin_enabled && state.margin_available ? ` | Margin: ${formatCurrency(state.margin_available)}` : ''}`}
+                    title={`Cash: ${formatCurrency(state.cash_available ?? 0)}${state.cash_source ? ` (from ${state.cash_source})` : ''}${fund.config.margin_enabled && state.margin_available ? ` | Margin: ${formatCurrency(state.margin_available)}` : ''}`}
                   >
                     {state.recommendation.action === 'HOLD' ? 'HOLD' : `${state.recommendation.action} ${formatCurrency(state.recommendation.amount)}`}
                   </span>
@@ -1073,7 +1086,15 @@ export function FundDetail() {
                 {/* Cash/Margin Available */}
                 {state && ((state.cash_available ?? 0) > 0 || (fund.config.margin_enabled && (state.margin_available ?? 0) > 0)) && (
                   <span className="px-2 py-0.5 text-[10px] font-medium rounded bg-slate-700/50 text-slate-300 border border-slate-600">
-                    {(state.cash_available ?? 0) > 0 && <span>Cash: {formatCurrency(state.cash_available ?? 0)}</span>}
+                    {(state.cash_available ?? 0) > 0 && (
+                      state.cash_source ? (
+                        <Link to={`/fund/${state.cash_source}`} className="hover:text-mint-400">
+                          Cash: {formatCurrency(state.cash_available ?? 0)} ↗
+                        </Link>
+                      ) : (
+                        <span>Cash: {formatCurrency(state.cash_available ?? 0)}</span>
+                      )
+                    )}
                     {(state.cash_available ?? 0) > 0 && fund.config.margin_enabled && (state.margin_available ?? 0) > 0 && <span className="mx-1">|</span>}
                     {fund.config.margin_enabled && (state.margin_available ?? 0) > 0 && <span>Margin: {formatCurrency(state.margin_available ?? 0)}</span>}
                   </span>
@@ -1135,16 +1156,18 @@ export function FundDetail() {
                 )}
               </div>
             </div>
-            {/* Edit Button */}
-            <Link
-              to={`/fund/${fund.id}/edit`}
-              className="flex-shrink-0 p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
-              title="Edit Fund"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </Link>
+            <div className="flex items-center gap-1">
+              {/* Edit Button */}
+              <Link
+                to={`/fund/${fund.id}/edit`}
+                className="flex-shrink-0 p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                title="Edit Fund"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -1212,6 +1235,45 @@ export function FundDetail() {
                     </div>
                   ) : (fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)) ? (
                     <p className="text-slate-400 text-sm">This fund is closed. Historical data preserved below.</p>
+                  ) : latestEntry && fund.config.fund_type === 'cash' ? (
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-[10px] text-slate-400">Cash Balance</p>
+                        <p className="font-medium text-mint-400">{formatCurrency(latestEntry.postActionCash)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Interest Earned</p>
+                        <p className="font-medium text-green-400">{formatCurrency(latestEntry.cumCashInterest)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Expenses</p>
+                        <p className="font-medium text-red-400">{formatCurrency(latestEntry.cumExpenses)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Net Gain</p>
+                        <p className={`font-medium ${latestEntry.realized >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatCurrency(latestEntry.realized)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Realized APY</p>
+                        <p className={`font-medium ${latestEntry.realizedApy >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatPercent(latestEntry.realizedApy)}
+                        </p>
+                      </div>
+                      {(latestEntry.margin_available ?? 0) > 0 && (
+                        <div>
+                          <p className="text-[10px] text-slate-400">Margin Available</p>
+                          <p className="font-medium text-blue-400">{formatCurrency(latestEntry.margin_available ?? 0)}</p>
+                        </div>
+                      )}
+                      {(latestEntry.margin_borrowed ?? 0) > 0 && (
+                        <div>
+                          <p className="text-[10px] text-slate-400">Margin Borrowed</p>
+                          <p className="font-medium text-orange-400">{formatCurrency(latestEntry.margin_borrowed ?? 0)}</p>
+                        </div>
+                      )}
+                    </div>
                   ) : latestEntry ? (
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div>

@@ -37,8 +37,8 @@ npm run dev
 ```
 
 The app will be available at:
-- **Frontend**: http://localhost:5173
-- **API**: http://localhost:3301
+- **Frontend**: http://localhost:5550
+- **API**: http://localhost:5551
 
 Press `Ctrl+C` to exit the logs view. The servers will continue running in the background.
 
@@ -127,8 +127,8 @@ escapemint/
 ├── packages/
 │   ├── engine/     # Pure calculation functions
 │   ├── storage/    # TSV persistence layer (fund-store)
-│   ├── server/     # Express API (port 3301)
-│   └── web/        # React frontend (port 5173)
+│   ├── server/     # Express API (port 5551)
+│   └── web/        # React frontend (port 5550)
 ├── data/
 │   └── funds/      # Your fund files (gitignored)
 ├── data.example/

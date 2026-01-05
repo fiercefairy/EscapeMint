@@ -36,6 +36,7 @@ export interface FundConfig {
   dividend_reinvest?: boolean
   interest_reinvest?: boolean
   expense_from_fund?: boolean
+  cash_fund?: string  // ID of cash fund to use when manage_cash=false
   start_date: string
   chart_bounds?: Record<string, ChartBounds>
   charts_collapsed?: boolean
@@ -137,6 +138,7 @@ export interface FundStateResponse {
   margin_available?: number
   margin_borrowed?: number
   cash_available?: number
+  cash_source?: string | null  // null if from own fund, fund ID if from shared cash fund
   fund_size?: number
 }
 
@@ -295,6 +297,31 @@ export async function recalculateFund(id: string): Promise<ApiResult<{ message: 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: { message: 'Failed to recalculate fund' } }))
     return { error: error.error?.message ?? 'Failed to recalculate fund' }
+  }
+  const data = await response.json()
+  return { data }
+}
+
+export type InterpolatableColumn = 'margin_available' | 'margin_borrowed' | 'fund_size' | 'value'
+
+export interface InterpolateResult {
+  success: boolean
+  message: string
+  interpolated: number
+  column: string
+  totalEntries: number
+  knownValues: number
+}
+
+export async function interpolateColumn(id: string, column: InterpolatableColumn): Promise<ApiResult<InterpolateResult>> {
+  const response = await fetch(`${API_BASE}/funds/${id}/interpolate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ column })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: `Failed to interpolate ${column} values` } }))
+    return { error: error.error?.message ?? `Failed to interpolate ${column} values` }
   }
   const data = await response.json()
   return { data }

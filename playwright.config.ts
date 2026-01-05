@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// Import ports from ecosystem config (single source of truth)
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { PORTS } = require('./ecosystem.config.cjs')
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false, // Run tests sequentially for data integrity
@@ -11,7 +15,7 @@ export default defineConfig({
     ['list']
   ],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: `http://localhost:${PORTS.WEB}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -25,13 +29,13 @@ export default defineConfig({
   webServer: [
     {
       command: 'npm run dev:api',
-      url: 'http://localhost:5551/api/health',
+      url: `http://localhost:${PORTS.API}/api/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 30000,
     },
     {
       command: 'npm run dev:web',
-      url: 'http://localhost:5173',
+      url: `http://localhost:${PORTS.WEB}`,
       reuseExistingServer: !process.env.CI,
       timeout: 30000,
     },

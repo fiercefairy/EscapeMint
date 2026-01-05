@@ -399,36 +399,6 @@ export function PlatformDetail() {
         </div>
       </div>
 
-      {/* Cash Interest History */}
-      {metrics.cashInterestHistory.length > 0 && (
-        <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-          <h2 className="text-lg font-semibold text-white mb-4">Cash Interest History</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-700 text-slate-400">
-                  <th className="px-3 py-2 text-left">Date</th>
-                  <th className="px-3 py-2 text-right">Cash Balance</th>
-                  <th className="px-3 py-2 text-right">Interest Earned</th>
-                </tr>
-              </thead>
-              <tbody>
-                {metrics.cashInterestHistory.slice(-12).reverse().map((entry) => (
-                  <tr key={entry.date} className="border-b border-slate-700/50">
-                    <td className="px-3 py-2 text-slate-300">{entry.date}</td>
-                    <td className="px-3 py-2 text-right text-white">{formatCurrency(entry.balance)}</td>
-                    <td className="px-3 py-2 text-right text-purple-400">{formatCurrencyPrecise(entry.interest)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {metrics.cashInterestHistory.length > 12 && (
-            <p className="text-xs text-slate-500 mt-2">Showing last 12 entries of {metrics.cashInterestHistory.length} total</p>
-          )}
-        </div>
-      )}
-
       {/* APY Rate History */}
       <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
         <div className="flex items-center justify-between mb-4">

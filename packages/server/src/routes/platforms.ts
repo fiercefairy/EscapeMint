@@ -314,10 +314,25 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
   for (const fund of platformFunds) {
     const fundSize = fund.config.fund_size_usd
     const latestEntry = fund.entries[fund.entries.length - 1]
-    const currentValue = latestEntry?.value ?? 0
-    // For cash funds, the value IS the cash balance; for trading funds, use the cash field
     const isCashFund = fund.config.fund_type === 'cash'
-    const currentCash = isCashFund ? currentValue : (latestEntry?.cash ?? 0)
+
+    // For cash funds, calculate current balance from entries (value is PRE-ACTION)
+    // For trading funds, use the value field directly
+    let currentValue = latestEntry?.value ?? 0
+    let currentCash = latestEntry?.cash ?? 0
+
+    if (isCashFund && latestEntry) {
+      // Calculate post-action balance for cash funds
+      let cashBalance = 0
+      for (const entry of fund.entries) {
+        if (entry.action === 'DEPOSIT' && entry.amount) cashBalance += entry.amount
+        if (entry.action === 'WITHDRAW' && entry.amount) cashBalance -= entry.amount
+        if (entry.cash_interest) cashBalance += entry.cash_interest
+        if (entry.expense) cashBalance -= entry.expense
+      }
+      currentValue = round2(cashBalance)
+      currentCash = currentValue  // For cash funds, cash balance IS the value
+    }
 
     totalFundSize += fundSize
     totalValue += currentValue

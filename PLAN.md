@@ -36,7 +36,42 @@ A local-first, open-source capital allocation engine for rules-based fund manage
 | v0.3 | Platform dashboards, CSV import (Robinhood), platform-level configs, APY history tracking |
 | v0.4 | ✅ Platform-level cash tracking, Cash sub-funds, auto-create cash funds, cash isolation, TWFS-based aggregate contributions |
 
-### Recently Completed: M1 Finance Cash Account Importer
+### Recently Completed: Shared Cash Fund for Recommendations
+
+**Status: COMPLETE**
+
+Trading funds with `manage_cash=false` now use the platform's shared cash fund for cash availability when computing recommendations:
+
+- **Platform cash fund lookup**: When a trading fund has `manage_cash=false`, the state endpoint looks up the platform's cash fund (`{platform}-cash` by convention)
+- **Custom cash fund**: New `cash_fund` config option allows specifying a different cash fund ID if needed
+- **Cash source tracking**: API response includes `cash_source` field indicating where the cash comes from (null if own fund, fund ID if shared)
+- **UI integration**: Fund detail page shows clickable link to cash source fund with ↗ indicator
+- **Recommendation accuracy**: Recommendations now correctly factor in shared platform cash when determining buy amounts
+
+Key changes:
+- `GET /funds/:id/state` now reads cash balance from platform cash fund when `manage_cash=false`
+- Response includes `cash_source` field to track cash origin
+- FundDetail page links to cash source fund for easy navigation
+
+### Previously Completed: M1 Finance Cash Import to m1-cash Fund
+
+**Status: COMPLETE**
+
+Enhanced M1 Finance cash transaction import to route transactions directly to the m1-cash fund:
+
+- **Direct cash fund routing**: Interest, deposit, and withdrawal transactions are automatically routed to the `m1-cash` fund
+- **View saved archive**: New "View M1 Saved Data" option lets users view previously scraped transactions without re-scraping
+- **Dedicated apply endpoint**: `POST /api/v1/import/m1-cash/apply` - Applies M1 cash transactions to the m1-cash fund
+- **Cash fund status display**: Archive view shows whether the m1-cash fund exists and count of importable transactions
+- **Duplicate detection**: Skips transactions that already exist in the fund
+- **Transfer preservation**: Transfer transactions are stored in the archive for later reconciliation with trading funds
+
+Key changes:
+- Transactions without symbols (interest/deposit/withdrawal) map to `m1-cash` fund ID
+- Archive summary includes `cashFundExists` and `cashTransactionCount` for M1 cash platform
+- Import wizard has separate handling for M1 cash vs Robinhood archives
+
+### Previously Completed: M1 Finance Cash Account Scraper
 
 **Status: COMPLETE**
 
@@ -96,7 +131,7 @@ Enhanced platform-level cash management where each platform automatically has a 
 |  |   Screen  | |  Config   | |   Form    | |  Trail   |             |
 |  +-----------+ +-----------+ +-----------+ +----------+             |
 +---------------------------+-----------------------------------------+
-                            | HTTP (localhost:3301)
+                            | HTTP (localhost:5551)
 +---------------------------+-----------------------------------------+
 |                     Node/Express Backend                             |
 |  +--------------------------------------------------------------+   |
@@ -300,7 +335,7 @@ CashInterest = CashAvailable * ((1 + CashAPY)^(DaysElapsed/365) - 1)
 
 ## 5. API Endpoints
 
-Base URL: `http://localhost:3301/api/v1`
+Base URL: `http://localhost:5551/api/v1`
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -323,6 +358,7 @@ Base URL: `http://localhost:3301/api/v1`
 | POST | /import/robinhood/scrape | Scrape transaction history from Robinhood URL (with infinite scroll) |
 | GET | /import/robinhood/scrape-stream | SSE endpoint for Robinhood scraping with live progress |
 | GET | /import/m1-cash/scrape-stream | SSE endpoint for M1 Cash scraping with live progress |
+| POST | /import/m1-cash/apply | Apply M1 cash transactions (interest/deposit/withdrawal) to m1-cash fund |
 | GET | /import/archive/:platform | Get existing scrape archive for platform |
 | GET | /import/browser/status | Check browser CDP connection status |
 | POST | /import/browser/launch | Launch Chrome with remote debugging enabled |

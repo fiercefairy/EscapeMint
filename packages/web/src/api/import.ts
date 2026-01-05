@@ -109,9 +109,16 @@ export interface ImportResult {
 
 export interface BrowserStatus {
   connected: boolean
-  launched: boolean
-  cdpUrl: string
-  instructions: string
+  launched?: boolean
+  cdpUrl?: string
+  instructions?: string
+  message?: string
+  pageCount?: number
+  pages?: Array<{ url: string; title: string }>
+  platform?: string | null
+  pageFound?: boolean
+  loggedIn?: boolean
+  loginUrl?: string
 }
 
 /**
@@ -160,6 +167,28 @@ export async function applyRobinhoodImport(
 }
 
 /**
+ * Apply M1 cash transactions (interest, deposit, withdrawal) to the m1-cash fund.
+ */
+export async function applyM1CashImport(
+  transactions: ParsedTransaction[],
+  skipDuplicates = true
+): Promise<ApiResult<ImportResult>> {
+  const response = await fetch(`${API_BASE}/import/m1-cash/apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transactions, skipDuplicates })
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Failed to apply import' } }))
+    return { error: error.error?.message ?? 'Failed to apply import' }
+  }
+
+  const data = await response.json()
+  return { data: data.result }
+}
+
+/**
  * Read file contents as text.
  */
 export const readFileAsText = (file: File): Promise<string> => {
@@ -177,12 +206,33 @@ export const readFileAsText = (file: File): Promise<string> => {
 
 /**
  * Check browser connection status.
+ * @param platform Optional platform to check login status for (m1, robinhood)
  */
-export async function getBrowserStatus(): Promise<ApiResult<BrowserStatus>> {
-  const response = await fetch(`${API_BASE}/import/browser/status`)
+export async function getBrowserStatus(platform?: string): Promise<ApiResult<BrowserStatus>> {
+  const url = platform
+    ? `${API_BASE}/import/browser/status?platform=${encodeURIComponent(platform)}`
+    : `${API_BASE}/import/browser/status`
+  const response = await fetch(url)
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: { message: 'Failed to check browser status' } }))
     return { error: error.error?.message ?? 'Failed to check browser status' }
+  }
+  const data = await response.json()
+  return { data }
+}
+
+/**
+ * Navigate browser to a URL and check login status.
+ */
+export async function navigateBrowser(url: string, platform?: string): Promise<ApiResult<{ success: boolean; currentUrl: string; isLoggedIn: boolean }>> {
+  const response = await fetch(`${API_BASE}/import/browser/navigate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, platform })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Failed to navigate' } }))
+    return { error: error.error?.message ?? 'Failed to navigate' }
   }
   const data = await response.json()
   return { data }
@@ -557,6 +607,192 @@ export function downloadCryptoStatementsStream(
 ): { close: () => void } {
   const eventSource = new EventSource(
     `${API_BASE}/import/crypto/download-stream?all=${downloadAll}`
+  )
+
+  eventSource.addEventListener('status', (e: MessageEvent) => {
+    const data = JSON.parse(e.data)
+    callbacks.onStatus?.(data)
+  })
+
+  eventSource.addEventListener('progress', (e: MessageEvent) => {
+    const data = JSON.parse(e.data)
+    callbacks.onProgress?.(data)
+  })
+
+  eventSource.addEventListener('complete', (e: MessageEvent) => {
+    const data = JSON.parse(e.data)
+    callbacks.onComplete?.(data)
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('error', (e: MessageEvent) => {
+    if (e.data) {
+      const data = JSON.parse(e.data)
+      callbacks.onError?.(data)
+    } else {
+      callbacks.onError?.({ message: 'Connection lost' })
+    }
+    eventSource.close()
+  })
+
+  eventSource.onerror = () => {
+    callbacks.onError?.({ message: 'Connection error' })
+    eventSource.close()
+  }
+
+  return {
+    close: () => eventSource.close()
+  }
+}
+
+// ============================================================================
+// M1 Statement PDF API
+// ============================================================================
+
+export interface M1StatementTransaction {
+  date: string
+  description: string
+  amount: number
+  type: 'interest' | 'deposit' | 'withdrawal' | 'transfer' | 'fee' | 'other'
+}
+
+export interface M1StatementData {
+  filename: string
+  accountType: 'earn' | 'invest' | 'crypto' | 'unknown'
+  periodStart: string
+  periodEnd: string
+  beginningBalance: number
+  endingBalance: number
+  totalDeposits: number
+  totalWithdrawals: number
+  totalInterest: number
+  transactions: M1StatementTransaction[]
+}
+
+export interface M1StatementInfo {
+  filename: string
+  accountType: string
+  monthYear: string
+  downloaded: boolean
+  path?: string
+}
+
+export interface M1StatementsListResponse {
+  count: number
+  statements: M1StatementInfo[]
+  downloadDir?: string
+  directory?: string
+}
+
+export interface M1StatementsParseAllResponse {
+  statementCount: number
+  transactionCount: number
+  transactions: M1StatementTransaction[]
+  byType: Record<string, { count: number; total: number }>
+  dateRange: { oldest: string; newest: string } | null
+  errors?: string[]
+}
+
+/**
+ * Get list of M1 statements from browser page.
+ * Requires browser to be connected and logged into M1.
+ */
+export async function getM1StatementsList(): Promise<ApiResult<M1StatementsListResponse>> {
+  const response = await fetch(`${API_BASE}/import/m1-statements/list`)
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Failed to get M1 statements' } }))
+    return { error: error.error?.message ?? 'Failed to get M1 statements' }
+  }
+  const data = await response.json()
+  return { data }
+}
+
+/**
+ * Get list of locally downloaded M1 statement PDFs.
+ */
+export async function getLocalM1Statements(): Promise<ApiResult<M1StatementsListResponse>> {
+  const response = await fetch(`${API_BASE}/import/m1-statements/local`)
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Failed to get local statements' } }))
+    return { error: error.error?.message ?? 'Failed to get local statements' }
+  }
+  const data = await response.json()
+  return { data }
+}
+
+/**
+ * Parse a single M1 statement PDF.
+ */
+export async function parseM1Statement(filename: string): Promise<ApiResult<M1StatementData>> {
+  const response = await fetch(`${API_BASE}/import/m1-statements/parse`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Failed to parse PDF' } }))
+    return { error: error.error?.message ?? 'Failed to parse PDF' }
+  }
+  const data = await response.json()
+  return { data }
+}
+
+/**
+ * Parse all local M1 statement PDFs.
+ */
+export async function parseAllM1Statements(accountType?: string): Promise<ApiResult<M1StatementsParseAllResponse>> {
+  const response = await fetch(`${API_BASE}/import/m1-statements/parse-all`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountType })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Failed to parse PDFs' } }))
+    return { error: error.error?.message ?? 'Failed to parse PDFs' }
+  }
+  const data = await response.json()
+  return { data }
+}
+
+/**
+ * Apply parsed M1 statement transactions to m1-cash fund.
+ */
+export async function applyM1StatementTransactions(
+  transactions: M1StatementTransaction[],
+  skipDuplicates = true
+): Promise<ApiResult<ImportResult>> {
+  const response = await fetch(`${API_BASE}/import/m1-statements/apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transactions, skipDuplicates })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Failed to apply import' } }))
+    return { error: error.error?.message ?? 'Failed to apply import' }
+  }
+  const data = await response.json()
+  return { data: data.result }
+}
+
+/**
+ * Download M1 statements with real-time progress via SSE.
+ */
+export function downloadM1StatementsStream(
+  options: { all?: boolean; year?: string; accountType?: string } = {},
+  callbacks: {
+    onStatus?: (data: { message: string; phase: string; total?: number }) => void
+    onProgress?: (data: { current: number; total: number; downloaded: number; skipped: number; filename: string; status: string }) => void
+    onComplete?: (data: { total: number; downloaded: number; skipped: number; message: string }) => void
+    onError?: (data: { message: string }) => void
+  }
+): { close: () => void } {
+  const params = new URLSearchParams()
+  if (options.all) params.set('all', 'true')
+  if (options.year) params.set('year', options.year)
+  if (options.accountType) params.set('accountType', options.accountType)
+
+  const eventSource = new EventSource(
+    `${API_BASE}/import/m1-statements/download-stream?${params.toString()}`
   )
 
   eventSource.addEventListener('status', (e: MessageEvent) => {

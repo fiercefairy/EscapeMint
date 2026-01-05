@@ -1,7 +1,11 @@
 import { type Page, expect } from '@playwright/test'
 
+// Import ports from ecosystem config (single source of truth)
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { PORTS } = require('../ecosystem.config.cjs')
+
 // API base URL
-export const API_BASE = 'http://localhost:5551/api/v1'
+export const API_BASE = `http://localhost:${PORTS.API}/api/v1`
 
 // Types matching the application
 export interface FundConfig {

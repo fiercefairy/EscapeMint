@@ -21,7 +21,20 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
   const [previewLoading, setPreviewLoading] = useState(false)
   const [result, setResult] = useState<{ state: FundState; recommendation: Recommendation } | null>(null)
   const [preview, setPreview] = useState<{ state: FundState; recommendation: Recommendation | null; margin_available: number; fund_size: number } | null>(null)
-  const [formData, setFormData] = useState<EntryFormData>(createEmptyFormData)
+
+  // For cash funds, pre-populate equity with latest cash balance
+  const getInitialFormData = (): EntryFormData => {
+    const empty = createEmptyFormData()
+    if (fundType === 'cash' && existingEntries.length > 0) {
+      const sorted = [...existingEntries].sort((a, b) => a.date.localeCompare(b.date))
+      const lastEntry = sorted[sorted.length - 1]
+      // Use cash (post-action balance) as the starting equity for new entry
+      const lastCash = lastEntry?.cash ?? lastEntry?.value ?? 0
+      empty.value = lastCash.toFixed(2)
+    }
+    return empty
+  }
+  const [formData, setFormData] = useState<EntryFormData>(getInitialFormData)
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -343,7 +356,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
             </button>
             <button
               type="submit"
-              disabled={loading || !formData.action}
+              disabled={loading || (!formData.action && fundType !== 'cash') || (fundType === 'cash' && !formData.deposit && !formData.withdrawal && !formData.cash_interest && !formData.value)}
               className="flex-1 px-4 py-2 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors disabled:opacity-50"
             >
               {loading ? 'Recording...' : 'Record Action'}

@@ -130,6 +130,13 @@ export interface SubFundConfig {
   expense_from_fund?: boolean
 
   /**
+   * ID of the cash fund to use for available cash when manage_cash=false.
+   * If not specified, defaults to '{platform}-cash' convention.
+   * When set, recommendations will check this fund's balance for available cash.
+   */
+  cash_fund?: string
+
+  /**
    * Date when the fund tracking begins (ISO 8601 date: YYYY-MM-DD).
    */
   start_date: string

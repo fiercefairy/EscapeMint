@@ -469,9 +469,24 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
   // Calculate post-action cash (cash available AFTER the latest entry's action)
   // Entry.cash is pre-action cash; we need to adjust for the action taken
   let cashAvailable: number
+  let cashSource: string | null = null  // Track where cash comes from
   if (!manageCash) {
-    // No cash pool management
-    cashAvailable = 0
+    // Fund doesn't manage its own cash - look up platform cash fund
+    const cashFundId = fund.config.cash_fund ?? `${fund.platform.toLowerCase()}-cash`
+    const cashFundPath = join(FUNDS_DIR, `${cashFundId}.tsv`)
+
+    // Try to read the platform cash fund
+    const cashFundData = await readFund(cashFundPath).catch(() => null)
+    if (cashFundData && cashFundData.entries.length > 0) {
+      // Calculate cash balance from the cash fund
+      const cashFundLatest = cashFundData.entries[cashFundData.entries.length - 1]
+      // Use 'cash' field (post-action balance) for current available cash
+      cashAvailable = cashFundLatest?.cash ?? cashFundLatest?.value ?? 0
+      cashSource = cashFundId
+    } else {
+      // No platform cash fund found - fall back to 0
+      cashAvailable = 0
+    }
   } else if (latestEntry.cash !== undefined && latestEntry.cash !== null) {
     // Manual tracked cash - adjust for the action to get post-action cash
     let postActionCash = latestEntry.cash
@@ -555,6 +570,7 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
     margin_available: marginAvailable,
     margin_borrowed: marginBorrowed,
     cash_available: cashAvailable,
+    cash_source: cashSource,  // null if from own fund, fund ID if from shared cash fund
     fund_size: actualFundSize
   })
 })
@@ -794,9 +810,28 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
     snapshotDate
   )
 
-  // Use engine's computed cash value (includes dividends, interest, expenses based on config)
-  // Only override if manage_cash is false
-  const correctedCashAvailable = manageCash ? state.cash_available_usd : 0
+  // Calculate cash available
+  let correctedCashAvailable: number
+  if (!manageCash) {
+    // Fund doesn't manage its own cash - look up platform cash fund
+    const cashFundId = fund.config.cash_fund ?? `${fund.platform.toLowerCase()}-cash`
+    const cashFundPath = join(FUNDS_DIR, `${cashFundId}.tsv`)
+
+    const cashFundData = await readFund(cashFundPath).catch(() => null)
+    if (cashFundData && cashFundData.entries.length > 0) {
+      // Get entries up to the snapshot date
+      const cashEntries = cashFundData.entries
+        .filter(e => e.date <= snapshotDate)
+        .sort((a, b) => a.date.localeCompare(b.date))
+      const cashFundLatest = cashEntries[cashEntries.length - 1]
+      // Use 'cash' field (post-action balance) for current available cash
+      correctedCashAvailable = cashFundLatest?.cash ?? cashFundLatest?.value ?? 0
+    } else {
+      correctedCashAvailable = 0
+    }
+  } else {
+    correctedCashAvailable = state.cash_available_usd
+  }
   const correctedState = { ...state, cash_available_usd: correctedCashAvailable }
 
   const recommendation = computeRecommendation(configWithActualFundSize, correctedState)
@@ -1181,4 +1216,134 @@ fundsRouter.delete('/:id', async (req, res, next) => {
   await deleteFund(filePath).catch(next)
 
   res.status(204).send()
+})
+
+// Numeric columns that can be interpolated
+const INTERPOLATABLE_COLUMNS = ['margin_available', 'margin_borrowed', 'fund_size', 'value'] as const
+type InterpolatableColumn = typeof INTERPOLATABLE_COLUMNS[number]
+
+/**
+ * POST /funds/:id/interpolate
+ * Interpolate missing values for a specified column based on surrounding known values.
+ * Uses linear interpolation by date.
+ * Request body: { column: 'margin_available' | 'margin_borrowed' | 'fund_size' | 'value' }
+ */
+fundsRouter.post('/:id/interpolate', async (req, res, next) => {
+  const { id } = req.params
+  const { column } = req.body as { column?: string }
+  const filePath = join(FUNDS_DIR, `${id}.tsv`)
+
+  // Validate column
+  if (!column || !INTERPOLATABLE_COLUMNS.includes(column as InterpolatableColumn)) {
+    return res.status(400).json({
+      error: `Invalid column. Must be one of: ${INTERPOLATABLE_COLUMNS.join(', ')}`
+    })
+  }
+
+  const col = column as InterpolatableColumn
+
+  // Read the fund
+  const fund = await readFund(filePath).catch(next)
+  if (!fund) return
+
+  if (fund.entries.length === 0) {
+    return res.json({ success: true, message: 'No entries to interpolate', interpolated: 0 })
+  }
+
+  // Sort entries by date for interpolation
+  const sorted = [...fund.entries].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  )
+
+  // Find entries with known values for the specified column
+  const knownIndices: number[] = []
+  for (let i = 0; i < sorted.length; i++) {
+    const val = sorted[i]![col]
+    if (val !== undefined && val !== null && !isNaN(Number(val))) {
+      knownIndices.push(i)
+    }
+  }
+
+  if (knownIndices.length === 0) {
+    return res.json({ success: true, message: `No ${column} values to interpolate from`, interpolated: 0 })
+  }
+
+  let interpolated = 0
+
+  // Interpolate missing values
+  for (let i = 0; i < sorted.length; i++) {
+    const entry = sorted[i]!
+    const existingVal = entry[col]
+    if (existingVal !== undefined && existingVal !== null && !isNaN(Number(existingVal))) {
+      continue // Already has a value
+    }
+
+    const entryTime = new Date(entry.date).getTime()
+
+    // Find surrounding known values
+    let prevKnown: { idx: number; time: number; value: number } | null = null
+    let nextKnown: { idx: number; time: number; value: number } | null = null
+
+    for (const ki of knownIndices) {
+      const knownEntry = sorted[ki]!
+      const knownTime = new Date(knownEntry.date).getTime()
+      const knownValue = Number(knownEntry[col])
+
+      if (knownTime <= entryTime) {
+        prevKnown = { idx: ki, time: knownTime, value: knownValue }
+      }
+      if (knownTime > entryTime && !nextKnown) {
+        nextKnown = { idx: ki, time: knownTime, value: knownValue }
+        break
+      }
+    }
+
+    // Interpolate
+    let interpolatedValue: number | null = null
+    if (prevKnown && nextKnown) {
+      // Linear interpolation
+      const timeDiff = nextKnown.time - prevKnown.time
+      const valueDiff = nextKnown.value - prevKnown.value
+      const entryTimeDiff = entryTime - prevKnown.time
+      interpolatedValue = prevKnown.value + (valueDiff * entryTimeDiff / timeDiff)
+    } else if (prevKnown && !nextKnown) {
+      // Use previous value (extrapolate forward)
+      interpolatedValue = prevKnown.value
+    } else if (!prevKnown && nextKnown) {
+      // Use next value (extrapolate backward)
+      interpolatedValue = nextKnown.value
+    }
+
+    if (interpolatedValue !== null) {
+      ;(entry as unknown as Record<string, unknown>)[col] = Math.round(interpolatedValue * 100) / 100
+      interpolated++
+    }
+  }
+
+  // Update original entries with interpolated values
+  const sortedMap = new Map<string, number | undefined>()
+  for (const entry of sorted) {
+    const key = `${entry.date}|${entry.action ?? ''}|${entry.amount ?? ''}|${entry.notes ?? ''}`
+    sortedMap.set(key, entry[col] as number | undefined)
+  }
+
+  for (const entry of fund.entries) {
+    const key = `${entry.date}|${entry.action ?? ''}|${entry.amount ?? ''}|${entry.notes ?? ''}`
+    const interpolatedValue = sortedMap.get(key)
+    if (interpolatedValue !== undefined) {
+      ;(entry as unknown as Record<string, unknown>)[col] = interpolatedValue
+    }
+  }
+
+  // Write back the fund
+  await writeFund(filePath, fund).catch(next)
+
+  res.json({
+    success: true,
+    message: `Interpolated ${interpolated} ${column} values`,
+    interpolated,
+    column,
+    totalEntries: fund.entries.length,
+    knownValues: knownIndices.length
+  })
 })
