@@ -194,22 +194,6 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
             </div>
           </div>
 
-          {/* Cash Fund: Cash APY */}
-          {isCashFund && (
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Cash APY (%)</label>
-              <input
-                type="number"
-                value={formData.cash_apy}
-                onChange={e => setFormData({ ...formData, cash_apy: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                step="0.01"
-                min="0"
-              />
-              <p className="text-[10px] text-slate-500 mt-1">Interest rate earned on cash balance</p>
-            </div>
-          )}
-
           {/* Trading Fund: Target APY and Interval */}
           {!isCashFund && (
             <>
@@ -334,20 +318,6 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                 </div>
               </div>
 
-              {/* Cash APY (only if managing cash) */}
-              {formData.manage_cash && (
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">Cash APY (%)</label>
-                  <input
-                    type="number"
-                    value={formData.cash_apy}
-                    onChange={e => setFormData({ ...formData, cash_apy: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                    step="0.01"
-                    min="0"
-                  />
-                </div>
-              )}
             </>
           )}
 

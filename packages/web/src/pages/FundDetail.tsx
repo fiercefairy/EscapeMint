@@ -1037,10 +1037,6 @@ export function FundDetail() {
                       <span className="text-slate-500">Balance:</span> <span className="text-white">{formatCurrency(latestEntry?.fundSize ?? 0)}</span>
                     </span>
                     <span className="text-slate-600">|</span>
-                    <span title="Cash APY">
-                      <span className="text-slate-500">Cash APY:</span> <span className="text-purple-400">{(fund.config.cash_apy * 100).toFixed(2)}%</span>
-                    </span>
-                    <span className="text-slate-600">|</span>
                     <span title="Total Interest Earned">
                       <span className="text-slate-500">Interest:</span> <span className="text-green-400">{formatCurrency(latestEntry?.cumCashInterest ?? 0)}</span>
                     </span>

@@ -66,19 +66,13 @@ export function FundCard({ fund, impactPct }: FundCardProps) {
 
       <div className="space-y-1 text-xs">
         {isCashFund ? (
-          // Cash fund display - show balance and APY
-          <>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Cash Balance</span>
-              <span className={hasValue ? valueColorClass : 'text-slate-500'}>
-                {hasValue ? formatCurrency(fund.latestEquity!.value) : '-'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Cash APY</span>
-              <span className="text-purple-400">{formatPercent(fund.config.cash_apy)}</span>
-            </div>
-          </>
+          // Cash fund display - show balance only (interest tracked via entries)
+          <div className="flex justify-between">
+            <span className="text-slate-400">Cash Balance</span>
+            <span className={hasValue ? valueColorClass : 'text-slate-500'}>
+              {hasValue ? formatCurrency(fund.latestEquity!.value) : '-'}
+            </span>
+          </div>
         ) : (
           // Trading fund display
           <>

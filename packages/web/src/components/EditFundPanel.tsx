@@ -261,25 +261,6 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
             </div>
           </div>
 
-          {/* Cash Fund: Cash APY section */}
-          {isCashFund && (
-            <div className="border border-slate-600 rounded p-3 space-y-3">
-              <p className="text-sm text-white font-medium">Cash Settings</p>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Cash APY (%)</label>
-                <input
-                  type="number"
-                  value={formData.cash_apy}
-                  onChange={e => setFormData({ ...formData, cash_apy: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                  step="0.01"
-                  min="0"
-                />
-                <p className="text-[10px] text-slate-500 mt-1">Interest rate earned on cash balance</p>
-              </div>
-            </div>
-          )}
-
           {/* Trading Fund: Full configuration */}
           {!isCashFund && (
             <>
@@ -411,21 +392,6 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
                   </label>
                   <span className="text-slate-400 text-xs">(maintain cash pile)</span>
                 </div>
-                {formData.manage_cash && (
-                  <div className="ml-7 space-y-3">
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">Cash APY (%)</label>
-                      <input
-                        type="number"
-                        value={formData.cash_apy}
-                        onChange={e => setFormData({ ...formData, cash_apy: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                        step="0.01"
-                        min="0"
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Margin Section */}

@@ -318,23 +318,6 @@ export function EditFundConfigModal({ fundId, fundPlatform, fundTicker, config, 
               </label>
               <span className="text-slate-400 text-sm">(maintain cash pile; if off, sells auto-withdraw)</span>
             </div>
-            {formData.manage_cash && (
-              <div className="ml-7 space-y-3">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-slate-400 mb-1">Cash APY (%)</label>
-                    <input
-                      type="number"
-                      value={formData.cash_apy}
-                      onChange={e => setFormData({ ...formData, cash_apy: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                      step="0.01"
-                      min="0"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Margin Section */}
