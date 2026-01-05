@@ -780,8 +780,22 @@ export function FundDetail() {
     let cumExtracted = 0
     let previousCyclesGain = 0 // Realized gains from previous liquidation cycles
 
+    // For cash fund TWAB (Time-Weighted Average Balance) calculation
+    let twabNumerator = 0 // sum of (balance * days)
+    let lastCashBalance = 0
+    let lastEntryDate = startDate
+
     return sorted.map((entry, index) => {
       const entryDate = new Date(entry.date)
+
+      // For cash fund TWAB: add previous balance * days since last entry
+      if (fund.config.fund_type === 'cash' && index > 0) {
+        const daysSinceLast = Math.max(0, (entryDate.getTime() - lastEntryDate.getTime()) / (1000 * 60 * 60 * 24))
+        twabNumerator += lastCashBalance * daysSinceLast
+      }
+      lastEntryDate = entryDate
+      // Update lastCashBalance with this entry's ending balance (will be used for next iteration)
+      lastCashBalance = entry.cash ?? entry.value ?? 0
 
       // Track DEPOSIT/WITHDRAW for fund_size calculation
       if (entry.action === 'DEPOSIT' && entry.amount) {
@@ -943,19 +957,20 @@ export function FundDetail() {
 
       if (isCashFund) {
         // Cash fund APY: based on interest earned minus expenses
-        // If no/negligible realized gains or first entry, APY is 0
-        // Use tolerance to handle floating-point precision issues
+        // Use Time-Weighted Average Balance (TWAB) as denominator for accurate APY
         if (Math.abs(realized) < 0.01 || isFirstEntry) {
           realizedApy = 0
           liquidApy = 0
         } else {
-          // Use post-action balance as denominator
-          const postActionBalance = entry.value + (entry.action === 'DEPOSIT' && entry.amount ? entry.amount : 0)
-            - (entry.action === 'WITHDRAW' && entry.amount ? entry.amount : 0)
-          const cashDenominator = postActionBalance > 0 ? postActionBalance : (fundSize > 0 ? fundSize : 1)
+          // Calculate TWAB: sum(balance * days) / total_days
+          // twabNumerator already accumulated up to this entry
+          const twab = daysElapsed > 0 ? twabNumerator / daysElapsed : lastCashBalance
+
+          // Use TWAB as denominator, fall back to current balance if TWAB is 0
+          const cashDenominator = twab > 0 ? twab : (fundSize > 0 ? fundSize : 1)
 
           const cashReturnPct = realized / cashDenominator
-          // Cap return percentage to avoid astronomical APY values
+          // APY = (1 + return)^(365/days) - 1
           const clampedCashPct = Math.max(-0.99, Math.min(cashReturnPct, 1))
           realizedApy = daysElapsed > 0 ? Math.pow(1 + clampedCashPct, 365 / daysElapsed) - 1 : 0
           // Cap APY at reasonable bounds (-99% to 1000%)
