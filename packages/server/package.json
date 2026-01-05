@@ -13,8 +13,8 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@escapemint/engine": "*",
-    "@escapemint/storage": "*",
+    "@escapemint/engine": "workspace:*",
+    "@escapemint/storage": "workspace:*",
     "archiver": "^7.0.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",
