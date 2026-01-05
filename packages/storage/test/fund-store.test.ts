@@ -16,8 +16,8 @@ describe('entriesToTrades', () => {
     ]
     const trades = entriesToTrades(entries)
     expect(trades).toHaveLength(2)
-    expect(trades[0]).toEqual({ date: '2024-01-01', amount_usd: 100, type: 'buy' })
-    expect(trades[1]).toEqual({ date: '2024-01-02', amount_usd: 100, type: 'buy' })
+    expect(trades[0]).toEqual({ date: '2024-01-01', amount_usd: 100, type: 'buy', value: 0 })
+    expect(trades[1]).toEqual({ date: '2024-01-02', amount_usd: 100, type: 'buy', value: 100 })
   })
 
   it('converts SELL entries to sell trades', () => {
@@ -26,7 +26,7 @@ describe('entriesToTrades', () => {
     ]
     const trades = entriesToTrades(entries)
     expect(trades).toHaveLength(1)
-    expect(trades[0]).toEqual({ date: '2024-01-01', amount_usd: 500, type: 'sell' })
+    expect(trades[0]).toEqual({ date: '2024-01-01', amount_usd: 500, type: 'sell', value: 1000 })
   })
 
   it('ignores entries without action or amount', () => {

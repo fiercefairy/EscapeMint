@@ -1,8 +1,8 @@
 import type { FundSummary } from '../api/funds'
 
-interface FundCardProps {
+export interface FundCardProps {
   fund: FundSummary
-  impactPct?: number
+  impactPct?: number | undefined
 }
 
 export function FundCard({ fund, impactPct }: FundCardProps) {

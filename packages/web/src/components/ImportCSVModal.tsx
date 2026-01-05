@@ -342,13 +342,13 @@ export function ImportCSVModal({ onClose, onImported }: ImportCSVModalProps) {
                   </div>
                 </div>
 
-                {browserStatus === 'disconnected' && (
+                {(browserStatus === 'disconnected' || browserStatus === 'connecting') && (
                   <div className="space-y-3">
                     <p className="text-sm text-slate-400">
                       To scrape Robinhood, launch Chrome with remote debugging enabled:
                     </p>
                     <code className="block bg-slate-800 text-mint-400 text-xs p-3 rounded font-mono overflow-x-auto">
-                      /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port={import.meta.env.VITE_CDP_PORT ?? 5549}
+                      /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=5549
                     </code>
                     <p className="text-sm text-slate-400">
                       Then log into Robinhood in that browser and click Connect below.

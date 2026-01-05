@@ -1,6 +1,5 @@
-import type { ApiResult } from './funds'
-
-const API_BASE = '/api/v1'
+import { fetchJson, postJson, API_BASE } from './utils'
+import type { ApiResult } from './utils'
 
 export interface ParsedTransaction {
   date: string
@@ -133,19 +132,11 @@ export async function previewRobinhoodImport(
   platform = 'robinhood',
   includeCashImpact = false
 ): Promise<ApiResult<ImportPreview>> {
-  const response = await fetch(`${API_BASE}/import/robinhood/preview`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ csvContent, platform, includeCashImpact })
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to parse CSV' } }))
-    return { error: error.error?.message ?? 'Failed to parse CSV' }
-  }
-
-  const data = await response.json()
-  return { data }
+  return postJson<ImportPreview>(
+    `${API_BASE}/import/robinhood/preview`,
+    { csvContent, platform, includeCashImpact },
+    'Failed to parse CSV'
+  )
 }
 
 /**
@@ -156,19 +147,13 @@ export async function applyRobinhoodImport(
   skipUnmatched = true,
   clearBeforeImport = false
 ): Promise<ApiResult<ImportResult>> {
-  const response = await fetch(`${API_BASE}/import/robinhood/apply`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ transactions, skipUnmatched, clearBeforeImport })
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to apply import' } }))
-    return { error: error.error?.message ?? 'Failed to apply import' }
-  }
-
-  const data = await response.json()
-  return { data: data.result }
+  const result = await postJson<{ result: ImportResult }>(
+    `${API_BASE}/import/robinhood/apply`,
+    { transactions, skipUnmatched, clearBeforeImport },
+    'Failed to apply import'
+  )
+  if (result.data) return { data: result.data.result }
+  return { error: result.error ?? 'Failed to apply import' }
 }
 
 /**
@@ -178,19 +163,13 @@ export async function applyM1CashImport(
   transactions: ParsedTransaction[],
   skipDuplicates = true
 ): Promise<ApiResult<ImportResult>> {
-  const response = await fetch(`${API_BASE}/import/m1-cash/apply`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ transactions, skipDuplicates })
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to apply import' } }))
-    return { error: error.error?.message ?? 'Failed to apply import' }
-  }
-
-  const data = await response.json()
-  return { data: data.result }
+  const result = await postJson<{ result: ImportResult }>(
+    `${API_BASE}/import/m1-cash/apply`,
+    { transactions, skipDuplicates },
+    'Failed to apply import'
+  )
+  if (result.data) return { data: result.data.result }
+  return { error: result.error ?? 'Failed to apply import' }
 }
 
 /**
@@ -217,30 +196,18 @@ export async function getBrowserStatus(platform?: string): Promise<ApiResult<Bro
   const url = platform
     ? `${API_BASE}/import/browser/status?platform=${encodeURIComponent(platform)}`
     : `${API_BASE}/import/browser/status`
-  const response = await fetch(url)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to check browser status' } }))
-    return { error: error.error?.message ?? 'Failed to check browser status' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<BrowserStatus>(url, undefined, 'Failed to check browser status')
 }
 
 /**
  * Navigate browser to a URL and check login status.
  */
 export async function navigateBrowser(url: string, platform?: string): Promise<ApiResult<{ success: boolean; currentUrl: string; isLoggedIn: boolean }>> {
-  const response = await fetch(`${API_BASE}/import/browser/navigate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, platform })
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to navigate' } }))
-    return { error: error.error?.message ?? 'Failed to navigate' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<{ success: boolean; currentUrl: string; isLoggedIn: boolean }>(
+    `${API_BASE}/import/browser/navigate`,
+    { url, platform },
+    'Failed to navigate'
+  )
 }
 
 /**
@@ -248,49 +215,33 @@ export async function navigateBrowser(url: string, platform?: string): Promise<A
  * @param platform Optional platform to navigate to (robinhood, m1, etc.)
  */
 export async function launchBrowser(platform?: string): Promise<ApiResult<{ success: boolean; message: string; alreadyRunning: boolean }>> {
-  const response = await fetch(`${API_BASE}/import/browser/launch`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ platform })
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to launch browser' } }))
-    return { error: error.error?.message ?? 'Failed to launch browser' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<{ success: boolean; message: string; alreadyRunning: boolean }>(
+    `${API_BASE}/import/browser/launch`,
+    { platform },
+    'Failed to launch browser'
+  )
 }
 
 /**
  * Kill the launched Chrome browser.
  */
 export async function killBrowser(): Promise<ApiResult<{ success: boolean; message: string }>> {
-  const response = await fetch(`${API_BASE}/import/browser/kill`, {
-    method: 'POST'
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to kill browser' } }))
-    return { error: error.error?.message ?? 'Failed to kill browser' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<{ success: boolean; message: string }>(
+    `${API_BASE}/import/browser/kill`,
+    {},
+    'Failed to kill browser'
+  )
 }
 
 /**
  * Connect to browser via CDP.
  */
 export async function connectBrowser(cdpUrl?: string): Promise<ApiResult<{ success: boolean; message: string; pages: number }>> {
-  const response = await fetch(`${API_BASE}/import/browser/connect`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cdpUrl })
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to connect to browser' } }))
-    return { error: error.error?.message ?? 'Failed to connect to browser' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<{ success: boolean; message: string; pages: number }>(
+    `${API_BASE}/import/browser/connect`,
+    { cdpUrl },
+    'Failed to connect to browser'
+  )
 }
 
 /**
@@ -300,34 +251,22 @@ export async function scrapeRobinhoodHistory(
   url: string,
   platform = 'robinhood'
 ): Promise<ApiResult<ImportPreview>> {
-  const response = await fetch(`${API_BASE}/import/robinhood/scrape`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, platform })
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to scrape page' } }))
-    return { error: error.error?.message ?? 'Failed to scrape page' }
-  }
-
-  const data = await response.json()
-  return { data }
+  return postJson<ImportPreview>(
+    `${API_BASE}/import/robinhood/scrape`,
+    { url, platform },
+    'Failed to scrape page'
+  )
 }
 
 /**
  * Disconnect from browser.
  */
 export async function disconnectBrowser(): Promise<ApiResult<{ success: boolean; message: string }>> {
-  const response = await fetch(`${API_BASE}/import/browser/disconnect`, {
-    method: 'POST'
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to disconnect' } }))
-    return { error: error.error?.message ?? 'Failed to disconnect' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<{ success: boolean; message: string }>(
+    `${API_BASE}/import/browser/disconnect`,
+    {},
+    'Failed to disconnect'
+  )
 }
 
 /**
@@ -335,13 +274,11 @@ export async function disconnectBrowser(): Promise<ApiResult<{ success: boolean;
  * @param full - If true, returns all transactions. Otherwise returns first 50.
  */
 export async function getScrapeArchive(platform = 'robinhood', full = false): Promise<ApiResult<ScrapeArchive>> {
-  const response = await fetch(`${API_BASE}/import/archive/${platform}${full ? '?full=true' : ''}`)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to fetch archive' } }))
-    return { error: error.error?.message ?? 'Failed to fetch archive' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<ScrapeArchive>(
+    `${API_BASE}/import/archive/${platform}${full ? '?full=true' : ''}`,
+    undefined,
+    'Failed to fetch archive'
+  )
 }
 
 /**
@@ -353,15 +290,16 @@ export async function reclassifyArchive(platform = 'robinhood'): Promise<ApiResu
   reclassified: number
   changes: Array<{ id: string; oldType: string; newType: string; title: string }>
 }>> {
-  const response = await fetch(`${API_BASE}/import/archive/${platform}/reclassify`, {
-    method: 'POST'
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to reclassify' } }))
-    return { error: error.error?.message ?? 'Failed to reclassify' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<{
+    platform: string
+    total: number
+    reclassified: number
+    changes: Array<{ id: string; oldType: string; newType: string; title: string }>
+  }>(
+    `${API_BASE}/import/archive/${platform}/reclassify`,
+    {},
+    'Failed to reclassify'
+  )
 }
 
 /**
@@ -544,58 +482,44 @@ export interface CryptoParseAllResponse {
  * Requires browser to be connected.
  */
 export async function getCryptoStatements(): Promise<ApiResult<CryptoStatementsResponse>> {
-  const response = await fetch(`${API_BASE}/import/crypto/statements`)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to get crypto statements' } }))
-    return { error: error.error?.message ?? 'Failed to get crypto statements' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<CryptoStatementsResponse>(
+    `${API_BASE}/import/crypto/statements`,
+    undefined,
+    'Failed to get crypto statements'
+  )
 }
 
 /**
  * Get list of locally downloaded crypto statement PDFs.
  */
 export async function getLocalCryptoStatements(): Promise<ApiResult<CryptoStatementsResponse>> {
-  const response = await fetch(`${API_BASE}/import/crypto/local-statements`)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to get local statements' } }))
-    return { error: error.error?.message ?? 'Failed to get local statements' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<CryptoStatementsResponse>(
+    `${API_BASE}/import/crypto/local-statements`,
+    undefined,
+    'Failed to get local statements'
+  )
 }
 
 /**
  * Parse a single crypto statement PDF.
  */
 export async function parseCryptoStatement(filename: string): Promise<ApiResult<CryptoStatementData>> {
-  const response = await fetch(`${API_BASE}/import/crypto/parse`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename })
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to parse PDF' } }))
-    return { error: error.error?.message ?? 'Failed to parse PDF' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<CryptoStatementData>(
+    `${API_BASE}/import/crypto/parse`,
+    { filename },
+    'Failed to parse PDF'
+  )
 }
 
 /**
  * Parse all local crypto statement PDFs and return combined results.
  */
 export async function parseAllCryptoStatements(): Promise<ApiResult<CryptoParseAllResponse>> {
-  const response = await fetch(`${API_BASE}/import/crypto/parse-all`, {
-    method: 'POST'
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to parse PDFs' } }))
-    return { error: error.error?.message ?? 'Failed to parse PDFs' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<CryptoParseAllResponse>(
+    `${API_BASE}/import/crypto/parse-all`,
+    {},
+    'Failed to parse PDFs'
+  )
 }
 
 /**
@@ -703,60 +627,44 @@ export interface M1StatementsParseAllResponse {
  * Requires browser to be connected and logged into M1.
  */
 export async function getM1StatementsList(): Promise<ApiResult<M1StatementsListResponse>> {
-  const response = await fetch(`${API_BASE}/import/m1-statements/list`)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to get M1 statements' } }))
-    return { error: error.error?.message ?? 'Failed to get M1 statements' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<M1StatementsListResponse>(
+    `${API_BASE}/import/m1-statements/list`,
+    undefined,
+    'Failed to get M1 statements'
+  )
 }
 
 /**
  * Get list of locally downloaded M1 statement PDFs.
  */
 export async function getLocalM1Statements(): Promise<ApiResult<M1StatementsListResponse>> {
-  const response = await fetch(`${API_BASE}/import/m1-statements/local`)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to get local statements' } }))
-    return { error: error.error?.message ?? 'Failed to get local statements' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<M1StatementsListResponse>(
+    `${API_BASE}/import/m1-statements/local`,
+    undefined,
+    'Failed to get local statements'
+  )
 }
 
 /**
  * Parse a single M1 statement PDF.
  */
 export async function parseM1Statement(filename: string): Promise<ApiResult<M1StatementData>> {
-  const response = await fetch(`${API_BASE}/import/m1-statements/parse`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename })
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to parse PDF' } }))
-    return { error: error.error?.message ?? 'Failed to parse PDF' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<M1StatementData>(
+    `${API_BASE}/import/m1-statements/parse`,
+    { filename },
+    'Failed to parse PDF'
+  )
 }
 
 /**
  * Parse all local M1 statement PDFs.
  */
 export async function parseAllM1Statements(accountType?: string): Promise<ApiResult<M1StatementsParseAllResponse>> {
-  const response = await fetch(`${API_BASE}/import/m1-statements/parse-all`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ accountType })
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to parse PDFs' } }))
-    return { error: error.error?.message ?? 'Failed to parse PDFs' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<M1StatementsParseAllResponse>(
+    `${API_BASE}/import/m1-statements/parse-all`,
+    { accountType },
+    'Failed to parse PDFs'
+  )
 }
 
 /**
@@ -766,17 +674,13 @@ export async function applyM1StatementTransactions(
   transactions: M1StatementTransaction[],
   skipDuplicates = true
 ): Promise<ApiResult<ImportResult>> {
-  const response = await fetch(`${API_BASE}/import/m1-statements/apply`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ transactions, skipDuplicates })
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to apply import' } }))
-    return { error: error.error?.message ?? 'Failed to apply import' }
-  }
-  const data = await response.json()
-  return { data: data.result }
+  const result = await postJson<{ result: ImportResult }>(
+    `${API_BASE}/import/m1-statements/apply`,
+    { transactions, skipDuplicates },
+    'Failed to apply import'
+  )
+  if (result.data) return { data: result.data.result }
+  return { error: result.error ?? 'Failed to apply import' }
 }
 
 /**

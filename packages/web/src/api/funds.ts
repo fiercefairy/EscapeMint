@@ -1,4 +1,8 @@
-const API_BASE = '/api/v1'
+import { fetchJson, postJson, putJson, deleteResource, API_BASE } from './utils'
+import type { ApiResult } from './utils'
+
+// Re-export for backwards compatibility
+export type { ApiResult }
 
 // Event to notify components when funds list changes
 export const FUNDS_CHANGED_EVENT = 'escapemint:funds-changed'
@@ -87,7 +91,7 @@ export interface FundState {
 }
 
 export interface Recommendation {
-  action: 'BUY' | 'SELL'
+  action: 'BUY' | 'SELL' | 'HOLD'
   amount: number
   explanation: {
     start_input_usd: number
@@ -142,79 +146,29 @@ export interface FundStateResponse {
   fund_size?: number
 }
 
-export interface ApiResult<T> {
-  data?: T
-  error?: string
-}
-
 export async function fetchFunds(includeTest = false): Promise<ApiResult<FundSummary[]>> {
   const url = includeTest ? `${API_BASE}/funds?include_test=true` : `${API_BASE}/funds`
-  const response = await fetch(url)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to fetch funds' } }))
-    return { error: error.error?.message ?? 'Failed to fetch funds' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<FundSummary[]>(url, undefined, 'Failed to fetch funds')
 }
 
 export async function fetchFund(id: string): Promise<ApiResult<FundDetail>> {
-  const response = await fetch(`${API_BASE}/funds/${id}`)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Fund not found' } }))
-    return { error: error.error?.message ?? 'Fund not found' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<FundDetail>(`${API_BASE}/funds/${id}`, undefined, 'Fund not found')
 }
 
 export async function fetchFundState(id: string): Promise<ApiResult<FundStateResponse>> {
-  const response = await fetch(`${API_BASE}/funds/${id}/state`)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to fetch fund state' } }))
-    return { error: error.error?.message ?? 'Failed to fetch fund state' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<FundStateResponse>(`${API_BASE}/funds/${id}/state`, undefined, 'Failed to fetch fund state')
 }
 
 export async function updateFundConfig(id: string, config: Partial<FundConfig>): Promise<ApiResult<FundDetail>> {
-  const response = await fetch(`${API_BASE}/funds/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ config })
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to update fund' } }))
-    return { error: error.error?.message ?? 'Failed to update fund' }
-  }
-  const data = await response.json()
-  return { data }
+  return putJson<FundDetail>(`${API_BASE}/funds/${id}`, { config }, 'Failed to update fund')
 }
 
 export async function updateFund(id: string, updates: { config?: Partial<FundConfig>; platform?: string; ticker?: string }): Promise<ApiResult<FundDetail>> {
-  const response = await fetch(`${API_BASE}/funds/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates)
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to update fund' } }))
-    return { error: error.error?.message ?? 'Failed to update fund' }
-  }
-  const data = await response.json()
-  return { data }
+  return putJson<FundDetail>(`${API_BASE}/funds/${id}`, updates, 'Failed to update fund')
 }
 
 export async function deleteFund(id: string): Promise<ApiResult<void>> {
-  const response = await fetch(`${API_BASE}/funds/${id}`, {
-    method: 'DELETE'
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to delete fund' } }))
-    return { error: error.error?.message ?? 'Failed to delete fund' }
-  }
-  return {}
+  return deleteResource<void>(`${API_BASE}/funds/${id}`, 'Failed to delete fund')
 }
 
 export async function createFund(data: {
@@ -223,83 +177,46 @@ export async function createFund(data: {
   config: Partial<FundConfig>
   initialEntry?: Partial<FundEntry>
 }): Promise<ApiResult<FundDetail>> {
-  const response = await fetch(`${API_BASE}/funds`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to create fund' } }))
-    return { error: error.error?.message ?? 'Failed to create fund' }
-  }
-  const result = await response.json()
-  return { data: result }
+  return postJson<FundDetail>(`${API_BASE}/funds`, data, 'Failed to create fund')
 }
 
 export async function addFundEntry(id: string, entry: Partial<FundEntry>): Promise<ApiResult<{ entry: FundEntry; state: FundState; recommendation: Recommendation }>> {
-  const response = await fetch(`${API_BASE}/funds/${id}/entries`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(entry)
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to add entry' } }))
-    return { error: error.error?.message ?? 'Failed to add entry' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<{ entry: FundEntry; state: FundState; recommendation: Recommendation }>(
+    `${API_BASE}/funds/${id}/entries`,
+    entry,
+    'Failed to add entry'
+  )
 }
 
 export async function previewRecommendation(id: string, equityValue: number, date?: string): Promise<ApiResult<{ state: FundState; recommendation: Recommendation | null; margin_available: number; fund_size: number }>> {
-  const response = await fetch(`${API_BASE}/funds/${id}/preview`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ equity_value_usd: equityValue, date })
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to preview recommendation' } }))
-    return { error: error.error?.message ?? 'Failed to preview recommendation' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<{ state: FundState; recommendation: Recommendation | null; margin_available: number; fund_size: number }>(
+    `${API_BASE}/funds/${id}/preview`,
+    { equity_value_usd: equityValue, date },
+    'Failed to preview recommendation'
+  )
 }
 
 export async function updateFundEntry(id: string, entryIndex: number, entry: FundEntry): Promise<ApiResult<{ entry: FundEntry; fund: FundDetail }>> {
-  const response = await fetch(`${API_BASE}/funds/${id}/entries/${entryIndex}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(entry)
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to update entry' } }))
-    return { error: error.error?.message ?? 'Failed to update entry' }
-  }
-  const data = await response.json()
-  return { data }
+  return putJson<{ entry: FundEntry; fund: FundDetail }>(
+    `${API_BASE}/funds/${id}/entries/${entryIndex}`,
+    entry,
+    'Failed to update entry'
+  )
 }
 
 export async function deleteFundEntry(id: string, entryIndex: number): Promise<ApiResult<{ fund: FundDetail }>> {
-  const response = await fetch(`${API_BASE}/funds/${id}/entries/${entryIndex}`, {
-    method: 'DELETE'
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to delete entry' } }))
-    return { error: error.error?.message ?? 'Failed to delete entry' }
-  }
-  const data = await response.json()
-  return { data }
+  return deleteResource<{ fund: FundDetail }>(
+    `${API_BASE}/funds/${id}/entries/${entryIndex}`,
+    'Failed to delete entry'
+  )
 }
 
 export async function recalculateFund(id: string): Promise<ApiResult<{ message: string; fund: FundDetail }>> {
-  const response = await fetch(`${API_BASE}/funds/${id}/recalculate`, {
-    method: 'POST'
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to recalculate fund' } }))
-    return { error: error.error?.message ?? 'Failed to recalculate fund' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<{ message: string; fund: FundDetail }>(
+    `${API_BASE}/funds/${id}/recalculate`,
+    {},
+    'Failed to recalculate fund'
+  )
 }
 
 export type InterpolatableColumn = 'margin_available' | 'margin_borrowed' | 'fund_size' | 'value'
@@ -314,17 +231,11 @@ export interface InterpolateResult {
 }
 
 export async function interpolateColumn(id: string, column: InterpolatableColumn): Promise<ApiResult<InterpolateResult>> {
-  const response = await fetch(`${API_BASE}/funds/${id}/interpolate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ column })
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: `Failed to interpolate ${column} values` } }))
-    return { error: error.error?.message ?? `Failed to interpolate ${column} values` }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<InterpolateResult>(
+    `${API_BASE}/funds/${id}/interpolate`,
+    { column },
+    `Failed to interpolate ${column} values`
+  )
 }
 
 // Aggregate calculations for dashboard
@@ -368,13 +279,7 @@ export interface AggregateMetrics {
 
 export async function fetchAggregateMetrics(includeTest = false): Promise<ApiResult<AggregateMetrics>> {
   const url = includeTest ? `${API_BASE}/funds/aggregate?include_test=true` : `${API_BASE}/funds/aggregate`
-  const response = await fetch(url)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to fetch aggregate metrics' } }))
-    return { error: error.error?.message ?? 'Failed to fetch aggregate metrics' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<AggregateMetrics>(url, undefined, 'Failed to fetch aggregate metrics')
 }
 
 // Audit trail entry with fund info
@@ -424,45 +329,6 @@ export async function fetchAllEntries(): Promise<ApiResult<AuditEntry[]>> {
   return { data: allEntries }
 }
 
-// Legacy fallback for calculating metrics from fund summaries
-export function calculateAggregateMetrics(funds: FundSummary[]): Omit<AggregateMetrics, 'funds' | 'totalStartInput' | 'totalTimeWeightedFundSize' | 'totalDaysActive' | 'totalRealizedGains'> {
-  let totalFundSize = 0
-  let totalValue = 0
-  let activeFunds = 0
-  let closedFunds = 0
-
-  for (const fund of funds) {
-    const fundSize = fund.latestFundSize ?? fund.config.fund_size_usd
-    totalFundSize += fundSize
-    totalValue += fund.latestEquity?.value ?? 0
-
-    if (fund.config.status === 'closed') {
-      closedFunds++
-    } else {
-      activeFunds++
-    }
-  }
-
-  const totalGainUsd = totalValue - totalFundSize
-  const totalGainPct = totalFundSize > 0 ? (totalValue / totalFundSize - 1) : 0
-
-  // Fallback estimate - use weighted average of target APYs
-  const weightedAPY = funds.reduce((sum, f) => sum + f.config.target_apy * (f.latestFundSize ?? f.config.fund_size_usd), 0) / (totalFundSize || 1)
-  const realizedAPY = weightedAPY
-  const projectedAnnualReturn = totalValue * realizedAPY
-
-  return {
-    totalFundSize,
-    totalValue,
-    totalGainUsd,
-    totalGainPct,
-    realizedAPY,
-    projectedAnnualReturn,
-    activeFunds,
-    closedFunds
-  }
-}
-
 // Historical time series data for charts
 export interface TimeSeriesPoint {
   date: string
@@ -502,13 +368,7 @@ export interface HistoryResponse {
 
 export async function fetchHistory(includeTest = false): Promise<ApiResult<HistoryResponse>> {
   const url = includeTest ? `${API_BASE}/funds/history?include_test=true` : `${API_BASE}/funds/history`
-  const response = await fetch(url)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to fetch history' } }))
-    return { error: error.error?.message ?? 'Failed to fetch history' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<HistoryResponse>(url, undefined, 'Failed to fetch history')
 }
 
 export interface SyncFromSubfundsResult {
@@ -521,13 +381,9 @@ export interface SyncFromSubfundsResult {
 }
 
 export async function syncFromSubfunds(id: string): Promise<ApiResult<SyncFromSubfundsResult>> {
-  const response = await fetch(`${API_BASE}/funds/${id}/sync-from-subfunds`, {
-    method: 'POST'
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to sync from sub-funds' } }))
-    return { error: error.error?.message ?? 'Failed to sync from sub-funds' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<SyncFromSubfundsResult>(
+    `${API_BASE}/funds/${id}/sync-from-subfunds`,
+    {},
+    'Failed to sync from sub-funds'
+  )
 }

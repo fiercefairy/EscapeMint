@@ -23,7 +23,7 @@ export interface EntryFormData {
   notes: string
 }
 
-interface EntryFormProps {
+export interface EntryFormProps {
   formData: EntryFormData
   setFormData: React.Dispatch<React.SetStateAction<EntryFormData>>
   existingEntries?: FundEntry[]
@@ -32,8 +32,8 @@ interface EntryFormProps {
   cashAvailable?: number | undefined
   marginAvailable?: number | undefined
   currentFundSize?: number | undefined
-  fundType?: FundType
-  manageCash?: boolean
+  fundType?: FundType | undefined
+  manageCash?: boolean | undefined
 }
 
 // Parse deposit/withdrawal from notes (legacy format)

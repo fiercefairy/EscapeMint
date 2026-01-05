@@ -99,13 +99,17 @@ export function FundDetail() {
   // Toggle audited status
   const toggleAudited = useCallback(async () => {
     if (!id || !fund) return
-    const newValue = fund.config.audited ? undefined : new Date().toISOString().split('T')[0]
-    const result = await updateFundConfig(id, { audited: newValue ?? '' })
+    const newAuditedValue: string = fund.config.audited ? '' : new Date().toISOString().split('T')[0]
+    const result = await updateFundConfig(id, { audited: newAuditedValue })
     if (result.error) {
       toast.error(result.error)
     } else {
-      setFund(prev => prev ? { ...prev, config: { ...prev.config, audited: newValue } } : null)
-      toast.success(newValue ? 'Fund marked as audited' : 'Audit status cleared')
+      setFund(prev => {
+        if (!prev) return null
+        const updatedConfig = { ...prev.config, audited: newAuditedValue }
+        return { ...prev, config: updatedConfig }
+      })
+      toast.success(newAuditedValue ? 'Fund marked as audited' : 'Audit status cleared')
     }
   }, [id, fund])
 

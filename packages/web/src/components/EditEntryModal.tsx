@@ -3,15 +3,15 @@ import { toast } from 'sonner'
 import { updateFundEntry, deleteFundEntry, type FundEntry, type FundDetail, type FundType } from '../api/funds'
 import { EntryForm, buildEntryFromForm, createFormDataFromEntry, parseDepositFromNotes, parseWithdrawalFromNotes, type EntryFormData } from './EntryForm'
 
-interface EditEntryModalProps {
+export interface EditEntryModalProps {
   fundId: string
   fundTicker: string
   entryIndex: number
   entry: FundEntry
   existingEntries?: FundEntry[]
   calculatedFundSize?: number | undefined
-  fundType?: FundType
-  manageCash?: boolean
+  fundType?: FundType | undefined
+  manageCash?: boolean | undefined
   onClose: () => void
   onUpdated: (fund?: FundDetail) => void
 }

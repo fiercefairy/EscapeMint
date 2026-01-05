@@ -29,15 +29,14 @@ import {
   type CryptoParseAllResponse,
   type CryptoStatementsResponse,
   type M1StatementsListResponse,
-  type M1StatementsParseAllResponse,
-  type M1StatementTransaction
+  type M1StatementsParseAllResponse
 } from '../api/import'
 import { notifyFundsChanged } from '../api/funds'
 
-interface ImportWizardProps {
+export interface ImportWizardProps {
   onClose: () => void
   onImported?: () => void
-  platform?: string  // Optional platform filter (e.g., 'robinhood', 'm1')
+  platform?: string | undefined  // Optional platform filter (e.g., 'robinhood', 'm1')
 }
 
 type ImportMethod = 'csv' | 'scrape' | 'archive' | 'crypto-pdf' | 'm1-cash' | 'm1-statements'
@@ -54,9 +53,10 @@ const PLATFORM_IMPORT_METHODS: Record<string, ImportMethod[]> = {
 
 // Get available methods for a platform
 const getAvailableMethods = (platform?: string): ImportMethod[] => {
-  if (!platform) return PLATFORM_IMPORT_METHODS._default
+  const defaultMethods = PLATFORM_IMPORT_METHODS._default ?? ['csv']
+  if (!platform) return defaultMethods
   const normalized = platform.toLowerCase().replace(/-cash$/, '')
-  return PLATFORM_IMPORT_METHODS[normalized] ?? PLATFORM_IMPORT_METHODS._default
+  return PLATFORM_IMPORT_METHODS[normalized] ?? defaultMethods
 }
 
 interface ScrapeProgress {
@@ -82,7 +82,6 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
   const [scrapeUrl, setScrapeUrl] = useState('https://robinhood.com/account/history')
   const [m1CashUrl, setM1CashUrl] = useState('https://dashboard.m1.com/d/save/savings/transactions')
   const [preview, setPreview] = useState<ImportPreview | null>(null)
-  const [selectedTransactions, setSelectedTransactions] = useState<Set<number>>(new Set())
   const [isDragging, setIsDragging] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [archive, setArchive] = useState<ScrapeArchive | null>(null)
@@ -352,11 +351,6 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
         }
 
         setPreview(result.data)
-        const matched = new Set<number>()
-        result.data.transactions.forEach((tx, i) => {
-          if (tx.fundExists) matched.add(i)
-        })
-        setSelectedTransactions(matched)
         toast.success(data.message)
         setStep('preview')
       },
@@ -524,31 +518,6 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
     if (file) handleFile(file)
   }, [handleFile])
 
-  const toggleTransaction = useCallback((index: number) => {
-    setSelectedTransactions(prev => {
-      const next = new Set(prev)
-      if (next.has(index)) {
-        next.delete(index)
-      } else {
-        next.add(index)
-      }
-      return next
-    })
-  }, [])
-
-  const toggleAll = useCallback((checked: boolean) => {
-    if (!preview) return
-    if (checked) {
-      const all = new Set<number>()
-      preview.transactions.forEach((tx, i) => {
-        if (tx.fundExists) all.add(i)
-      })
-      setSelectedTransactions(all)
-    } else {
-      setSelectedTransactions(new Set())
-    }
-  }, [preview])
-
   const handleApply = useCallback(async () => {
     if (!preview) return
 
@@ -666,9 +635,6 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
       minimumFractionDigits: 2
     }).format(amount)
   }
-
-  const matchedCount = preview?.transactions.filter(tx => tx.fundExists).length ?? 0
-  const selectedCount = selectedTransactions.size
 
   // Step indicator
   const getStepNumber = () => {
@@ -1141,11 +1107,6 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                                 return typeMatch && symbolMatch
                               })
                               setPreview({ ...result.data, transactions: filtered })
-                              const matched = new Set<number>()
-                              filtered.forEach((tx, i) => {
-                                if (tx.fundExists) matched.add(i)
-                              })
-                              setSelectedTransactions(matched)
                               setStep('preview')
                             }
                           }}

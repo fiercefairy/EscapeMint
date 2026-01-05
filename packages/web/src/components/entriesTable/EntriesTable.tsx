@@ -5,13 +5,13 @@ import { getColumnsForFundType, getDefaultColumns, getDefaultColumnOrder, type C
 import { PasteColumnModal } from './PasteColumnModal'
 import { useSettings } from '../../contexts/SettingsContext'
 
-interface EntriesTableProps {
+export interface EntriesTableProps {
   fundId: string
   entries: FundEntry[]
   computedEntries: ComputedEntry[]
   savedColumnOrder?: ColumnId[]
   savedVisibleColumns?: ColumnId[]
-  fundType?: FundType
+  fundType?: FundType | undefined
   onEdit: (index: number, entry: FundEntry, calculatedFundSize: number) => void
   onAddEntry: () => void
   onReload: () => void

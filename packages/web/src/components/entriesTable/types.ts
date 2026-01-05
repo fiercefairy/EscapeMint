@@ -35,7 +35,7 @@ export type ColumnId = typeof ALL_COLUMNS[number]['id']
 
 // Get columns available for a specific fund type
 export const getColumnsForFundType = (fundType: FundType = 'stock') => {
-  return ALL_COLUMNS.filter(c => !c.excludeFrom.includes(fundType))
+  return ALL_COLUMNS.filter(c => !(c.excludeFrom as readonly string[]).includes(fundType))
 }
 
 // Cash fund specific defaults - use 'equity' for cash balance (not 'cash' which is for stock funds)

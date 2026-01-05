@@ -5,11 +5,11 @@ import { updatePlatformConfig, type PlatformFundMetrics } from '../../api/platfo
 import { updateFundConfig } from '../../api/funds'
 import { ALL_FUND_COLUMNS, getDefaultFundColumns, getDefaultFundColumnOrder, type FundColumnId } from './types'
 
-interface FundsTableProps {
+export interface FundsTableProps {
   platformId: string
   funds: PlatformFundMetrics[]
-  savedColumnOrder?: string[]
-  savedVisibleColumns?: string[]
+  savedColumnOrder?: string[] | undefined
+  savedVisibleColumns?: string[] | undefined
   onReload?: () => void
 }
 

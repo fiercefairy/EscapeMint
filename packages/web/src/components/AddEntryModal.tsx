@@ -3,15 +3,15 @@ import { toast } from 'sonner'
 import { addFundEntry, previewRecommendation, type FundEntry, type FundState, type Recommendation, type FundType } from '../api/funds'
 import { EntryForm, buildEntryFromForm, createEmptyFormData, type EntryFormData, type ActionType } from './EntryForm'
 
-interface AddEntryModalProps {
+export interface AddEntryModalProps {
   fundId: string
   fundTicker: string
   currentRecommendation?: Recommendation | null | undefined
   existingEntries?: FundEntry[]
   targetApy?: number
   minProfitUsd?: number
-  manageCash?: boolean
-  fundType?: FundType
+  manageCash?: boolean | undefined
+  fundType?: FundType | undefined
   onClose: () => void
   onAdded: () => void
 }

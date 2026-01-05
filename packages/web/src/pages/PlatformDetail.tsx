@@ -360,7 +360,7 @@ export function PlatformDetail() {
               <div className="mb-4 p-3 bg-slate-700/50 rounded-lg text-sm">
                 <p className="text-slate-300">Will restore:</p>
                 <ul className="text-slate-400 mt-1 space-y-1">
-                  <li>• Cash: {formatCurrencyPrecise(cashStatus.currentCash ?? 0)}</li>
+                  <li>• Cash: {formatCurrencyPrecise(cashStatus.balance ?? 0)}</li>
                   <li>• Margin Available: {formatCurrencyPrecise(cashStatus.marginAvailable ?? 0)}</li>
                   <li>• Margin Borrowed: {formatCurrencyPrecise(cashStatus.marginBorrowed ?? 0)}</li>
                 </ul>

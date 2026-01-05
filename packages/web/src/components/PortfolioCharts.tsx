@@ -81,7 +81,7 @@ function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: st
       .attr('stroke', '#1e293b')
       .attr('stroke-width', 1)
       .attr('cursor', 'pointer')
-      .on('mouseover', function(event, d) {
+      .on('mouseover', function(_event, d) {
         const pct = (d.data.chartValue / total * 100).toFixed(1)
         tooltip
           .style('opacity', 1)

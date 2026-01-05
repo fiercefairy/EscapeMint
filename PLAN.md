@@ -824,3 +824,316 @@ describe('Mathematical Properties', () => {
 - [x] E2E tests cover full fund lifecycle (49 Playwright tests)
 - [ ] Documentation includes visual diagrams
 - [x] No known mathematical bugs remain (2 bugs fixed)
+
+---
+
+## 9. CODE AUDIT - DRY/YAGNI CLEANUP (2026-01-05)
+
+### 9.1 Critical DRY Violations
+
+#### 9.1.1 API Error Handling Pattern - 51 occurrences
+**Location:** All files in `packages/web/src/api/`
+
+**Problem:** Identical error handling pattern repeated in every API function:
+```typescript
+if (!response.ok) {
+  const error = await response.json().catch(() => ({ error: { message: 'Failed to...' } }))
+  return { error: error.error?.message ?? 'Failed to...' }
+}
+const data = await response.json()
+return { data }
+```
+
+**Files affected:**
+- `packages/web/src/api/funds.ts` (20+ occurrences)
+- `packages/web/src/api/platforms.ts` (10+ occurrences)
+- `packages/web/src/api/import.ts` (15+ occurrences)
+- `packages/web/src/api/subfunds.ts` (5 occurrences)
+
+**Solution:** Create `packages/web/src/api/utils.ts`:
+```typescript
+export async function fetchJson<T>(url: string, options?: RequestInit): Promise<ApiResult<T>> {
+  const response = await fetch(url, options)
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: { message: 'Request failed' } }))
+    return { error: error.error?.message ?? 'Request failed' }
+  }
+  const data = await response.json()
+  return { data }
+}
+```
+
+**Impact:** Reduces ~300+ lines of duplicate code
+
+---
+
+#### 9.1.2 EventSource Streaming Setup - 4 identical functions
+**Location:** `packages/web/src/api/import.ts`
+
+**Problem:** 4 functions with nearly identical EventSource listener setup:
+- `scrapeRobinhoodHistoryStream()` (lines 371-421)
+- `scrapeM1CashHistoryStream()` (lines 427-477)
+- `downloadCryptoStatementsStream()` (lines 604-651)
+- `downloadM1StatementsStream()` (lines 785-837)
+
+**Solution:** Create utility:
+```typescript
+export function createStreamingEventSource(
+  url: string,
+  callbacks: StreamCallbacks
+): { eventSource: EventSource; close: () => void } {
+  const eventSource = new EventSource(url)
+  eventSource.addEventListener('status', (e) => callbacks.onStatus?.(JSON.parse(e.data)))
+  eventSource.addEventListener('progress', (e) => callbacks.onProgress?.(JSON.parse(e.data)))
+  eventSource.addEventListener('complete', (e) => {
+    callbacks.onComplete?.(JSON.parse(e.data))
+    eventSource.close()
+  })
+  eventSource.addEventListener('error', (e) => {
+    callbacks.onError?.(e.data ? JSON.parse(e.data) : { message: 'Connection lost' })
+    eventSource.close()
+  })
+  return { eventSource, close: () => eventSource.close() }
+}
+```
+
+**Impact:** Reduces ~200 lines of duplicate code
+
+---
+
+#### 9.1.3 Start Input Calculation - 3+ occurrences
+**Location:** `packages/server/src/routes/funds.ts`
+
+**Problem:** Start input calculation with liquidation detection duplicated at:
+- Lines 398-428 (`/funds/:id/state` endpoint)
+- Lines 747-773 (`/funds/:id/preview` endpoint)
+- Lines 858-890 (`/funds/:id/entries` endpoint)
+
+**Solution:** Move to `packages/server/src/utils/calculations.ts`:
+```typescript
+export function calculateStartInputWithLiquidation(entries: Entry[]): {
+  startInput: number
+  totalBuys: number
+  totalSells: number
+} { /* ... */ }
+```
+
+**Impact:** Reduces ~100 lines, centralizes liquidation logic
+
+---
+
+#### 9.1.4 Platform Data Read/Write - Duplicated across files
+**Location:**
+- `packages/server/src/routes/funds.ts` (lines 40-51)
+- `packages/server/src/routes/platforms.ts` (lines 48-63)
+
+**Solution:** Move to `packages/server/src/utils/platforms.ts`
+
+---
+
+#### 9.1.5 Date Sorting Pattern - 4+ occurrences
+**Location:** `packages/server/src/routes/funds.ts` at lines 402, 731, 894, 1086
+
+**Problem:** Same sorting logic repeated:
+```typescript
+const sortedEntries = [...fund.entries].sort((a, b) =>
+  new Date(a.date).getTime() - new Date(b.date).getTime()
+)
+```
+
+**Solution:** Add utility function `sortEntriesByDate(entries)`
+
+---
+
+### 9.2 YAGNI Violations - Unused Code
+
+#### 9.2.1 SubFund Feature - ✅ REMOVED (2026-01-05)
+**Files removed:**
+- ~~`packages/web/src/api/subfunds.ts`~~ - Deleted
+- ~~`packages/web/src/api/types.ts`~~ - Deleted
+- ~~`packages/web/src/pages/SubFundDetail.tsx`~~ - Deleted
+- ~~`packages/web/src/components/SubFundCard.tsx`~~ - Deleted
+- ~~`packages/web/src/components/CreateSubFundModal.tsx`~~ - Deleted
+
+**Status:** Removed entirely (~400 lines)
+
+---
+
+#### 9.2.2 Platform Cash Management APIs - ✅ REVIEWED (2026-01-05)
+**Location:** `packages/web/src/api/platforms.ts`
+
+**Status:** Reviewed and found to be IN USE:
+- `enableCashTracking()` - Used in PlatformDetail.tsx (line ~343)
+- `disableCashTracking()` - Used in PlatformDetail.tsx (line ~382)
+- `fetchPlatformCashStatus()` - Used in PlatformDetail.tsx (line ~51)
+- `PlatformCashStatus` interface - Used for type annotations
+
+**Conclusion:** Keep these APIs as they support the platform cash management feature
+
+---
+
+#### 9.2.3 Unused Funds API Function - ✅ REMOVED (2026-01-05)
+**Location:** `packages/web/src/api/funds.ts`
+
+- ~~`calculateAggregateMetrics()` (lines 428-464)~~ - Deleted
+
+**Status:** Removed (~36 lines)
+
+---
+
+#### 9.2.4 Unused Import Interfaces
+**Location:** `packages/web/src/api/import.ts`
+
+Unused exports:
+- `CryptoHolding` (lines 493-499)
+- `CryptoStatementData` (lines 501-509)
+- `CryptoStatementInfo` (lines 511-517)
+- `M1StatementData` (lines 664-675)
+- `M1StatementInfo` (lines 677-683)
+
+**Recommendation:** Remove or use for type annotations
+
+---
+
+### 9.3 Modularization Recommendations
+
+#### 9.3.1 Modal Component Wrapper
+**Problem:** All modals share identical wrapper structure:
+```jsx
+<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+  <div className="bg-slate-800 rounded-lg p-6 w-full max-w-[XXX] border border-slate-700 max-h-[90vh] overflow-y-auto">
+```
+
+**Solution:** Create `packages/web/src/components/Modal.tsx`:
+```typescript
+export function Modal({ isOpen, onClose, title, description, maxWidth, children }) {
+  if (!isOpen) return null
+  return (
+    <div className="fixed inset-0 bg-black/50 ...">
+      <div className={`bg-slate-800 ... max-w-${maxWidth}`}>
+        <h2>{title}</h2>
+        {description && <p>{description}</p>}
+        {children}
+      </div>
+    </div>
+  )
+}
+```
+
+**Modals to update:** CreateFundModal, EditEntryModal, AddEntryModal, EditFundConfigModal, CreateSubFundModal, ImportCSVModal, PasteColumnModal
+
+---
+
+#### 9.3.2 Centralize Format Functions
+**Problem:** `formatCurrency` and `formatPercent` defined locally in multiple components:
+- `packages/web/src/utils/format.ts` (centralized)
+- `packages/web/src/components/FundCharts.tsx:31` (local with K/M)
+- `packages/web/src/components/PortfolioCharts.tsx:22` (local with K/M)
+- `packages/web/src/components/SubFundCard.tsx:7` (local)
+
+**Solution:** Consolidate in `utils/format.ts` with variants:
+```typescript
+export function formatCurrency(value: number, compact = false): string
+export function formatPercent(value: number): string
+```
+
+---
+
+#### 9.3.3 Centralize ApiResult Type
+**Problem:** `ApiResult<T>` interface defined in multiple places:
+- `packages/web/src/api/funds.ts` (lines 145-148)
+- `packages/web/src/api/platforms.ts` (lines 10-13)
+
+**Solution:** Move to `packages/web/src/api/types.ts` (already has types)
+
+---
+
+### 9.4 Test Coverage Gaps
+
+#### 9.4.1 Untested Areas - CRITICAL
+
+| Area | Status | Priority |
+|------|--------|----------|
+| Server Routes (`/packages/server/src/routes/`) | 0% coverage | HIGH |
+| Input Validation | Not tested | HIGH |
+| API Error Responses | Not tested | HIGH |
+| Web UI Components | Indirect via E2E only | MEDIUM |
+| Aggregate Calculations (`aggregate.ts`) | No dedicated tests | MEDIUM |
+
+#### 9.4.2 Test Files Needed
+
+1. **`packages/server/test/routes/funds.test.ts`** - Fund CRUD endpoints
+2. **`packages/server/test/routes/import.test.ts`** - Import validation
+3. **`packages/server/test/routes/platforms.test.ts`** - Platform CRUD
+4. **`packages/engine/test/aggregate.test.ts`** - Portfolio aggregation
+5. **`packages/web/test/components/`** - Component unit tests
+
+---
+
+### 9.5 Implementation Checklist
+
+#### Phase 1: Create Utilities (reduces ~500+ lines) ✅ COMPLETE (2026-01-05)
+- [x] Create `packages/web/src/api/utils.ts` with `fetchJson()`, `postJson()`, `putJson()`, `deleteResource()` helpers
+- [x] Create `packages/web/src/api/streaming.ts` with `createEventStream()` helper
+- [x] Centralize `ApiResult` in `packages/web/src/api/utils.ts`
+- [x] Create `packages/server/src/utils/calculations.ts` with `calculateStartInputWithLiquidation()`, `sortEntriesByDate()`
+- [x] Create `packages/server/src/utils/platforms.ts` with `readPlatformsData()`, `writePlatformsData()`, `round2()`
+
+#### Phase 2: Refactor API Files ✅ COMPLETE (2026-01-05)
+- [x] Refactor `packages/web/src/api/funds.ts` to use `fetchJson()` - reduced ~80 lines
+- [x] Refactor `packages/web/src/api/platforms.ts` to use `fetchJson()` - reduced ~60 lines
+- [x] Refactor `packages/web/src/api/import.ts` to use `fetchJson()` - reduced ~150 lines
+- [x] Removed `calculateAggregateMetrics()` legacy function from funds.ts
+- [x] Removed `packages/web/src/api/subfunds.ts` entirely (unused SubFund feature)
+
+#### Phase 3: Clean Up YAGNI ✅ COMPLETE (2026-01-05)
+- [x] Remove SubFund feature (deleted 5 files: subfunds.ts, types.ts, SubFundDetail.tsx, SubFundCard.tsx, CreateSubFundModal.tsx)
+- [x] Platform cash APIs reviewed - `enableCashTracking`, `disableCashTracking` are used in PlatformDetail.tsx (kept)
+- [x] Remove `calculateAggregateMetrics()` legacy function (completed in Phase 2)
+- [x] Fixed TypeScript build errors (entriesTable types, FundDetail audited handling, PlatformDetail balance property, ImportWizard unused state)
+- [x] Fixed storage tests (updated entriesToTrades test expectations for value field)
+- [ ] Remove unused import interfaces (deferred - low priority)
+
+#### Phase 4: Modularize Components
+- [ ] Create `Modal.tsx` wrapper component
+- [ ] Update all modal components to use wrapper
+- [ ] Consolidate format functions in `utils/format.ts`
+
+#### Phase 5: Add Missing Tests
+- [ ] Add server route unit tests
+- [ ] Add aggregate calculation tests
+- [ ] Add input validation tests
+- [ ] Add API error handling tests
+
+---
+
+### 9.6 Summary Statistics
+
+| Category | Count | Lines Saved | Status |
+|----------|-------|-------------|--------|
+| API Error Handling Duplication | 51 occurrences | ~300 lines | ✅ Fixed (Phase 1 & 2) |
+| EventSource Streaming Duplication | 4 functions | ~200 lines | ✅ Fixed (Phase 1) |
+| Server Calculation Duplication | 3+ occurrences | ~100 lines | ✅ Fixed (Phase 1) |
+| Unused SubFund Feature | 5 files | ~400 lines | ✅ Removed (Phase 3) |
+| Unused API Functions | 1 function | ~36 lines | ✅ Removed (Phase 2) |
+| Unused Import Interfaces | 5+ exports | ~50 lines | Deferred |
+| **Total Reduction Achieved** | - | **~1,036 lines** | **Phases 1-3 Complete** |
+
+**Current Test Coverage:** ~35-40%
+**Target Test Coverage:** 70-75%
+
+### 9.7 Audit Completion Summary (2026-01-05)
+
+**Phases Completed:**
+- ✅ Phase 1: Created utility files (utils.ts, streaming.ts, calculations.ts, platforms.ts)
+- ✅ Phase 2: Refactored all API files to use DRY utilities
+- ✅ Phase 3: YAGNI cleanup (SubFund removal, API cleanup, TypeScript fixes, test fixes)
+
+**Remaining Work:**
+- Phase 4: Modularize Components (Modal.tsx wrapper, format function consolidation)
+- Phase 5: Add Missing Tests (server routes, aggregate calculations)
+
+**Build Status:**
+- TypeScript: ✅ Passing (0 errors)
+- Engine Tests: ✅ 135 tests passing
+- Storage Tests: ✅ 9 tests passing

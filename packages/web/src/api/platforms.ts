@@ -1,4 +1,8 @@
-const API_BASE = '/api/v1'
+import { fetchJson, postJson, putJson, deleteResource, API_BASE } from './utils'
+import type { ApiResult } from './utils'
+
+// Re-export for backwards compatibility
+export type { ApiResult }
 
 export interface Platform {
   id: string
@@ -7,58 +11,24 @@ export interface Platform {
   manage_cash?: boolean
 }
 
-export interface ApiResult<T> {
-  data?: T
-  error?: string
-}
-
 export async function fetchPlatforms(): Promise<ApiResult<Platform[]>> {
-  const response = await fetch(`${API_BASE}/platforms`)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to fetch platforms' } }))
-    return { error: error.error?.message ?? 'Failed to fetch platforms' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<Platform[]>(`${API_BASE}/platforms`, undefined, 'Failed to fetch platforms')
 }
 
 export async function createPlatform(platform: { id: string; name: string; color?: string }): Promise<ApiResult<Platform>> {
-  const response = await fetch(`${API_BASE}/platforms`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(platform)
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to create platform' } }))
-    return { error: error.error?.message ?? 'Failed to create platform' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<Platform>(`${API_BASE}/platforms`, platform, 'Failed to create platform')
 }
 
 export async function deletePlatform(id: string): Promise<ApiResult<void>> {
-  const response = await fetch(`${API_BASE}/platforms/${id}`, {
-    method: 'DELETE'
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to delete platform' } }))
-    return { error: error.error?.message ?? 'Failed to delete platform' }
-  }
-  return {}
+  return deleteResource<void>(`${API_BASE}/platforms/${id}`, 'Failed to delete platform')
 }
 
 export async function renamePlatform(id: string, newId: string, newName?: string): Promise<ApiResult<{ id: string; name: string; renamed: number }>> {
-  const response = await fetch(`${API_BASE}/platforms/${id}/rename`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ newId, newName })
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to rename platform' } }))
-    return { error: error.error?.message ?? 'Failed to rename platform' }
-  }
-  const data = await response.json()
-  return { data }
+  return putJson<{ id: string; name: string; renamed: number }>(
+    `${API_BASE}/platforms/${id}/rename`,
+    { newId, newName },
+    'Failed to rename platform'
+  )
 }
 
 export interface PlatformFundMetrics {
@@ -113,13 +83,7 @@ export interface PlatformMetrics {
 }
 
 export async function fetchPlatformMetrics(id: string): Promise<ApiResult<PlatformMetrics>> {
-  const response = await fetch(`${API_BASE}/platforms/${id}/metrics`)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to fetch platform metrics' } }))
-    return { error: error.error?.message ?? 'Failed to fetch platform metrics' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<PlatformMetrics>(`${API_BASE}/platforms/${id}/metrics`, undefined, 'Failed to fetch platform metrics')
 }
 
 // Platform cash management
@@ -156,39 +120,23 @@ export interface DisableCashTrackingResult {
 }
 
 export async function fetchPlatformCashStatus(platformId: string): Promise<ApiResult<PlatformCashStatus>> {
-  const response = await fetch(`${API_BASE}/platforms/${platformId}/cash`)
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to fetch platform cash status' } }))
-    return { error: error.error?.message ?? 'Failed to fetch platform cash status' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<PlatformCashStatus>(`${API_BASE}/platforms/${platformId}/cash`, undefined, 'Failed to fetch platform cash status')
 }
 
 export async function enableCashTracking(platformId: string): Promise<ApiResult<EnableCashTrackingResult>> {
-  const response = await fetch(`${API_BASE}/platforms/${platformId}/enable-cash-tracking`, {
-    method: 'POST'
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to enable cash tracking' } }))
-    return { error: error.error?.message ?? 'Failed to enable cash tracking' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<EnableCashTrackingResult>(
+    `${API_BASE}/platforms/${platformId}/enable-cash-tracking`,
+    {},
+    'Failed to enable cash tracking'
+  )
 }
 
 export async function disableCashTracking(platformId: string, targetFundId?: string): Promise<ApiResult<DisableCashTrackingResult>> {
-  const response = await fetch(`${API_BASE}/platforms/${platformId}/disable-cash-tracking`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(targetFundId ? { target_fund_id: targetFundId } : {})
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to disable cash tracking' } }))
-    return { error: error.error?.message ?? 'Failed to disable cash tracking' }
-  }
-  const data = await response.json()
-  return { data }
+  return postJson<DisableCashTrackingResult>(
+    `${API_BASE}/platforms/${platformId}/disable-cash-tracking`,
+    targetFundId ? { target_fund_id: targetFundId } : {},
+    'Failed to disable cash tracking'
+  )
 }
 
 export interface PlatformConfigUpdate {
@@ -200,15 +148,13 @@ export interface PlatformConfigUpdate {
 }
 
 export async function updatePlatformConfig(platformId: string, config: PlatformConfigUpdate): Promise<ApiResult<{ success: boolean }>> {
-  const response = await fetch(`${API_BASE}/platforms/${platformId}/config`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config)
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to update platform config' } }))
-    return { error: error.error?.message ?? 'Failed to update platform config' }
-  }
-  const data = await response.json()
-  return { data }
+  return fetchJson<{ success: boolean }>(
+    `${API_BASE}/platforms/${platformId}/config`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    },
+    'Failed to update platform config'
+  )
 }
