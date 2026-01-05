@@ -31,7 +31,6 @@ export interface FundConfig {
   margin_access_usd: number
   accumulate: boolean
   manage_cash?: boolean
-  auto_apply_cash_apy?: boolean
   margin_enabled?: boolean
   dividend_reinvest?: boolean
   interest_reinvest?: boolean
@@ -55,6 +54,7 @@ export interface FundSummary {
     date: string
     value: number
   } | null
+  latestFundSize?: number
 }
 
 export interface FundEntry {
@@ -432,7 +432,8 @@ export function calculateAggregateMetrics(funds: FundSummary[]): Omit<AggregateM
   let closedFunds = 0
 
   for (const fund of funds) {
-    totalFundSize += fund.config.fund_size_usd
+    const fundSize = fund.latestFundSize ?? fund.config.fund_size_usd
+    totalFundSize += fundSize
     totalValue += fund.latestEquity?.value ?? 0
 
     if (fund.config.status === 'closed') {
@@ -446,7 +447,7 @@ export function calculateAggregateMetrics(funds: FundSummary[]): Omit<AggregateM
   const totalGainPct = totalFundSize > 0 ? (totalValue / totalFundSize - 1) : 0
 
   // Fallback estimate - use weighted average of target APYs
-  const weightedAPY = funds.reduce((sum, f) => sum + f.config.target_apy * f.config.fund_size_usd, 0) / (totalFundSize || 1)
+  const weightedAPY = funds.reduce((sum, f) => sum + f.config.target_apy * (f.latestFundSize ?? f.config.fund_size_usd), 0) / (totalFundSize || 1)
   const realizedAPY = weightedAPY
   const projectedAnnualReturn = totalValue * realizedAPY
 

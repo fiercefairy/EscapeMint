@@ -7,8 +7,10 @@ interface FundCardProps {
 
 export function FundCard({ fund, impactPct }: FundCardProps) {
   const hasValue = fund.latestEquity && fund.latestEquity.value > 0
+  // Use latestFundSize from entries, fall back to config
+  const fundSize = fund.latestFundSize ?? fund.config.fund_size_usd
   // Use explicit status if set, otherwise fall back to legacy check (undefined status + zero fund size)
-  const isClosed = fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)
+  const isClosed = fund.config.status === 'closed' || (fund.config.status === undefined && fundSize === 0)
   const isCashFund = fund.config.fund_type === 'cash'
 
   const formatCurrency = (value: number) => {
@@ -82,7 +84,7 @@ export function FundCard({ fund, impactPct }: FundCardProps) {
           <>
             <div className="flex justify-between">
               <span className="text-slate-400">Fund Size</span>
-              <span className="text-white font-medium">{formatCurrency(fund.config.fund_size_usd)}</span>
+              <span className="text-white font-medium">{formatCurrency(fundSize)}</span>
             </div>
 
             <div className="flex justify-between">

@@ -4,8 +4,6 @@ export interface Platform {
   id: string
   name: string
   color?: string
-  cash_apy?: number
-  auto_calculate_interest?: boolean
   manage_cash?: boolean
 }
 
@@ -24,7 +22,7 @@ export async function fetchPlatforms(): Promise<ApiResult<Platform[]>> {
   return { data }
 }
 
-export async function createPlatform(platform: { id: string; name: string; color?: string; cash_apy?: number; auto_calculate_interest?: boolean }): Promise<ApiResult<Platform>> {
+export async function createPlatform(platform: { id: string; name: string; color?: string }): Promise<ApiResult<Platform>> {
   const response = await fetch(`${API_BASE}/platforms`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -80,18 +78,9 @@ export interface CashInterestHistory {
   interest: number
 }
 
-export interface ApyHistoryEntry {
-  date: string
-  rate: number
-  notes?: string
-}
-
 export interface PlatformMetrics {
   platformId: string
   platformName: string
-  cashApy: number
-  autoCalculateInterest: boolean
-  apyHistory: ApyHistoryEntry[]
   totalFundSize: number
   totalValue: number
   totalCash: number
@@ -116,55 +105,6 @@ export async function fetchPlatformMetrics(id: string): Promise<ApiResult<Platfo
   }
   const data = await response.json()
   return { data }
-}
-
-export async function addApyHistoryEntry(
-  platformId: string,
-  entry: { date: string; rate: number; notes?: string }
-): Promise<ApiResult<ApyHistoryEntry>> {
-  const response = await fetch(`${API_BASE}/platforms/${platformId}/apy-history`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(entry)
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to add APY entry' } }))
-    return { error: error.error?.message ?? 'Failed to add APY entry' }
-  }
-  const data = await response.json()
-  return { data }
-}
-
-export async function updateApyHistoryEntry(
-  platformId: string,
-  date: string,
-  entry: { rate: number; notes?: string }
-): Promise<ApiResult<ApyHistoryEntry>> {
-  const response = await fetch(`${API_BASE}/platforms/${platformId}/apy-history/${date}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(entry)
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to update APY entry' } }))
-    return { error: error.error?.message ?? 'Failed to update APY entry' }
-  }
-  const data = await response.json()
-  return { data }
-}
-
-export async function deleteApyHistoryEntry(
-  platformId: string,
-  date: string
-): Promise<ApiResult<void>> {
-  const response = await fetch(`${API_BASE}/platforms/${platformId}/apy-history/${date}`, {
-    method: 'DELETE'
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: { message: 'Failed to delete APY entry' } }))
-    return { error: error.error?.message ?? 'Failed to delete APY entry' }
-  }
-  return {}
 }
 
 // Platform cash management

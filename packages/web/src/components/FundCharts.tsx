@@ -1068,7 +1068,7 @@ export function FundCharts({ entries, config, fundId }: FundChartsProps) {
           title="Captured Profit"
           series={[
             { key: 'cumulativeDividends', label: 'Dividends', color: '#fbbf24' },
-            { key: 'cashInterest', label: 'Cash Int', color: '#86efac' },
+            ...(config.manage_cash !== false ? [{ key: 'cashInterest' as const, label: 'Cash Int', color: '#86efac' }] : []),
             { key: 'realizedGains', label: 'Extracted', color: '#3b82f6' }
           ]}
           resize={chartResize}

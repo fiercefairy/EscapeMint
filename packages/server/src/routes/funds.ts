@@ -34,8 +34,6 @@ const PLATFORMS_FILE = join(DATA_DIR, 'platforms.json')
 
 interface PlatformConfig {
   name: string
-  cash_apy?: number
-  auto_calculate_interest?: boolean
   manage_cash?: boolean
 }
 
@@ -52,54 +50,6 @@ async function writePlatformsData(data: Record<string, PlatformConfig>): Promise
   await fsWriteFile(PLATFORMS_FILE, JSON.stringify(data, null, 2), 'utf-8')
 }
 
-async function getPlatformConfig(platformId: string): Promise<PlatformConfig | undefined> {
-  if (!existsSync(PLATFORMS_FILE)) return undefined
-  const content = await readFile(PLATFORMS_FILE, 'utf-8')
-  const data = JSON.parse(content) as Record<string, PlatformConfig>
-  return data[platformId.toLowerCase()]
-}
-
-function calculateCashInterest(
-  fund: FundData,
-  entry: FundEntry,
-  cashApy: number
-): number | undefined {
-  const entries = fund.entries
-  if (entries.length === 0) return undefined
-
-  const prevEntry = entries[entries.length - 1]
-  if (!prevEntry) return undefined
-
-  const prevDate = new Date(prevEntry.date)
-  const currDate = new Date(entry.date)
-  const days = Math.round((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24))
-
-  if (days <= 0) return undefined
-
-  // Calculate total invested
-  let totalInvested = 0
-  for (const e of entries) {
-    if (e.action === 'BUY' && e.amount) totalInvested += e.amount
-    else if (e.action === 'SELL' && e.amount) totalInvested -= e.amount
-  }
-
-  const fundSize = entry.fund_size ?? prevEntry.fund_size ?? fund.config.fund_size_usd
-  const cash = Math.max(0, fundSize - totalInvested)
-
-  const dailyRate = Math.pow(1 + cashApy, 1/365) - 1
-  const interest = cash * dailyRate * days
-
-  // Only return if month changed (monthly payout)
-  const prevMonth = prevDate.toISOString().slice(0, 7)
-  const currMonth = currDate.toISOString().slice(0, 7)
-
-  if (currMonth !== prevMonth && interest > 0.01) {
-    return Math.round(interest * 100) / 100
-  }
-
-  return undefined
-}
-
 /**
  * GET /funds - List all funds
  * Query params:
@@ -114,14 +64,26 @@ fundsRouter.get('/', async (req, res, next) => {
     ? allFunds.filter(f => f.platform === 'test')
     : allFunds.filter(f => f.platform !== 'test')
 
-  res.json(funds.map(f => ({
-    id: f.id,
-    platform: f.platform,
-    ticker: f.ticker,
-    config: f.config,
-    entryCount: f.entries.length,
-    latestEquity: getLatestEquity(f.entries)
-  })))
+  res.json(funds.map(f => {
+    const latest = getLatestEquity(f.entries)
+    // For cash funds, use the cash field as the balance
+    const isCashFund = f.config.fund_type === 'cash'
+    const latestEntry = f.entries[f.entries.length - 1]
+    const latestEquity = latest && isCashFund && latestEntry?.cash !== undefined
+      ? { date: latest.date, value: latestEntry.cash }
+      : latest
+    // Get latest fund size from entries (falls back to config if not in entries)
+    const latestFundSize = latestEntry?.fund_size ?? f.config.fund_size_usd
+    return {
+      id: f.id,
+      platform: f.platform,
+      ticker: f.ticker,
+      config: f.config,
+      entryCount: f.entries.length,
+      latestEquity,
+      latestFundSize
+    }
+  }))
 })
 
 /**
@@ -147,15 +109,26 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
     const expenses = entriesToExpenses(fund.entries)
     const latest = getLatestEquity(fund.entries)
 
+    // For cash funds, use the cash field as the balance
+    const isCashFund = fund.config.fund_type === 'cash'
+    const latestEntry = fund.entries[fund.entries.length - 1]
+    const latestValue = latest && isCashFund && latestEntry?.cash !== undefined
+      ? latestEntry.cash
+      : latest?.value
+
+    // Use actual fund_size from latest entry instead of config
+    const actualFundSize = latestEntry?.fund_size ?? fund.config.fund_size_usd
+    const configWithActualFundSize = { ...fund.config, fund_size_usd: actualFundSize }
+
     let state = null
-    if (latest) {
+    if (latest && latestValue !== undefined) {
       state = computeFundState(
-        fund.config,
+        configWithActualFundSize,
         trades,
         [],
         dividends,
         expenses,
-        latest.value,
+        latestValue,
         latest.date
       )
     }
@@ -164,7 +137,7 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
       fund.id,
       fund.platform,
       fund.ticker,
-      fund.config,
+      configWithActualFundSize,
       trades,
       state,
       today
@@ -882,15 +855,6 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     }
   }
 
-  // Auto-calculate cash interest if platform has it enabled
-  const platformConfig = await getPlatformConfig(fund.platform).catch(() => undefined)
-  if (platformConfig?.auto_calculate_interest && platformConfig.cash_apy && !entry.cash_interest) {
-    const calculatedInterest = calculateCashInterest(fund, entry, platformConfig.cash_apy)
-    if (calculatedInterest) {
-      entry.cash_interest = calculatedInterest
-    }
-  }
-
   // Auto-calculate fund_size if not provided
   const manageCash = fund.config.manage_cash !== false
   if (!entry.fund_size) {
@@ -970,8 +934,12 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
   const dividends = entriesToDividends(updated.entries)
   const expenses = entriesToExpenses(updated.entries)
 
+  // Use actual fund_size from new entry instead of config
+  const actualFundSize = entry.fund_size ?? updated.config.fund_size_usd
+  const configWithActualFundSize = { ...updated.config, fund_size_usd: actualFundSize }
+
   const state = computeFundState(
-    updated.config,
+    configWithActualFundSize,
     trades,
     [],
     dividends,
@@ -980,7 +948,7 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     entry.date
   )
 
-  const recommendation = computeRecommendation(updated.config, state)
+  const recommendation = computeRecommendation(configWithActualFundSize, state)
 
   res.status(201).json({
     entry,

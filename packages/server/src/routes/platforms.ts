@@ -19,15 +19,6 @@ const PLATFORMS_FILE = join(DATA_DIR, 'platforms.json')
 const BACKUPS_DIR = join(DATA_DIR, 'backups')
 
 /**
- * APY history entry for tracking rate changes over time.
- */
-interface ApyHistoryEntry {
-  date: string      // ISO date string (YYYY-MM-DD)
-  rate: number      // APY as decimal (e.g., 0.0325 = 3.25%)
-  notes?: string    // Optional note (e.g., "Rate drop due to Fed cuts")
-}
-
-/**
  * Platform configuration stored in JSON.
  * Key is platform id, value is platform config.
  */
@@ -36,9 +27,6 @@ interface PlatformConfig {
   color?: string
   url?: string
   notes?: string
-  cash_apy?: number
-  auto_calculate_interest?: boolean
-  apy_history?: ApyHistoryEntry[]
   /** When true, platform manages a shared cash pool via a {platform}-cash fund */
   manage_cash?: boolean
 }
@@ -113,14 +101,12 @@ function getTodayDate(): string {
  * POST /platforms - Create or update a platform
  */
 platformsRouter.post('/', async (req, res, next) => {
-  const { id, name, color, url, notes, cash_apy, auto_calculate_interest } = req.body as {
+  const { id, name, color, url, notes } = req.body as {
     id?: string
     name?: string
     color?: string
     url?: string
     notes?: string
-    cash_apy?: number
-    auto_calculate_interest?: boolean
   }
 
   if (!id) return next(badRequest('id is required'))
@@ -130,42 +116,10 @@ platformsRouter.post('/', async (req, res, next) => {
   const data = await readPlatformsData().catch(() => ({} as PlatformsData))
 
   const isUpdate = platformId in data
-  const existingConfig = data[platformId]
   const config: PlatformConfig = { name }
   if (color) config.color = color
   if (url) config.url = url
   if (notes) config.notes = notes
-  if (auto_calculate_interest !== undefined) config.auto_calculate_interest = auto_calculate_interest
-
-  // Preserve existing apy_history
-  if (existingConfig?.apy_history) {
-    config.apy_history = existingConfig.apy_history
-  }
-
-  // Handle cash_apy changes - auto-track in history
-  if (cash_apy !== undefined) {
-    config.cash_apy = cash_apy
-    const today = getTodayDate()
-
-    // Only add to history if the rate actually changed
-    if (!existingConfig || existingConfig.cash_apy !== cash_apy) {
-      if (!config.apy_history) {
-        config.apy_history = []
-      }
-
-      // Check if there's already an entry for today
-      const todayIndex = config.apy_history.findIndex(e => e.date === today)
-      if (todayIndex >= 0) {
-        // Update today's entry
-        config.apy_history[todayIndex] = { date: today, rate: cash_apy }
-      } else {
-        // Add new entry
-        config.apy_history.push({ date: today, rate: cash_apy })
-        // Sort by date
-        config.apy_history.sort((a, b) => a.date.localeCompare(b.date))
-      }
-    }
-  }
 
   data[platformId] = config
   await writePlatformsData(data)
@@ -312,8 +266,9 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
   }> = []
 
   for (const fund of platformFunds) {
-    const fundSize = fund.config.fund_size_usd
     const latestEntry = fund.entries[fund.entries.length - 1]
+    // Use fund_size from latest entry instead of static config value
+    const fundSize = latestEntry?.fund_size ?? fund.config.fund_size_usd
     const isCashFund = fund.config.fund_type === 'cash'
 
     // For cash funds, calculate current balance from entries (value is PRE-ACTION)
@@ -348,8 +303,10 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
     const startInput = trades.reduce((sum, t) => sum + (t.type === 'buy' ? t.amount_usd : -t.amount_usd), 0)
     totalStartInput += startInput
 
-    totalDividends += dividends.reduce((sum, d) => sum + d.amount_usd, 0)
-    totalExpenses += expenses.reduce((sum, e) => sum + e.amount_usd, 0)
+    const fundDividends = dividends.reduce((sum, d) => sum + d.amount_usd, 0)
+    const fundExpenses = expenses.reduce((sum, e) => sum + e.amount_usd, 0)
+    totalDividends += fundDividends
+    totalExpenses += fundExpenses
     totalCashInterest += cashInterest
 
     // Track cash interest history by date
@@ -366,10 +323,11 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
 
     // Realized gains for closed funds or from sells
     if (fund.config.status === 'closed') {
-      totalRealizedGains += currentValue - startInput + totalDividends - totalExpenses + cashInterest
+      totalRealizedGains += currentValue - startInput + fundDividends - fundExpenses + cashInterest
     }
 
-    const gainUsd = currentValue - startInput
+    // Gain includes dividends, cash interest, minus expenses
+    const gainUsd = currentValue - startInput + fundDividends + cashInterest - fundExpenses
     const gainPct = startInput > 0 ? gainUsd / startInput : 0
 
     fundMetrics.push({
@@ -409,9 +367,6 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
   res.json({
     platformId,
     platformName: platformConfig?.name ?? platformId,
-    cashApy: platformConfig?.cash_apy ?? 0,
-    autoCalculateInterest: platformConfig?.auto_calculate_interest ?? false,
-    apyHistory: platformConfig?.apy_history ?? [],
     totalFundSize,
     totalValue,
     totalCash,
@@ -427,143 +382,6 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
     cashInterestHistory,
     funds: fundMetrics
   })
-})
-
-/**
- * GET /platforms/:id/apy-history - Get APY history for a platform
- */
-platformsRouter.get('/:id/apy-history', async (req, res) => {
-  const platformId = req.params['id']?.toLowerCase() ?? ''
-  const data = await readPlatformsData().catch(() => ({} as PlatformsData))
-  const config = data[platformId]
-
-  res.json(config?.apy_history ?? [])
-})
-
-/**
- * POST /platforms/:id/apy-history - Add APY history entry
- */
-platformsRouter.post('/:id/apy-history', async (req, res, next) => {
-  const platformId = req.params['id']?.toLowerCase() ?? ''
-  const { date, rate, notes } = req.body as {
-    date?: string
-    rate?: number
-    notes?: string
-  }
-
-  if (!date) return next(badRequest('date is required'))
-  if (rate === undefined || rate === null) return next(badRequest('rate is required'))
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return next(badRequest('date must be in YYYY-MM-DD format'))
-
-  const data = await readPlatformsData().catch(() => ({} as PlatformsData))
-
-  if (!data[platformId]) {
-    return next(notFound(`Platform '${platformId}' not found`))
-  }
-
-  const config = data[platformId]!
-  if (!config.apy_history) {
-    config.apy_history = []
-  }
-
-  // Check if entry for this date already exists
-  const existingIndex = config.apy_history.findIndex(e => e.date === date)
-  if (existingIndex >= 0) {
-    return next(badRequest(`Entry for date ${date} already exists. Use PUT to update.`))
-  }
-
-  const entry: ApyHistoryEntry = { date, rate }
-  if (notes) entry.notes = notes
-
-  config.apy_history.push(entry)
-  config.apy_history.sort((a, b) => a.date.localeCompare(b.date))
-
-  // Update current cash_apy if this is the latest entry
-  const latestEntry = config.apy_history[config.apy_history.length - 1]
-  if (latestEntry && latestEntry.date === date) {
-    config.cash_apy = rate
-  }
-
-  await writePlatformsData(data)
-  res.status(201).json(entry)
-})
-
-/**
- * PUT /platforms/:id/apy-history/:date - Update APY history entry
- */
-platformsRouter.put('/:id/apy-history/:date', async (req, res, next) => {
-  const platformId = req.params['id']?.toLowerCase() ?? ''
-  const targetDate = req.params['date'] ?? ''
-  const { rate, notes } = req.body as {
-    rate?: number
-    notes?: string
-  }
-
-  if (rate === undefined || rate === null) return next(badRequest('rate is required'))
-
-  const data = await readPlatformsData().catch(() => ({} as PlatformsData))
-
-  if (!data[platformId]) {
-    return next(notFound(`Platform '${platformId}' not found`))
-  }
-
-  const config = data[platformId]!
-  if (!config.apy_history) {
-    return next(notFound(`No APY history entries found`))
-  }
-
-  const entryIndex = config.apy_history.findIndex(e => e.date === targetDate)
-  if (entryIndex < 0) {
-    return next(notFound(`Entry for date ${targetDate} not found`))
-  }
-
-  config.apy_history[entryIndex] = {
-    date: targetDate,
-    rate,
-    ...(notes !== undefined && { notes })
-  }
-
-  // Update current cash_apy if this is the latest entry
-  const latestEntry = config.apy_history[config.apy_history.length - 1]
-  if (latestEntry && latestEntry.date === targetDate) {
-    config.cash_apy = rate
-  }
-
-  await writePlatformsData(data)
-  res.json(config.apy_history[entryIndex])
-})
-
-/**
- * DELETE /platforms/:id/apy-history/:date - Delete APY history entry
- */
-platformsRouter.delete('/:id/apy-history/:date', async (req, res, next) => {
-  const platformId = req.params['id']?.toLowerCase() ?? ''
-  const targetDate = req.params['date'] ?? ''
-
-  const data = await readPlatformsData().catch(() => ({} as PlatformsData))
-
-  if (!data[platformId]) {
-    return next(notFound(`Platform '${platformId}' not found`))
-  }
-
-  const config = data[platformId]!
-  if (!config.apy_history) {
-    return res.status(204).send()
-  }
-
-  const entryIndex = config.apy_history.findIndex(e => e.date === targetDate)
-  if (entryIndex < 0) {
-    return res.status(204).send()
-  }
-
-  config.apy_history.splice(entryIndex, 1)
-
-  // Update current cash_apy to the new latest entry (or 0 if none left)
-  const latestEntry = config.apy_history[config.apy_history.length - 1]
-  config.cash_apy = latestEntry?.rate ?? 0
-
-  await writePlatformsData(data)
-  res.status(204).send()
 })
 
 /**
@@ -654,8 +472,7 @@ platformsRouter.post('/:id/enable-cash-tracking', async (req, res, next) => {
     }
     // Create platform config from existing funds
     platformConfig = {
-      name: platformId.charAt(0).toUpperCase() + platformId.slice(1),
-      cash_apy: 0.04
+      name: platformId.charAt(0).toUpperCase() + platformId.slice(1)
     }
     data[platformId] = platformConfig
     await writePlatformsData(data)
@@ -874,14 +691,13 @@ platformsRouter.post('/:id/enable-cash-tracking', async (req, res, next) => {
     fund_type: 'cash',
     status: 'active',
     fund_size_usd: 0,
-    target_apy: platformConfig.cash_apy ?? 0.04,
+    target_apy: 0.04,
     interval_days: 1,
     input_min_usd: 0,
     input_mid_usd: 0,
     input_max_usd: 0,
     max_at_pct: 0,
     min_profit_usd: 0,
-    cash_apy: platformConfig.cash_apy ?? 0.04,
     margin_apr: 0,
     margin_access_usd: latestMarginAvailable,
     accumulate: true,

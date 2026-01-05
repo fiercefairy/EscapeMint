@@ -4,19 +4,14 @@ import { toast } from 'sonner'
 import {
   fetchPlatformMetrics,
   createPlatform,
-  addApyHistoryEntry,
-  updateApyHistoryEntry,
-  deleteApyHistoryEntry,
   fetchPlatformCashStatus,
   enableCashTracking,
   disableCashTracking,
   type PlatformMetrics,
-  type ApyHistoryEntry,
   type PlatformCashStatus
 } from '../api/platforms'
 import { notifyFundsChanged } from '../api/funds'
 import { ConfirmDialog } from '../components/ConfirmDialog'
-import { ApyEntryModal } from '../components/ApyEntryModal'
 import { ImportWizard } from '../components/ImportWizard'
 
 export function PlatformDetail() {
@@ -24,12 +19,6 @@ export function PlatformDetail() {
   const [metrics, setMetrics] = useState<PlatformMetrics | null>(null)
   const [loading, setLoading] = useState(true)
   const [editingConfig, setEditingConfig] = useState(false)
-  const [configForm, setConfigForm] = useState({
-    cashApy: 0,
-    autoCalculateInterest: false
-  })
-  const [showApyModal, setShowApyModal] = useState(false)
-  const [editingApyEntry, setEditingApyEntry] = useState<ApyHistoryEntry | undefined>()
   const [showImportWizard, setShowImportWizard] = useState(false)
   const [cashStatus, setCashStatus] = useState<PlatformCashStatus | null>(null)
   const [showCashConfirm, setShowCashConfirm] = useState<'enable' | 'disable' | null>(null)
@@ -49,10 +38,6 @@ export function PlatformDetail() {
       toast.error(metricsResult.error)
     } else if (metricsResult.data) {
       setMetrics(metricsResult.data)
-      setConfigForm({
-        cashApy: (metricsResult.data.cashApy || 0) * 100,
-        autoCalculateInterest: metricsResult.data.autoCalculateInterest
-      })
     }
 
     if (cashResult.data) {
@@ -65,54 +50,6 @@ export function PlatformDetail() {
   useEffect(() => {
     loadData()
   }, [platformId])
-
-  const handleSaveConfig = async () => {
-    if (!platformId || !metrics) return
-
-    const result = await createPlatform({
-      id: platformId,
-      name: metrics.platformName,
-      cash_apy: configForm.cashApy / 100,
-      auto_calculate_interest: configForm.autoCalculateInterest
-    })
-
-    if (result.error) {
-      toast.error(result.error)
-    } else {
-      toast.success('Platform settings updated')
-      setEditingConfig(false)
-      loadData()
-    }
-  }
-
-  const handleSaveApyEntry = async (entry: { date: string; rate: number; notes?: string }) => {
-    if (!platformId) return
-
-    const result = editingApyEntry
-      ? await updateApyHistoryEntry(platformId, editingApyEntry.date, { rate: entry.rate, notes: entry.notes })
-      : await addApyHistoryEntry(platformId, entry)
-
-    if (result.error) {
-      toast.error(result.error)
-    } else {
-      toast.success(editingApyEntry ? 'APY entry updated' : 'APY entry added')
-      setShowApyModal(false)
-      setEditingApyEntry(undefined)
-      loadData()
-    }
-  }
-
-  const handleDeleteApyEntry = async (date: string) => {
-    if (!platformId) return
-
-    const result = await deleteApyHistoryEntry(platformId, date)
-    if (result.error) {
-      toast.error(result.error)
-    } else {
-      toast.success('APY entry deleted')
-      loadData()
-    }
-  }
 
   const handleEnableCashTracking = async () => {
     if (!platformId) return
@@ -153,16 +90,6 @@ export function PlatformDetail() {
     setCashActionLoading(false)
     setShowCashConfirm(null)
     setDisableTargetFund('')
-  }
-
-  const openAddApyModal = () => {
-    setEditingApyEntry(undefined)
-    setShowApyModal(true)
-  }
-
-  const openEditApyModal = (entry: ApyHistoryEntry) => {
-    setEditingApyEntry(entry)
-    setShowApyModal(true)
   }
 
   const formatCurrency = (value: number) => {
@@ -243,31 +170,6 @@ export function PlatformDetail() {
       {editingConfig && (
         <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
           <h2 className="text-lg font-semibold text-white mb-4">Platform Settings</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Cash APY (%)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={configForm.cashApy}
-                onChange={(e) => setConfigForm({ ...configForm, cashApy: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm focus:outline-none focus:border-mint-500"
-              />
-              <p className="text-xs text-slate-500 mt-1">Interest rate for cash held on this platform</p>
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Auto-Calculate Interest</label>
-              <label className="flex items-center gap-2 mt-2">
-                <input
-                  type="checkbox"
-                  checked={configForm.autoCalculateInterest}
-                  onChange={(e) => setConfigForm({ ...configForm, autoCalculateInterest: e.target.checked })}
-                  className="rounded border-slate-600 bg-slate-700 text-mint-500"
-                />
-                <span className="text-sm text-white">Automatically calculate cash interest on entry save</span>
-              </label>
-            </div>
-          </div>
 
           {/* Cash Tracking Section */}
           <div className="mt-6 pt-4 border-t border-slate-700">
@@ -329,22 +231,13 @@ export function PlatformDetail() {
               </div>
             )}
           </div>
-
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={handleSaveConfig}
-              className="px-4 py-2 bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors text-sm"
-            >
-              Save Settings
-            </button>
-          </div>
         </div>
       )}
 
       {/* P&L Panel */}
       <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
         <h2 className="text-lg font-semibold text-white mb-4">Platform P&L</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           <div>
             <div className="text-xs text-slate-400 mb-1">Total Fund Size</div>
             <div className="text-lg font-bold text-white">{formatCurrency(metrics.totalFundSize)}</div>
@@ -370,12 +263,6 @@ export function PlatformDetail() {
               {formatPercent(metrics.realizedAPY)}
             </div>
           </div>
-          <div>
-            <div className="text-xs text-slate-400 mb-1">Cash APY</div>
-            <div className="text-lg font-bold text-purple-400">
-              {formatPercent(metrics.cashApy)}
-            </div>
-          </div>
         </div>
 
         {/* Breakdown */}
@@ -397,62 +284,6 @@ export function PlatformDetail() {
             <div className="text-sm text-purple-400">{formatCurrencyPrecise(metrics.totalCashInterest)}</div>
           </div>
         </div>
-      </div>
-
-      {/* APY Rate History */}
-      <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">APY Rate History</h2>
-          <button
-            onClick={openAddApyModal}
-            className="px-3 py-1.5 text-sm bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors"
-          >
-            Add Entry
-          </button>
-        </div>
-        {metrics.apyHistory.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-700 text-slate-400">
-                  <th className="px-3 py-2 text-left">Date</th>
-                  <th className="px-3 py-2 text-right">APY Rate</th>
-                  <th className="px-3 py-2 text-left">Notes</th>
-                  <th className="px-3 py-2 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...metrics.apyHistory].reverse().map((entry) => (
-                  <tr key={entry.date} className="border-b border-slate-700/50">
-                    <td className="px-3 py-2 text-slate-300">{entry.date}</td>
-                    <td className="px-3 py-2 text-right text-purple-400 font-medium">
-                      {formatPercent(entry.rate)}
-                    </td>
-                    <td className="px-3 py-2 text-slate-400 max-w-xs truncate">
-                      {entry.notes || '-'}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <button
-                        onClick={() => openEditApyModal(entry)}
-                        className="text-slate-400 hover:text-white mr-2 text-xs"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteApyEntry(entry.date)}
-                        className="text-red-400 hover:text-red-300 text-xs"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="text-slate-400 text-sm">No APY history recorded yet. Add entries to track rate changes over time.</p>
-        )}
       </div>
 
       {/* Funds List */}
@@ -504,18 +335,6 @@ export function PlatformDetail() {
           </table>
         </div>
       </div>
-
-      {/* APY Entry Modal */}
-      {showApyModal && (
-        <ApyEntryModal
-          onClose={() => {
-            setShowApyModal(false)
-            setEditingApyEntry(undefined)
-          }}
-          onSave={handleSaveApyEntry}
-          existingEntry={editingApyEntry}
-        />
-      )}
 
       {/* Import Wizard */}
       {showImportWizard && (

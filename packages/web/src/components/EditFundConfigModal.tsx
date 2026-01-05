@@ -42,7 +42,6 @@ export function EditFundConfigModal({ fundId, fundPlatform, fundTicker, config, 
     margin_access_usd: config.margin_access_usd,
     accumulate: config.accumulate,
     manage_cash: config.manage_cash ?? true,
-    auto_apply_cash_apy: config.auto_apply_cash_apy ?? false,
     margin_enabled: config.margin_enabled ?? false,
     dividend_reinvest: config.dividend_reinvest ?? true,
     interest_reinvest: config.interest_reinvest ?? true,
@@ -77,7 +76,6 @@ export function EditFundConfigModal({ fundId, fundPlatform, fundTicker, config, 
       margin_access_usd: formData.margin_access_usd,
       accumulate: formData.accumulate,
       manage_cash: formData.manage_cash,
-      auto_apply_cash_apy: formData.auto_apply_cash_apy,
       margin_enabled: formData.margin_enabled,
       dividend_reinvest: formData.dividend_reinvest,
       interest_reinvest: formData.interest_reinvest,
@@ -358,19 +356,6 @@ export function EditFundConfigModal({ fundId, fundPlatform, fundTicker, config, 
                       min="0"
                     />
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="auto_apply_cash_apy"
-                    checked={formData.auto_apply_cash_apy}
-                    onChange={e => setFormData({ ...formData, auto_apply_cash_apy: e.target.checked })}
-                    className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
-                  />
-                  <label htmlFor="auto_apply_cash_apy" className="text-white">
-                    Auto-Apply Cash Interest
-                    <span className="text-slate-400 text-sm ml-2">(calculate on entry save)</span>
-                  </label>
                 </div>
               </div>
             )}

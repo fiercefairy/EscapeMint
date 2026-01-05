@@ -97,12 +97,6 @@ export interface SubFundConfig {
   manage_cash?: boolean
 
   /**
-   * Auto-apply cash APY on entry save (defaults to false).
-   * When enabled, cash interest is auto-calculated based on cash balance and days elapsed.
-   */
-  auto_apply_cash_apy?: boolean
-
-  /**
    * Enable margin features (defaults to false).
    * When enabled, margin APR and margin access/borrowed tracking are available.
    */
