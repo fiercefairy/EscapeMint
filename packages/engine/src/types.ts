@@ -175,6 +175,10 @@ export interface Trade {
   date: string
   amount_usd: number
   type: 'buy' | 'sell'
+  /** Optional: number of shares/units traded (for share-based liquidation detection) */
+  shares?: number
+  /** Optional: equity value before action (for value-based liquidation detection) */
+  value?: number
 }
 
 /**

@@ -12,11 +12,12 @@ function daysBetween(startDate: string, endDate: string): number {
 /**
  * Computes the total amount currently invested (start input / cost basis).
  * This is the sum of all buys minus the sum of all sells, with liquidation detection.
- * When sells exceed or equal buys (full liquidation), the totals are reset.
+ * When position is fully liquidated (based on shares or value), totals are reset.
  */
 export function computeStartInput(trades: Trade[], asOfDate: string): number {
   let totalBuys = 0
   let totalSells = 0
+  let cumShares = 0
 
   // Sort trades by date to process in chronological order
   const sortedTrades = [...trades].sort((a, b) => a.date.localeCompare(b.date))
@@ -24,14 +25,27 @@ export function computeStartInput(trades: Trade[], asOfDate: string): number {
   for (const trade of sortedTrades) {
     if (daysBetween(trade.date, asOfDate) < 0) continue // Skip future
 
+    // Track shares: BUY adds, SELL subtracts
+    if (trade.shares !== undefined) {
+      const sharesAbs = Math.abs(trade.shares)
+      cumShares += trade.type === 'sell' ? -sharesAbs : sharesAbs
+    }
+
     if (trade.type === 'buy') {
       totalBuys += trade.amount_usd
     } else {
       totalSells += trade.amount_usd
-      // Check for full liquidation: when sells >= buys, reset both
-      if (totalSells >= totalBuys) {
+      // Check for full liquidation using share-based detection if available
+      const hasShareTracking = trade.shares !== undefined && trade.shares !== 0
+      const isFullLiquidation = hasShareTracking
+        ? Math.abs(cumShares) < 0.0001
+        : (trade.value !== undefined
+          ? trade.value <= trade.amount_usd + 0.01
+          : totalSells >= totalBuys)
+      if (isFullLiquidation) {
         totalBuys = 0
         totalSells = 0
+        cumShares = 0
       }
     }
   }
@@ -60,6 +74,7 @@ export function computeExpectedTarget(
   let expectedGain = 0
   let totalBuys = 0
   let totalSells = 0
+  let cumShares = 0
 
   // Sort trades by date to process in chronological order
   const sortedTrades = [...trades].sort((a, b) => a.date.localeCompare(b.date))
@@ -67,6 +82,12 @@ export function computeExpectedTarget(
   for (const trade of sortedTrades) {
     const tradeDays = daysBetween(trade.date, asOfDate)
     if (tradeDays < 0) continue // Skip future trades
+
+    // Track shares: BUY adds, SELL subtracts
+    if (trade.shares !== undefined) {
+      const sharesAbs = Math.abs(trade.shares)
+      cumShares += trade.type === 'sell' ? -sharesAbs : sharesAbs
+    }
 
     if (trade.type === 'buy') {
       totalBuys += trade.amount_usd
@@ -76,12 +97,19 @@ export function computeExpectedTarget(
       expectedGain += gain
     } else {
       totalSells += trade.amount_usd
-      // Check for full liquidation: when sells >= buys, reset everything
-      if (totalSells >= totalBuys) {
+      // Check for full liquidation using share-based detection if available
+      const hasShareTracking = trade.shares !== undefined && trade.shares !== 0
+      const isFullLiquidation = hasShareTracking
+        ? Math.abs(cumShares) < 0.0001
+        : (trade.value !== undefined
+          ? trade.value <= trade.amount_usd + 0.01
+          : totalSells >= totalBuys)
+      if (isFullLiquidation) {
         startInput = 0
         expectedGain = 0
         totalBuys = 0
         totalSells = 0
+        cumShares = 0
       } else {
         // SELL reduces the invested amount and proportionally reduces expected gain
         if (startInput > 0) {

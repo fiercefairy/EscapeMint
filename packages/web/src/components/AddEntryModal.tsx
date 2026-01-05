@@ -343,6 +343,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
             marginAvailable={preview?.margin_available}
             currentFundSize={preview?.fund_size}
             fundType={fundType}
+            manageCash={manageCash}
           />
 
           {/* Buttons */}

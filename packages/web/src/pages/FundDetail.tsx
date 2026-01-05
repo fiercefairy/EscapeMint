@@ -159,6 +159,7 @@ export function FundDetail() {
     const sorted = [...fund.entries].sort((a, b) =>
       new Date(a.date).getTime() - new Date(b.date).getTime()
     )
+    const isCashFund = fund.config.fund_type === 'cash'
 
     let totalBuys = 0
     let totalSells = 0
@@ -169,8 +170,21 @@ export function FundDetail() {
     let previousCyclesGain = 0
     let cumShares = 0
 
+    // For cash fund TWAB calculation
+    let twabNumerator = 0
+    let lastCashBalance = 0
+    let lastEntryDate = startDate
+
     return sorted.map((entry, index) => {
       const entryDate = new Date(entry.date)
+
+      // For cash fund TWAB: add previous balance * days since last entry
+      if (isCashFund && index > 0) {
+        const daysSinceLast = Math.max(0, (entryDate.getTime() - lastEntryDate.getTime()) / (1000 * 60 * 60 * 24))
+        twabNumerator += lastCashBalance * daysSinceLast
+      }
+      lastEntryDate = entryDate
+      lastCashBalance = entry.cash ?? entry.value ?? 0
 
       // Track dividends, expenses, cash interest, shares FIRST
       // All values are positive in data; apply sign based on context
@@ -194,6 +208,18 @@ export function FundDetail() {
 
       const daysElapsed = Math.max(1, (entryDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
 
+      // For cash funds: P&L is just interest - expenses, APY uses TWAB
+      if (isCashFund) {
+        const realized = cumCashInterest - cumExpenses
+        const twab = daysElapsed > 0 ? twabNumerator / daysElapsed : lastCashBalance
+        const denominator = twab > 0 ? twab : 1
+        const returnPct = realized / denominator
+        const clampedPct = Math.max(-0.99, Math.min(returnPct, 1))
+        const apy = daysElapsed > 0 ? Math.pow(1 + clampedPct, 365 / daysElapsed) - 1 : 0
+        return { date: entryDate, pnl: realized, apy: Math.max(-0.99, Math.min(apy, 10)) }
+      }
+
+      // For trading funds: original calculation
       // Total return = currentValue + priorSells + dividends + interest - expenses - totalBuys + previousCyclesGain
       const totalMoneyOut = entry.value + totalSells + cumDividends + cumCashInterest - cumExpenses + previousCyclesGain
       const totalReturn = totalMoneyOut - totalBuys
@@ -817,7 +843,8 @@ export function FundDetail() {
 
       // Calculate fund_size: use manual override if set, otherwise calculate dynamically
       // For cash funds, fund_size IS the cash balance (no separate investment pool)
-      // For trading funds, fund_size = base + deposits - withdrawals + dividends + interest - expenses
+      // For non-cash managing trading funds, fund_size = invested amount (calculated after buy/sell processing below)
+      // For cash managing trading funds, fund_size = base + deposits - withdrawals + dividends + interest - expenses
       const isCashFundType = fund.config.fund_type === 'cash'
       const expenseFromFund = fund.config.expense_from_fund !== false
       let calculatedFundSize: number
@@ -825,12 +852,14 @@ export function FundDetail() {
         // For cash funds, fund_size equals the cash balance
         calculatedFundSize = entry.cash ?? entry.value
       } else {
+        // For trading funds with cash management, use the standard formula
+        // Non-cash managing funds will be recalculated below after buy/sell processing
         calculatedFundSize = fund.config.fund_size_usd
           + cumDeposits - cumWithdrawals
           + cumDividends + cumCashInterest - (expenseFromFund ? cumExpenses : 0)
       }
-      // For cash funds, always use calculated fund_size (ignore stored value)
-      const fundSize = isCashFundType ? calculatedFundSize : (entry.fund_size ?? calculatedFundSize)
+      // For cash funds, always use calculated fund_size
+      let fundSize = isCashFundType ? calculatedFundSize : (entry.fund_size ?? calculatedFundSize)
 
       // Calculate APY BEFORE processing this row's buy/sell action
       // Total return = currentValue + priorSellProceeds + dividends + interest - expenses - totalBuys + previousCyclesGain
@@ -922,9 +951,15 @@ export function FundDetail() {
       // Cap at 0 - can't have negative invested
       const netInvested = Math.max(0, totalBuys - totalSells)
 
+      // For non-cash managing funds, fund_size = invested amount (override the earlier calculation)
+      if (!manageCash && !isCashFundType) {
+        fundSize = netInvested
+      }
+
       // Data integrity check: invested exceeds fund size (purchased without available cash)
       // Use small tolerance (1 cent) for floating point precision
-      const hasIntegrityIssue = fundSize > 0 && netInvested > fundSize + 0.01
+      // Skip check for non-cash managing funds (they don't maintain a cash pool)
+      const hasIntegrityIssue = manageCash && fundSize > 0 && netInvested > fundSize + 0.01
 
       // Post-action cash (what's available AFTER this entry's action)
       const postActionCash = !manageCash ? 0 : (fundSize === 0 ? 0 : Math.max(0, fundSize - netInvested))
@@ -1125,7 +1160,7 @@ export function FundDetail() {
                     </span>
                     <span className="text-slate-600">|</span>
                     <span title="Cash Balance">
-                      <span className="text-slate-500">Balance:</span> <span className="text-white">{formatCurrency(latestEntry?.value ?? 0)}</span>
+                      <span className="text-slate-500">Balance:</span> <span className="text-white">{formatCurrency(latestEntry?.fundSize ?? 0)}</span>
                     </span>
                     <span className="text-slate-600">|</span>
                     <span title="Cash APY">

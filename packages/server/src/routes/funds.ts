@@ -891,35 +891,69 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     }
   }
 
-  // Auto-calculate fund_size if not provided but deposit/withdrawal is present
+  // Auto-calculate fund_size if not provided
+  const manageCash = fund.config.manage_cash !== false
   if (!entry.fund_size) {
-    // Find the entry that chronologically precedes the new entry's date
-    const sortedEntries = [...fund.entries].sort((a, b) =>
-      new Date(a.date).getTime() - new Date(b.date).getTime()
-    )
-    const entriesBefore = sortedEntries.filter(e => e.date < entry.date)
-    const prevEntry = entriesBefore[entriesBefore.length - 1]
-    const prevFundSize = prevEntry?.fund_size ?? fund.config.fund_size_usd
-
-    // Check for deposit in notes (format: "Deposit: $X")
-    let depositAmount = 0
-    let withdrawalAmount = 0
-    if (entry.notes) {
-      const depositMatch = entry.notes.match(/Deposit:\s*\$?([\d.]+)/)
-      if (depositMatch) depositAmount = parseFloat(depositMatch[1] ?? '0') || 0
-      const withdrawalMatch = entry.notes.match(/Withdrawal:\s*\$?([\d.]+)/)
-      if (withdrawalMatch) withdrawalAmount = parseFloat(withdrawalMatch[1] ?? '0') || 0
-    }
-    // Also check for DEPOSIT/WITHDRAW actions
-    if (entry.action === 'DEPOSIT' && entry.amount) depositAmount = entry.amount
-    if (entry.action === 'WITHDRAW' && entry.amount) withdrawalAmount = entry.amount
-
-    const adjustment = depositAmount - withdrawalAmount
-    if (adjustment !== 0) {
-      entry.fund_size = prevFundSize + adjustment
+    if (!manageCash) {
+      // Non-cash managing funds: fund_size = invested amount
+      // Calculate invested from all entries including the new one
+      const allEntries = [...fund.entries, entry].sort((a, b) =>
+        new Date(a.date).getTime() - new Date(b.date).getTime()
+      )
+      let invested = 0
+      let cumShares = 0
+      for (const e of allEntries) {
+        if (e.date > entry.date) break // Only consider entries up to this one
+        // Track shares for liquidation detection
+        if (e.shares) {
+          const sharesAbs = Math.abs(e.shares)
+          cumShares += e.action === 'SELL' ? -sharesAbs : sharesAbs
+        }
+        if (e.action === 'BUY' && e.amount) {
+          invested += e.amount
+        } else if (e.action === 'SELL' && e.amount) {
+          invested -= e.amount
+          // Check for full liquidation
+          const hasShareTracking = e.shares !== undefined && e.shares !== 0
+          const isFullLiquidation = hasShareTracking
+            ? Math.abs(cumShares) < 0.0001
+            : (e.value !== undefined && e.value <= e.amount + 0.01)
+          if (isFullLiquidation) {
+            invested = 0
+            cumShares = 0
+          }
+        }
+      }
+      entry.fund_size = Math.max(0, invested)
     } else {
-      // Carry forward previous fund_size
-      entry.fund_size = prevFundSize
+      // Cash managing funds: fund_size based on deposits/withdrawals
+      const sortedEntries = [...fund.entries].sort((a, b) =>
+        new Date(a.date).getTime() - new Date(b.date).getTime()
+      )
+      const entriesBefore = sortedEntries.filter(e => e.date < entry.date)
+      const prevEntry = entriesBefore[entriesBefore.length - 1]
+      const prevFundSize = prevEntry?.fund_size ?? fund.config.fund_size_usd
+
+      // Check for deposit in notes (format: "Deposit: $X")
+      let depositAmount = 0
+      let withdrawalAmount = 0
+      if (entry.notes) {
+        const depositMatch = entry.notes.match(/Deposit:\s*\$?([\d.]+)/)
+        if (depositMatch) depositAmount = parseFloat(depositMatch[1] ?? '0') || 0
+        const withdrawalMatch = entry.notes.match(/Withdrawal:\s*\$?([\d.]+)/)
+        if (withdrawalMatch) withdrawalAmount = parseFloat(withdrawalMatch[1] ?? '0') || 0
+      }
+      // Also check for DEPOSIT/WITHDRAW actions
+      if (entry.action === 'DEPOSIT' && entry.amount) depositAmount = entry.amount
+      if (entry.action === 'WITHDRAW' && entry.amount) withdrawalAmount = entry.amount
+
+      const adjustment = depositAmount - withdrawalAmount
+      if (adjustment !== 0) {
+        entry.fund_size = prevFundSize + adjustment
+      } else {
+        // Carry forward previous fund_size
+        entry.fund_size = prevFundSize
+      }
     }
   }
 

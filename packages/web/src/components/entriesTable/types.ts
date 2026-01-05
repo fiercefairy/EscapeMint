@@ -38,7 +38,21 @@ export const getColumnsForFundType = (fundType: FundType = 'stock') => {
   return ALL_COLUMNS.filter(c => !c.excludeFrom.includes(fundType))
 }
 
+// Cash fund specific defaults
+const CASH_FUND_DEFAULT_COLUMNS: ColumnId[] = [
+  'date', 'cash', 'action', 'amount', 'expense', 'cashInt', 'fundSize',
+  'realized', 'realizedApy', 'cumExpense', 'cumCashInt', 'marginAvail', 'marginBorrowed', 'edit'
+]
+
+const CASH_FUND_COLUMN_ORDER: ColumnId[] = [
+  'date', 'cash', 'action', 'amount', 'expense', 'cashInt', 'fundSize',
+  'realized', 'realizedApy', 'cumExpense', 'cumCashInt', 'marginAvail', 'marginBorrowed', 'notes', 'edit'
+]
+
 export const getDefaultColumns = (fundType: FundType = 'stock'): Set<ColumnId> => {
+  if (fundType === 'cash') {
+    return new Set(CASH_FUND_DEFAULT_COLUMNS)
+  }
   return new Set(
     getColumnsForFundType(fundType)
       .filter(c => c.defaultVisible)
@@ -47,6 +61,9 @@ export const getDefaultColumns = (fundType: FundType = 'stock'): Set<ColumnId> =
 }
 
 export const getDefaultColumnOrder = (fundType: FundType = 'stock'): ColumnId[] => {
+  if (fundType === 'cash') {
+    return CASH_FUND_COLUMN_ORDER
+  }
   return getColumnsForFundType(fundType).map(c => c.id)
 }
 

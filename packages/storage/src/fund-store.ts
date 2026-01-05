@@ -369,11 +369,16 @@ export async function readAllFunds(fundsDir: string): Promise<FundData[]> {
 export function entriesToTrades(entries: FundEntry[]): Trade[] {
   return entries
     .filter(e => e.amount && (e.action === 'BUY' || e.action === 'SELL'))
-    .map(e => ({
-      date: e.date,
-      amount_usd: e.amount!,
-      type: e.action!.toLowerCase() as 'buy' | 'sell'
-    }))
+    .map(e => {
+      const trade: Trade = {
+        date: e.date,
+        amount_usd: e.amount!,
+        type: e.action!.toLowerCase() as 'buy' | 'sell'
+      }
+      if (e.shares !== undefined) trade.shares = e.shares
+      if (e.value !== undefined) trade.value = e.value
+      return trade
+    })
 }
 
 /**

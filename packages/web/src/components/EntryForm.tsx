@@ -33,6 +33,7 @@ interface EntryFormProps {
   marginAvailable?: number | undefined
   currentFundSize?: number | undefined
   fundType?: FundType
+  manageCash?: boolean
 }
 
 // Parse deposit/withdrawal from notes (legacy format)
@@ -92,7 +93,7 @@ export const parseFormulaValue = (input: string): number => {
   return parseFloat(trimmed) || 0
 }
 
-export function EntryForm({ formData, setFormData, existingEntries = [], baseFundSize = 0, showFundSizeAdjustment = false, cashAvailable, marginAvailable, currentFundSize, fundType = 'stock' }: EntryFormProps) {
+export function EntryForm({ formData, setFormData, existingEntries = [], baseFundSize = 0, showFundSizeAdjustment = false, cashAvailable, marginAvailable, currentFundSize, fundType = 'stock', manageCash = true }: EntryFormProps) {
   const isCashFund = fundType === 'cash'
   const isCryptoFund = fundType === 'crypto'
   // Get cumulative shares from entries BEFORE the current date
@@ -104,7 +105,11 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
     )
     for (const e of sorted) {
       if (e.date >= beforeDate) break // Stop when we reach the current date
-      if (e?.shares) total += e.shares
+      if (e?.shares) {
+        // BUY adds shares, SELL subtracts shares
+        const sharesAbs = Math.abs(e.shares)
+        total += e.action === 'SELL' ? -sharesAbs : sharesAbs
+      }
     }
     return total
   }, [existingEntries])
@@ -492,56 +497,58 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           )}
         </div>
 
-        {/* Row 2: Expense, Interest, Margin Available, Margin Borrowed */}
-        <div className="grid grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Expense ($)</label>
-            <input
-              type="number"
-              value={formData.expense}
-              onChange={e => setFormData(prev => ({ ...prev, expense: e.target.value }))}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-              placeholder="0"
-              step="0.01"
-              min="0"
-            />
+        {/* Row 2: Expense, Interest, Margin Available, Margin Borrowed - only show if manageCash is true */}
+        {manageCash && (
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Expense ($)</label>
+              <input
+                type="number"
+                value={formData.expense}
+                onChange={e => setFormData(prev => ({ ...prev, expense: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                placeholder="0"
+                step="0.01"
+                min="0"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Interest ($)</label>
+              <input
+                type="number"
+                value={formData.cash_interest}
+                onChange={e => setFormData(prev => ({ ...prev, cash_interest: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                placeholder="0"
+                step="0.01"
+                min="0"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Margin Available ($)</label>
+              <input
+                type="number"
+                value={formData.margin_available}
+                onChange={e => setFormData(prev => ({ ...prev, margin_available: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                placeholder="0"
+                step="0.01"
+                min="0"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Margin Borrowed ($)</label>
+              <input
+                type="number"
+                value={formData.margin_borrowed}
+                onChange={e => setFormData(prev => ({ ...prev, margin_borrowed: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                placeholder="0"
+                step="0.01"
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Interest ($)</label>
-            <input
-              type="number"
-              value={formData.cash_interest}
-              onChange={e => setFormData(prev => ({ ...prev, cash_interest: e.target.value }))}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-              placeholder="0"
-              step="0.01"
-              min="0"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Margin Available ($)</label>
-            <input
-              type="number"
-              value={formData.margin_available}
-              onChange={e => setFormData(prev => ({ ...prev, margin_available: e.target.value }))}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-              placeholder="0"
-              step="0.01"
-              min="0"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Margin Borrowed ($)</label>
-            <input
-              type="number"
-              value={formData.margin_borrowed}
-              onChange={e => setFormData(prev => ({ ...prev, margin_borrowed: e.target.value }))}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-              placeholder="0"
-              step="0.01"
-            />
-          </div>
-        </div>
+        )}
       </div>
     </div>
   )
