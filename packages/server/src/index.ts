@@ -12,7 +12,7 @@ import { errorHandler } from './middleware/error-handler.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-const app = express()
+const app: ReturnType<typeof express> = express()
 const PORT = process.env['PORT'] ?? 5551
 
 app.use(cors())

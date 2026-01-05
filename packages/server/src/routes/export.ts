@@ -4,7 +4,7 @@ import { readdir, readFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { readAllFunds, writeFund, type FundData } from '@escapemint/storage'
 
-export const exportRouter = Router()
+export const exportRouter: ReturnType<typeof Router> = Router()
 
 const DATA_DIR = process.env['DATA_DIR'] ?? './data'
 const FUNDS_DIR = join(DATA_DIR, 'funds')

@@ -3,7 +3,7 @@ import { computeFundState, computeRecommendation } from '@escapemint/engine'
 import type { SubFundConfig, Trade, CashFlow, Dividend, Expense } from '@escapemint/engine'
 import { badRequest } from '../middleware/error-handler.js'
 
-export const computeRouter = Router()
+export const computeRouter: ReturnType<typeof Router> = Router()
 
 interface ComputeRequest {
   config: SubFundConfig

@@ -9,7 +9,7 @@ import type { SubFundConfig } from '@escapemint/engine'
 import { badRequest, notFound } from '../middleware/error-handler.js'
 import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
 
-export const platformsRouter = Router()
+export const platformsRouter: ReturnType<typeof Router> = Router()
 
 // Round to 2 decimal places for monetary values
 const round2 = (value: number): number => Math.round(value * 100) / 100

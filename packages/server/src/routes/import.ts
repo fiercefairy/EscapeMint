@@ -8,7 +8,7 @@ import { readAllFunds, appendEntry, type FundEntry, type FundData } from '@escap
 import { badRequest, validationError } from '../middleware/error-handler.js'
 import { PDFParse } from 'pdf-parse'
 
-export const importRouter = Router()
+export const importRouter: ReturnType<typeof Router> = Router()
 
 const DATA_DIR = process.env['DATA_DIR'] ?? './data'
 const FUNDS_DIR = join(DATA_DIR, 'funds')

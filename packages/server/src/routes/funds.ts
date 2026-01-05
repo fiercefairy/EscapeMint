@@ -26,7 +26,7 @@ import {
 } from '@escapemint/engine'
 import { notFound, badRequest } from '../middleware/error-handler.js'
 
-export const fundsRouter = Router()
+export const fundsRouter: ReturnType<typeof Router> = Router()
 
 const DATA_DIR = process.env['DATA_DIR'] ?? './data'
 const FUNDS_DIR = join(DATA_DIR, 'funds')
@@ -624,8 +624,11 @@ fundsRouter.post('/', async (req, res, next) => {
       cashFundCreated = true
     }
 
-    // Trading funds should not manage their own cash
-    config.manage_cash = false
+    // Trading funds default to not managing their own cash (use platform cash fund)
+    // But respect explicit manage_cash=true if set
+    if (config.manage_cash !== true) {
+      config.manage_cash = false
+    }
   }
 
   const fund: FundData = {
@@ -839,10 +842,11 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
   if (!entry.date) return next(badRequest('date is required'))
   if (entry.value === undefined) return next(badRequest('value is required'))
 
-  // Enforce cash isolation for trading funds
+  // Enforce cash isolation for trading funds that don't manage their own cash
   const isCashFund = fund.config.fund_type === 'cash'
-  if (!isCashFund) {
-    // Clear cash field - trading funds don't track their own cash
+  const manageCashSelf = fund.config.manage_cash === true
+  if (!isCashFund && !manageCashSelf) {
+    // Clear cash field - trading funds that don't manage their own cash
     delete entry.cash
 
     // Reject DEPOSIT/WITHDRAW actions - these should go to cash fund
