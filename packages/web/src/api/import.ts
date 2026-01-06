@@ -739,3 +739,161 @@ export function downloadM1StatementsStream(
     close: () => eventSource.close()
   }
 }
+
+// ============================================================================
+// Coinbase Transactions Scraping API
+// ============================================================================
+
+export type CoinbaseTransactionType =
+  | 'FUNDING_LOSS' | 'FUNDING_PROFIT'
+  | 'BUY' | 'SELL'
+  | 'USDC_INTEREST' | 'REBATE'
+  | 'STAKING' | 'CARD' | 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER'
+
+export interface CoinbaseScrapedTransaction {
+  id: string
+  date: string
+  type: CoinbaseTransactionType
+  title: string
+  amount: number
+  secondaryAmount?: string
+  contracts?: number
+  price?: number
+  symbol?: string
+  isPerpRelated: boolean
+}
+
+export interface CoinbaseTransactionArchive {
+  platform: 'coinbase-transactions'
+  createdAt: string
+  updatedAt: string
+  summary: {
+    totalTransactions: number
+    perpRelatedCount: number
+    nonPerpCount: number
+    fundingProfit: number
+    fundingLoss: number
+    netFunding: number
+    usdcInterest: number
+    rebates: number
+    perpTradeCount: number
+  }
+  transactions: CoinbaseScrapedTransaction[]
+}
+
+export interface CoinbaseScrapeStatusEvent {
+  message: string
+  phase: 'connecting' | 'navigating' | 'loading' | 'scraping'
+  existingCount?: number
+  stopDate?: string
+}
+
+export interface CoinbaseScrapeProgressEvent {
+  current: number
+  total: number
+  newCount: number
+  lastTransaction: {
+    date: string
+    type: CoinbaseTransactionType
+    symbol?: string
+    amount: number
+    title: string
+    isPerpRelated: boolean
+  } | null
+}
+
+export interface CoinbaseScrapeCompleteEvent {
+  totalScraped: number
+  newCount: number
+  archiveTotal: number
+  perpRelatedCount: number
+  stoppedAtDate: boolean
+  message: string
+}
+
+/**
+ * Get Coinbase transactions scrape archive with summary.
+ */
+export async function getCoinbaseTransactionsArchive(): Promise<ApiResult<CoinbaseTransactionArchive>> {
+  return fetchJson<CoinbaseTransactionArchive>(
+    `${API_BASE}/import/coinbase/transactions/archive`,
+    undefined,
+    'Failed to get Coinbase transactions archive'
+  )
+}
+
+/**
+ * Clear the Coinbase transactions archive.
+ */
+export async function clearCoinbaseTransactionsArchive(): Promise<ApiResult<{ success: boolean; message: string }>> {
+  const response = await fetch(`${API_BASE}/import/coinbase/transactions/archive`, {
+    method: 'DELETE',
+    credentials: 'include'
+  })
+  if (!response.ok) {
+    return { error: 'Failed to clear Coinbase transactions archive' }
+  }
+  return { data: await response.json() }
+}
+
+/**
+ * Scrape Coinbase transactions page with real-time progress via SSE.
+ *
+ * @param options.stopDate - ISO date to stop scraping at
+ * @param options.fundId - Fund ID to get start date from (if stopDate not provided)
+ */
+export function scrapeCoinbaseTransactionsStream(
+  options: {
+    stopDate?: string
+    fundId?: string
+  } = {},
+  callbacks: {
+    onStatus?: (data: CoinbaseScrapeStatusEvent) => void
+    onProgress?: (data: CoinbaseScrapeProgressEvent) => void
+    onComplete?: (data: CoinbaseScrapeCompleteEvent) => void
+    onError?: (data: ScrapeErrorEvent) => void
+  }
+): { close: () => void } {
+  const params = new URLSearchParams()
+  if (options.stopDate) params.set('stopDate', options.stopDate)
+  if (options.fundId) params.set('fundId', options.fundId)
+
+  const eventSource = new EventSource(
+    `${API_BASE}/import/coinbase/transactions/scrape-stream?${params.toString()}`
+  )
+
+  eventSource.addEventListener('status', (e: MessageEvent) => {
+    const data = JSON.parse(e.data) as CoinbaseScrapeStatusEvent
+    callbacks.onStatus?.(data)
+  })
+
+  eventSource.addEventListener('progress', (e: MessageEvent) => {
+    const data = JSON.parse(e.data) as CoinbaseScrapeProgressEvent
+    callbacks.onProgress?.(data)
+  })
+
+  eventSource.addEventListener('complete', (e: MessageEvent) => {
+    const data = JSON.parse(e.data) as CoinbaseScrapeCompleteEvent
+    callbacks.onComplete?.(data)
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('error', (e: MessageEvent) => {
+    if (e.data) {
+      const data = JSON.parse(e.data) as ScrapeErrorEvent
+      callbacks.onError?.(data)
+    } else {
+      callbacks.onError?.({ message: 'Connection lost' })
+    }
+    eventSource.close()
+  })
+
+  eventSource.onerror = () => {
+    callbacks.onError?.({ message: 'Connection error' })
+    eventSource.close()
+  }
+
+  return {
+    close: () => eventSource.close()
+  }
+}

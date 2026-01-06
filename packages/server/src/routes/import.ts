@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { platform } from 'node:os'
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
-import { chromium, type Browser, type Page } from 'playwright'
+import { chromium, type Browser, type Page, type ElementHandle } from 'playwright'
 import { readAllFunds, appendEntry, type FundEntry, type FundData } from '@escapemint/storage'
 import { badRequest, validationError } from '../middleware/error-handler.js'
 import { PDFParse } from 'pdf-parse'
@@ -1428,6 +1428,7 @@ const PLATFORM_LOGIN_URLS: Record<string, string> = {
   robinhood: 'https://robinhood.com/login',
   m1: 'https://dashboard.m1.com',
   'm1-cash': 'https://dashboard.m1.com',
+  coinbase: 'https://www.coinbase.com/signin',
   _default: 'about:blank'
 }
 
@@ -1442,7 +1443,8 @@ const getPlatformName = (platform?: string): string => {
   const normalized = platform.toLowerCase().replace(/-cash$/, '')
   const names: Record<string, string> = {
     robinhood: 'Robinhood',
-    m1: 'M1 Finance'
+    m1: 'M1 Finance',
+    coinbase: 'Coinbase'
   }
   return names[normalized] ?? platform
 }
@@ -4384,6 +4386,376 @@ interface CoinbaseDerivativesArchive {
   rewards: CoinbaseRewardEntry[]
 }
 
+// ============================================================================
+// Coinbase Transactions Page Scraping Types
+// ============================================================================
+
+type CoinbaseTransactionType =
+  | 'FUNDING_LOSS' | 'FUNDING_PROFIT'
+  | 'BUY' | 'SELL'
+  | 'USDC_INTEREST' | 'REBATE'
+  | 'STAKING' | 'CARD' | 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER'
+
+interface CoinbaseScrapedTransaction {
+  id: string                    // From row id attribute (decoded)
+  date: string                  // ISO YYYY-MM-DD
+  type: CoinbaseTransactionType // Enum
+  title: string                 // Raw: "Funding deducted"
+  amount: number                // USD value (signed)
+  secondaryAmount?: string      // Raw: "-232.52 USD" or "+1 contract"
+  contracts?: number            // For perp trades
+  price?: number                // For perp trades (USD per contract)
+  symbol?: string               // BTC, USDC, etc.
+  isPerpRelated: boolean        // Filter flag
+}
+
+interface CoinbaseTransactionArchive {
+  platform: 'coinbase-transactions'
+  createdAt: string
+  updatedAt: string
+  transactions: CoinbaseScrapedTransaction[]
+}
+
+/**
+ * Determine transaction type from Coinbase title
+ */
+const determineCoinbaseTransactionType = (title: string): CoinbaseTransactionType => {
+  const upper = title.toUpperCase()
+
+  // Perp-related
+  if (upper.includes('FUNDING DEDUCTED')) return 'FUNDING_LOSS'
+  if (upper.includes('FUNDING RECEIVED')) return 'FUNDING_PROFIT'
+  if (upper.includes('BOUGHT') && upper.includes('PERP')) return 'BUY'
+  if (upper.includes('SOLD') && upper.includes('PERP')) return 'SELL'
+  if (upper.includes('TRADING REBATE')) return 'REBATE'
+
+  // Rewards/Interest
+  if (upper.includes('USDC REWARD')) return 'USDC_INTEREST'
+  if (upper.includes('REWARD')) return 'STAKING'
+
+  // Transfers
+  if (upper.includes('RECEIVED')) return 'DEPOSIT'
+  if (upper.includes('SENT')) return 'WITHDRAWAL'
+  if (upper.includes('CARD PAYMENT')) return 'CARD'
+
+  return 'OTHER'
+}
+
+/**
+ * Check if transaction type is perp-related
+ */
+const isPerpRelatedType = (type: CoinbaseTransactionType): boolean => {
+  return ['FUNDING_LOSS', 'FUNDING_PROFIT', 'BUY', 'SELL', 'REBATE', 'USDC_INTEREST'].includes(type)
+}
+
+/**
+ * Parse date from Coinbase format (e.g., "Jan 6, 2026") to ISO (YYYY-MM-DD)
+ */
+const parseCoinbaseDateToISO = (dateText: string): string => {
+  const months: Record<string, string> = {
+    jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+  }
+
+  // Match "Jan 6, 2026" or "January 6, 2026"
+  const match = dateText.match(/([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/)
+  if (!match || !match[1] || !match[2] || !match[3]) {
+    console.warn(`[Coinbase] Unable to parse date: ${dateText}`)
+    return new Date().toISOString().split('T')[0]!
+  }
+
+  const monthKey = match[1].toLowerCase().substring(0, 3)
+  const month = months[monthKey] ?? '01'
+  const day = match[2].padStart(2, '0')
+  const year = match[3]
+
+  return `${year}-${month}-${day}`
+}
+
+/**
+ * Parse amount string to number (handles "$1,234.56", "-$50.00", "+$10.00")
+ */
+const parseCoinbaseAmount = (amountText: string): number => {
+  const cleaned = amountText.replace(/[,$]/g, '').trim()
+  const num = parseFloat(cleaned)
+  return isNaN(num) ? 0 : num
+}
+
+/**
+ * Extract symbol from title (e.g., "Bought BTC PERP" -> "BTC")
+ */
+const extractSymbolFromTitle = (title: string): string | undefined => {
+  // Match patterns like "BTC PERP", "USDC reward", "BTC reward"
+  const perpMatch = title.match(/([A-Z]{2,5})\s+PERP/i)
+  if (perpMatch?.[1]) return perpMatch[1].toUpperCase()
+
+  const rewardMatch = title.match(/([A-Z]{2,5})\s+reward/i)
+  if (rewardMatch?.[1]) return rewardMatch[1].toUpperCase()
+
+  return undefined
+}
+
+/**
+ * Extract contracts from secondary amount (e.g., "+1 contract" -> 1)
+ */
+const extractContracts = (secondaryText: string): number | undefined => {
+  const match = secondaryText.match(/([+-]?\d+)\s*contracts?/i)
+  if (match?.[1]) return Math.abs(parseInt(match[1], 10))
+  return undefined
+}
+
+/**
+ * Load or create Coinbase transactions archive
+ */
+const loadCoinbaseTransactionsArchive = async (): Promise<CoinbaseTransactionArchive> => {
+  await mkdir(SCRAPE_ARCHIVE_DIR, { recursive: true })
+  const archivePath = join(SCRAPE_ARCHIVE_DIR, 'coinbase-transactions.json')
+
+  const content = await readFile(archivePath, 'utf-8').catch(() => null)
+  if (content) {
+    return JSON.parse(content) as CoinbaseTransactionArchive
+  }
+
+  return {
+    platform: 'coinbase-transactions',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    transactions: []
+  }
+}
+
+/**
+ * Save Coinbase transactions archive
+ */
+const saveCoinbaseTransactionsArchive = async (archive: CoinbaseTransactionArchive): Promise<void> => {
+  await mkdir(SCRAPE_ARCHIVE_DIR, { recursive: true })
+  const archivePath = join(SCRAPE_ARCHIVE_DIR, 'coinbase-transactions.json')
+  archive.updatedAt = new Date().toISOString()
+  await writeFile(archivePath, JSON.stringify(archive, null, 2), 'utf-8')
+}
+
+/**
+ * Add transaction to Coinbase archive if not already present
+ */
+const addToCoinbaseTransactionsArchive = (
+  archive: CoinbaseTransactionArchive,
+  tx: CoinbaseScrapedTransaction
+): boolean => {
+  const exists = archive.transactions.some(t => t.id === tx.id)
+  if (!exists) {
+    archive.transactions.push(tx)
+    // Sort by date descending (newest first)
+    archive.transactions.sort((a, b) => b.date.localeCompare(a.date))
+    return true
+  }
+  return false
+}
+
+/**
+ * Find Coinbase transactions page in browser
+ */
+const findCoinbaseTransactionsPage = async (browser: Browser): Promise<Page | null> => {
+  const contexts = browser.contexts()
+  console.log(`[Coinbase TX] Found ${contexts.length} browser contexts`)
+
+  for (let i = 0; i < contexts.length; i++) {
+    const context = contexts[i]!
+    const pages = context.pages()
+    for (const page of pages) {
+      const pageUrl = page.url()
+      if (pageUrl.includes('coinbase.com/transactions') &&
+          !pageUrl.includes('/signin') && !pageUrl.includes('/login')) {
+        console.log(`[Coinbase TX] Found Coinbase transactions page: ${pageUrl}`)
+        return page
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Parse a single Coinbase transaction row
+ */
+const parseCoinbaseTransactionRow = async (
+  row: ElementHandle<Element>
+): Promise<CoinbaseScrapedTransaction | null> => {
+  // Get row ID (base64 encoded transaction ID)
+  const rowId = await row.getAttribute('id')
+  if (!rowId) return null
+
+  // Decode the ID (it's typically base64)
+  const idMatch = rowId.match(/id="([^"]+)"/) || [null, rowId]
+  const decodedId = idMatch[1] ?? rowId
+
+  // Get all cells
+  const cells = await row.$$('td')
+  if (cells.length < 3) return null
+
+  // First cell: title (headline)
+  const firstCell = cells[0]
+  if (!firstCell) return null
+
+  // Find headline element - look for paragraph with headline class
+  const headlineEl = await firstCell.$('p[class*="headline"]')
+  const title = (await headlineEl?.textContent() ?? '').trim()
+  if (!title) return null
+
+  // Second cell: amounts
+  const secondCell = cells[1]
+  if (!secondCell) return null
+
+  const amountParagraphs = await secondCell.$$('p')
+  const primaryAmountText = await amountParagraphs[0]?.textContent() ?? ''
+  const secondaryAmountText = await amountParagraphs[1]?.textContent() ?? ''
+
+  // Third cell: date
+  const thirdCell = cells[2]
+  if (!thirdCell) return null
+
+  const dateEl = await thirdCell.$('p')
+  const dateText = await dateEl?.textContent() ?? ''
+
+  // Parse the data
+  const type = determineCoinbaseTransactionType(title)
+  const amount = parseCoinbaseAmount(primaryAmountText)
+  const date = parseCoinbaseDateToISO(dateText)
+  const symbol = extractSymbolFromTitle(title)
+  const contracts = extractContracts(secondaryAmountText)
+
+  // Calculate price for trades
+  let price: number | undefined
+  if (contracts && contracts > 0 && Math.abs(amount) > 0) {
+    price = Math.abs(amount) / contracts
+  }
+
+  const result: CoinbaseScrapedTransaction = {
+    id: decodedId,
+    date,
+    type,
+    title,
+    amount,
+    isPerpRelated: isPerpRelatedType(type)
+  }
+
+  // Add optional properties only if they have values
+  if (secondaryAmountText) result.secondaryAmount = secondaryAmountText
+  if (contracts !== undefined) result.contracts = contracts
+  if (price !== undefined) result.price = price
+  if (symbol) result.symbol = symbol
+
+  return result
+}
+
+/**
+ * Scrape Coinbase transactions with progress updates
+ */
+const scrapeCoinbaseTransactionsWithProgress = async (
+  page: Page,
+  archive: CoinbaseTransactionArchive,
+  onProgress: (current: number, total: number, tx: CoinbaseScrapedTransaction | null) => void,
+  stopDate?: string,
+  maxScrolls = 500
+): Promise<{ newCount: number; totalScraped: number; stoppedAtDate: boolean }> => {
+  // Wait for transaction rows to load
+  await page.waitForSelector('tr[data-testid="transaction-history-row"]', {
+    timeout: 15000
+  }).catch(() => null)
+
+  await page.waitForTimeout(2000)
+
+  let totalScraped = 0
+  let newCount = 0
+  let previousItemCount = 0
+  let noNewItemsCount = 0
+  let stoppedAtDate = false
+
+  const rowSelector = 'tr[data-testid="transaction-history-row"]'
+
+  // Process items and scroll loop
+  for (let scroll = 0; scroll < maxScrolls; scroll++) {
+    const rows = await page.$$(rowSelector)
+    const currentItemCount = rows.length
+
+    // Process new rows
+    for (let i = previousItemCount; i < currentItemCount; i++) {
+      const row = rows[i]
+      if (!row) continue
+
+      const tx = await parseCoinbaseTransactionRow(row)
+      if (tx) {
+        // Check if we've reached the stop date
+        if (stopDate && tx.date < stopDate) {
+          console.log(`[Coinbase TX] Reached stop date ${stopDate}, stopping at ${tx.date}`)
+          stoppedAtDate = true
+          await saveCoinbaseTransactionsArchive(archive)
+          return { newCount, totalScraped, stoppedAtDate }
+        }
+
+        totalScraped++
+        const isNew = addToCoinbaseTransactionsArchive(archive, tx)
+        if (isNew) {
+          newCount++
+          // Save incrementally every 10 new transactions
+          if (newCount % 10 === 0) {
+            await saveCoinbaseTransactionsArchive(archive)
+          }
+        }
+        onProgress(totalScraped, currentItemCount, tx)
+      }
+    }
+
+    previousItemCount = currentItemCount
+
+    // Scroll to load more
+    await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight)
+    })
+    await page.waitForTimeout(2000)
+
+    // Try scrolling specific container if main scroll doesn't work
+    await page.evaluate(() => {
+      const scrollableContainers = document.querySelectorAll('[class*="scroll"], [style*="overflow"]')
+      scrollableContainers.forEach(container => {
+        if (container instanceof HTMLElement && container.scrollHeight > container.clientHeight) {
+          container.scrollTop = container.scrollHeight
+        }
+      })
+    })
+    await page.waitForTimeout(500)
+
+    // Check if we got new items
+    const newRows = await page.$$(rowSelector)
+    if (newRows.length === currentItemCount) {
+      noNewItemsCount++
+      // Wait for 5 consecutive scrolls with no new items
+      if (noNewItemsCount >= 5) {
+        // Try one more aggressive scroll before giving up
+        await page.evaluate(() => {
+          window.scrollBy(0, 5000)
+        })
+        await page.waitForTimeout(3000)
+        const finalCheck = await page.$$(rowSelector)
+        if (finalCheck.length === currentItemCount) {
+          break
+        }
+      }
+    } else {
+      noNewItemsCount = 0
+    }
+
+    // Safety limit
+    if (totalScraped > 10000) {
+      break
+    }
+  }
+
+  // Final save
+  await saveCoinbaseTransactionsArchive(archive)
+
+  return { newCount, totalScraped, stoppedAtDate }
+}
+
 /**
  * Load or create Coinbase derivatives archive
  */
@@ -4958,5 +5330,246 @@ importRouter.delete('/coinbase-btcd/rewards/:date', async (req, res) => {
     success: true,
     message: `Deleted reward entry for ${date}`,
     remaining: archive.rewards.length
+  })
+})
+
+// ============================================================================
+// Coinbase Transactions Page Scraping Endpoints
+// ============================================================================
+
+/**
+ * GET /import/coinbase/transactions/archive
+ * Get the Coinbase transactions scrape archive with summary.
+ */
+importRouter.get('/coinbase/transactions/archive', async (_req, res) => {
+  const archive = await loadCoinbaseTransactionsArchive()
+
+  // Calculate summary
+  let fundingProfit = 0
+  let fundingLoss = 0
+  let usdcInterest = 0
+  let rebates = 0
+  let perpTradeCount = 0
+  let nonPerpCount = 0
+
+  for (const tx of archive.transactions) {
+    if (tx.type === 'FUNDING_PROFIT') fundingProfit += tx.amount
+    else if (tx.type === 'FUNDING_LOSS') fundingLoss += Math.abs(tx.amount)
+    else if (tx.type === 'USDC_INTEREST') usdcInterest += tx.amount
+    else if (tx.type === 'REBATE') rebates += tx.amount
+    else if (tx.type === 'BUY' || tx.type === 'SELL') perpTradeCount++
+
+    if (tx.isPerpRelated) continue
+    nonPerpCount++
+  }
+
+  res.json({
+    platform: archive.platform,
+    createdAt: archive.createdAt,
+    updatedAt: archive.updatedAt,
+    summary: {
+      totalTransactions: archive.transactions.length,
+      perpRelatedCount: archive.transactions.length - nonPerpCount,
+      nonPerpCount,
+      fundingProfit,
+      fundingLoss,
+      netFunding: fundingProfit - fundingLoss,
+      usdcInterest,
+      rebates,
+      perpTradeCount
+    },
+    transactions: archive.transactions
+  })
+})
+
+/**
+ * GET /import/coinbase/transactions/scrape-stream
+ * Stream Coinbase transactions scraping progress via SSE.
+ *
+ * Query params:
+ *   - stopDate: ISO date to stop scraping at (default: scrape all)
+ *   - fundId: Fund ID to get start date from (optional)
+ */
+importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
+  const { stopDate: stopDateParam, fundId } = req.query as { stopDate?: string; fundId?: string }
+
+  // Set up SSE
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+
+  const sendEvent = (event: string, data: Record<string, unknown>) => {
+    res.write(`event: ${event}\n`)
+    res.write(`data: ${JSON.stringify(data)}\n\n`)
+  }
+
+  sendEvent('status', { message: 'Connecting to browser...', phase: 'connecting' })
+
+  // Connect to browser
+  const browser = await connectToBrowser().catch((err: Error) => {
+    sendEvent('error', { message: `Failed to connect: ${err.message}` })
+    return null
+  })
+
+  if (!browser) {
+    res.end()
+    return
+  }
+
+  sendEvent('status', { message: 'Looking for Coinbase transactions page...', phase: 'navigating' })
+
+  // Try to find existing transactions page
+  let page = await findCoinbaseTransactionsPage(browser)
+  let pageCreated = false
+
+  if (page) {
+    console.log(`[Coinbase TX] Using existing transactions page: ${page.url()}`)
+    sendEvent('status', { message: 'Found Coinbase transactions page', phase: 'navigating' })
+  } else {
+    // No existing page - create new one
+    console.log('[Coinbase TX] No transactions page found, creating new one')
+    sendEvent('status', { message: 'Opening Coinbase transactions...', phase: 'navigating' })
+
+    page = await createNewPage(browser).catch((err: Error) => {
+      sendEvent('error', { message: err.message })
+      return null
+    }) as Page | null
+
+    if (!page) {
+      res.end()
+      return
+    }
+
+    pageCreated = true
+
+    // Navigate to Coinbase transactions
+    const navResult = await page.goto('https://www.coinbase.com/transactions', {
+      waitUntil: 'networkidle',
+      timeout: 30000
+    }).catch((err: Error) => err)
+
+    if (navResult instanceof Error) {
+      sendEvent('error', { message: `Navigation failed: ${navResult.message}` })
+      await page.close().catch(() => {})
+      res.end()
+      return
+    }
+
+    await page.waitForTimeout(2000)
+
+    // Check if redirected to login
+    if (page.url().includes('/signin') || page.url().includes('/login')) {
+      console.log('[Coinbase TX] Redirected to login - user needs to log in manually')
+      sendEvent('error', {
+        message: 'Please log in to Coinbase in your browser first, then navigate to the transactions page and try again.'
+      })
+      res.end()
+      return
+    }
+  }
+
+  // Determine stop date
+  let stopDate = stopDateParam
+
+  // If fundId provided, try to get fund start date
+  if (fundId && !stopDate) {
+    sendEvent('status', { message: 'Loading fund configuration...', phase: 'loading' })
+
+    // Try to get fund start date from fund config
+    const fundConfigPath = join(process.cwd(), '..', '..', 'data', 'funds', fundId, 'fund.json')
+    const fundContent = await readFile(fundConfigPath, 'utf-8').catch(() => null)
+    if (fundContent) {
+      const fundConfig = JSON.parse(fundContent)
+      if (fundConfig.start_date) {
+        stopDate = fundConfig.start_date
+        console.log(`[Coinbase TX] Using fund start date as stop date: ${stopDate}`)
+      }
+    }
+  }
+
+  sendEvent('status', {
+    message: stopDate
+      ? `Scraping transactions until ${stopDate}...`
+      : 'Scraping all transactions...',
+    phase: 'loading',
+    stopDate
+  })
+
+  // Load existing archive
+  const archive = await loadCoinbaseTransactionsArchive()
+  const existingCount = archive.transactions.length
+
+  sendEvent('status', {
+    message: existingCount > 0
+      ? `Found ${existingCount} existing transactions. Scraping for new data...`
+      : 'Starting fresh scrape...',
+    phase: 'scraping',
+    existingCount
+  })
+
+  // Scrape with progress updates
+  const result = await scrapeCoinbaseTransactionsWithProgress(
+    page,
+    archive,
+    (current, total, tx) => {
+      sendEvent('progress', {
+        current,
+        total,
+        newCount: archive.transactions.length - existingCount,
+        lastTransaction: tx ? {
+          date: tx.date,
+          type: tx.type,
+          symbol: tx.symbol,
+          amount: tx.amount,
+          title: tx.title.substring(0, 50),
+          isPerpRelated: tx.isPerpRelated
+        } : null
+      })
+    },
+    stopDate
+  ).catch((err: Error) => {
+    sendEvent('error', { message: `Scraping error: ${err.message}` })
+    return null
+  })
+
+  // Only close the page if we created it
+  if (pageCreated) await page.close().catch(() => {})
+
+  if (result) {
+    // Calculate summary of scraped data
+    const perpTxns = archive.transactions.filter(t => t.isPerpRelated)
+
+    sendEvent('complete', {
+      totalScraped: result.totalScraped,
+      newCount: result.newCount,
+      archiveTotal: archive.transactions.length,
+      perpRelatedCount: perpTxns.length,
+      stoppedAtDate: result.stoppedAtDate,
+      message: result.newCount > 0
+        ? `Scraped ${result.totalScraped} transactions, ${result.newCount} new (${perpTxns.length} perp-related)`
+        : `Scraped ${result.totalScraped} transactions, all already in archive`
+    })
+  }
+
+  res.end()
+})
+
+/**
+ * DELETE /import/coinbase/transactions/archive
+ * Clear the Coinbase transactions archive.
+ */
+importRouter.delete('/coinbase/transactions/archive', async (_req, res) => {
+  const archive: CoinbaseTransactionArchive = {
+    platform: 'coinbase-transactions',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    transactions: []
+  }
+  await saveCoinbaseTransactionsArchive(archive)
+
+  res.json({
+    success: true,
+    message: 'Coinbase transactions archive cleared'
   })
 })

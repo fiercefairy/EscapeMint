@@ -437,8 +437,25 @@ platformsRouter.get('/:id/cash', async (req, res, next) => {
   const data = await readPlatformsData().catch(() => ({} as PlatformsData))
   const platformConfig = data[platformId]
 
+  // If platform isn't in platforms.json, check if it exists via funds
   if (!platformConfig) {
-    return next(notFound(`Platform '${platformId}' not found`))
+    const allFunds = await readAllFunds(FUNDS_DIR).catch(() => [])
+    const platformFunds = allFunds.filter(f => f.platform.toLowerCase() === platformId)
+
+    if (platformFunds.length === 0) {
+      return next(notFound(`Platform '${platformId}' not found`))
+    }
+
+    // Platform exists via funds but has no config - return cash tracking disabled
+    return res.json({
+      enabled: false,
+      cashFundId: null,
+      balance: 0,
+      marginAvailable: 0,
+      marginBorrowed: 0,
+      interestEarned: 0,
+      autoSyncCash: platformId === 'robinhood'
+    })
   }
 
   // Determine auto_sync_cash (defaults to true for robinhood)

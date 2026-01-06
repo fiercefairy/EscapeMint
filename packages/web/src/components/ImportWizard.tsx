@@ -21,6 +21,7 @@ import {
   parseAllM1Statements,
   applyM1StatementTransactions,
   downloadM1StatementsStream,
+  scrapeCoinbaseTransactionsStream,
   type ImportPreview,
   type ScrapeProgressEvent,
   type ScrapeStatusEvent,
@@ -29,9 +30,185 @@ import {
   type CryptoParseAllResponse,
   type CryptoStatementsResponse,
   type M1StatementsListResponse,
-  type M1StatementsParseAllResponse
+  type M1StatementsParseAllResponse,
+  type CoinbaseScrapeStatusEvent,
+  type CoinbaseScrapeProgressEvent,
+  type CoinbaseScrapeCompleteEvent
 } from '../api/import'
 import { notifyFundsChanged } from '../api/funds'
+
+/**
+ * Coinbase Scrape Step Component
+ * Inline component for handling Coinbase transactions scraping within the ImportWizard
+ */
+function CoinbaseScrapeStep({ onClose }: { onClose: () => void }) {
+  const [phase, setPhase] = useState<'idle' | 'scraping' | 'complete' | 'error'>('idle')
+  const [status, setStatus] = useState('')
+  const [current, setCurrent] = useState(0)
+  const [total, setTotal] = useState(0)
+  const [perpRelatedCount, setPerpRelatedCount] = useState(0)
+  const [lastTx, setLastTx] = useState<{
+    date: string
+    type: string
+    symbol?: string
+    amount: number
+    title: string
+    isPerpRelated: boolean
+  } | null>(null)
+
+  const scrapeStreamRef = useRef<{ close: () => void } | null>(null)
+
+  const handleStartScrape = useCallback(() => {
+    setPhase('scraping')
+    setStatus('Connecting to browser...')
+    setCurrent(0)
+    setTotal(0)
+
+    scrapeStreamRef.current = scrapeCoinbaseTransactionsStream(
+      {},
+      {
+        onStatus: (data: CoinbaseScrapeStatusEvent) => {
+          setStatus(data.message)
+        },
+        onProgress: (data: CoinbaseScrapeProgressEvent) => {
+          setCurrent(data.current)
+          setTotal(data.total)
+          setLastTx(data.lastTransaction)
+          setStatus(`Scraped ${data.current} transactions (${data.newCount} new)`)
+        },
+        onComplete: (data: CoinbaseScrapeCompleteEvent) => {
+          setPhase('complete')
+          setStatus(data.message)
+          setPerpRelatedCount(data.perpRelatedCount)
+          toast.success(data.message)
+        },
+        onError: (data) => {
+          setPhase('error')
+          setStatus(data.message)
+          toast.error(data.message)
+        }
+      }
+    )
+  }, [])
+
+  const handleCancel = useCallback(() => {
+    scrapeStreamRef.current?.close()
+    setPhase('idle')
+    setStatus('')
+    toast.info('Scraping cancelled')
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      scrapeStreamRef.current?.close()
+    }
+  }, [])
+
+  return (
+    <div className="space-y-6">
+      <div className="text-center py-4">
+        <div className="text-6xl mb-4">🪙</div>
+        <h3 className="text-xl font-medium text-white mb-2">Coinbase Transactions Scrape</h3>
+        <p className="text-slate-400 max-w-md mx-auto">
+          Scrape funding payments, trades, and rewards from your Coinbase transactions page.
+        </p>
+      </div>
+
+      {phase === 'idle' && (
+        <div className="text-center">
+          <p className="text-sm text-slate-400 mb-6">
+            Make sure you have the Coinbase transactions page open in your browser and are logged in.
+          </p>
+          <button
+            onClick={handleStartScrape}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            Start Scraping
+          </button>
+        </div>
+      )}
+
+      {phase === 'scraping' && (
+        <div className="bg-slate-800/50 rounded-lg p-4 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+            <span className="text-slate-300">{status}</span>
+          </div>
+
+          {total > 0 && (
+            <div className="w-full bg-slate-700 rounded-full h-2">
+              <div
+                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${Math.min((current / total) * 100, 100)}%` }}
+              />
+            </div>
+          )}
+
+          {lastTx && (
+            <div className="text-xs text-slate-400 flex items-center gap-2 flex-wrap">
+              <span className={lastTx.isPerpRelated ? 'text-blue-400' : 'text-slate-500'}>
+                {lastTx.isPerpRelated ? 'PERP' : 'Other'}
+              </span>
+              <span>{lastTx.date}</span>
+              <span className="text-slate-600">|</span>
+              <span>{lastTx.type}</span>
+              <span className="text-slate-600">|</span>
+              <span className={lastTx.amount >= 0 ? 'text-green-400' : 'text-red-400'}>
+                ${lastTx.amount.toFixed(2)}
+              </span>
+            </div>
+          )}
+
+          <div className="text-center pt-2">
+            <button
+              onClick={handleCancel}
+              className="px-4 py-2 text-sm bg-red-600/30 hover:bg-red-600/50 text-red-400 rounded transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'complete' && (
+        <div className="text-center space-y-4">
+          <div className="text-6xl mb-2">✅</div>
+          <p className="text-green-400 font-medium">{status}</p>
+          <p className="text-slate-400 text-sm">
+            {perpRelatedCount} perp-related transactions found
+          </p>
+          <button
+            onClick={onClose}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            Done
+          </button>
+        </div>
+      )}
+
+      {phase === 'error' && (
+        <div className="text-center space-y-4">
+          <div className="text-6xl mb-2">❌</div>
+          <p className="text-red-400 font-medium">{status}</p>
+          <div className="flex gap-4 justify-center">
+            <button
+              onClick={() => setPhase('idle')}
+              className="px-6 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors font-medium"
+            >
+              Try Again
+            </button>
+            <button
+              onClick={onClose}
+              className="px-6 py-3 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export interface ImportWizardProps {
   onClose: () => void
@@ -39,16 +216,17 @@ export interface ImportWizardProps {
   platform?: string | undefined  // Optional platform filter (e.g., 'robinhood', 'm1')
 }
 
-type ImportMethod = 'csv' | 'scrape' | 'archive' | 'crypto-pdf' | 'm1-cash' | 'm1-statements'
-type WizardStep = 'method' | 'archive' | 'browser' | 'url' | 'upload' | 'preview' | 'scraping' | 'importing' | 'done' | 'crypto-pdf' | 'crypto-download' | 'crypto-preview' | 'm1-cash-url' | 'm1-statements' | 'm1-statements-download' | 'm1-statements-preview' | 'checking-login'
+type ImportMethod = 'csv' | 'scrape' | 'archive' | 'crypto-pdf' | 'm1-cash' | 'm1-statements' | 'coinbase-scrape'
+type WizardStep = 'method' | 'archive' | 'browser' | 'url' | 'upload' | 'preview' | 'scraping' | 'importing' | 'done' | 'crypto-pdf' | 'crypto-download' | 'crypto-preview' | 'm1-cash-url' | 'm1-statements' | 'm1-statements-download' | 'm1-statements-preview' | 'checking-login' | 'coinbase-scrape'
 type BrowserState = 'idle' | 'launching' | 'launched' | 'connecting' | 'connected'
 
 // Define which import methods are available for each platform
 const PLATFORM_IMPORT_METHODS: Record<string, ImportMethod[]> = {
   robinhood: ['csv', 'scrape', 'archive', 'crypto-pdf'],
   m1: ['m1-cash', 'm1-statements'],
+  coinbase: ['coinbase-scrape'],
   // Default: show all methods (for dashboard or unknown platforms)
-  _default: ['csv', 'scrape', 'archive', 'crypto-pdf', 'm1-cash', 'm1-statements']
+  _default: ['csv', 'scrape', 'archive', 'crypto-pdf', 'm1-cash', 'm1-statements', 'coinbase-scrape']
 }
 
 // Get available methods for a platform
@@ -210,6 +388,9 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
       if (result.data) {
         setM1Statements(result.data)
       }
+    } else if (m === 'coinbase-scrape') {
+      // Coinbase transactions scrape - go directly to coinbase-scrape step
+      setStep('coinbase-scrape')
     } else {
       setStep('browser')
       // Check if browser is already running
@@ -226,12 +407,14 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
   // Get platform name for display in messages
   const getPlatformDisplayName = (m: ImportMethod | null): string => {
     if (m === 'm1-cash' || m === 'm1-statements') return 'M1 Finance'
+    if (m === 'coinbase-scrape') return 'Coinbase'
     return 'Robinhood'
   }
 
   // Get platform identifier for API calls
   const getLaunchPlatform = (m: ImportMethod | null): string => {
     if (m === 'm1-cash' || m === 'm1-statements') return 'm1'
+    if (m === 'coinbase-scrape') return 'coinbase'
     return 'robinhood'
   }
 
@@ -842,6 +1025,24 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                     </p>
                     <p className="text-xs text-slate-500 mt-3">
                       Best for: Complete historical data from PDFs
+                    </p>
+                  </button>
+                )}
+
+                {availableMethods.includes('coinbase-scrape') && (
+                  <button
+                    onClick={() => handleSelectMethod('coinbase-scrape')}
+                    className="p-6 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-blue-500 hover:bg-slate-700 transition-all text-left group"
+                  >
+                    <div className="text-4xl mb-3">🪙</div>
+                    <h3 className="text-lg font-medium text-white group-hover:text-blue-400 transition-colors">
+                      Scrape Coinbase Transactions
+                    </h3>
+                    <p className="text-sm text-slate-400 mt-1">
+                      Scrape funding payments, trades, and rewards from Coinbase transactions page
+                    </p>
+                    <p className="text-xs text-slate-500 mt-3">
+                      Best for: Perpetual futures data, USDC rewards
                     </p>
                   </button>
                 )}
@@ -1749,6 +1950,11 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                 </button>
               </div>
             </div>
+          )}
+
+          {/* Coinbase Transactions Scrape Step */}
+          {step === 'coinbase-scrape' && (
+            <CoinbaseScrapeStep onClose={onClose} />
           )}
 
           {/* Step 2 (Scrape): Browser Launch/Login */}

@@ -11,6 +11,7 @@ import { listApiKeys, fetchFills, type ApiKeyInfo, type Fill } from '../api/deri
 import { DerivativesDashboard } from '../components/DerivativesDashboard'
 import { FundingTracker } from '../components/FundingTracker'
 import { ApiKeyModal } from '../components/ApiKeyModal'
+import { CoinbaseScrapeButton } from '../components/CoinbaseScrapeButton'
 
 type TabType = 'position' | 'funding' | 'history'
 
@@ -187,8 +188,12 @@ export function DerivativesFundDetail() {
           </div>
         </div>
 
-        {/* API Key Selector and Sync */}
+        {/* Scrape and Sync Actions */}
         <div className="flex items-center gap-3">
+          <CoinbaseScrapeButton
+            fundId={id}
+            variant="primary"
+          />
           <div className="flex items-center gap-2">
             {selectedKey ? (
               <span className="px-2 py-1 text-xs bg-green-900/50 text-green-400 rounded">
