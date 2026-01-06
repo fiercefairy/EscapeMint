@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { updateFund, deleteFund, syncFromSubfunds, notifyFundsChanged, type FundConfig, type FundStatus, type FundType } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
+import { useSettings } from '../contexts/SettingsContext'
 
 interface EditFundPanelProps {
   fundId: string
@@ -20,6 +21,7 @@ const round = (value: number, decimals: number = 2): number => {
 
 export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpdated }: EditFundPanelProps) {
   const navigate = useNavigate()
+  const { settings } = useSettings()
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -489,19 +491,21 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
             </>
           )}
 
-          {/* Sync from Sub-funds (Cash funds only) */}
-          {isCashFund && (
-            <div className="border border-blue-600/30 rounded p-3 bg-blue-900/10">
-              <p className="text-sm text-white font-medium mb-2">Sync Trading Activity</p>
+          {/* Sync from Sub-funds (Cash funds only, requires Advanced Tools setting) */}
+          {isCashFund && settings.advancedTools && (
+            <div className="border border-yellow-600/30 rounded p-3 bg-yellow-900/10">
+              <p className="text-sm text-white font-medium mb-2">
+                <span className="text-yellow-400">[Advanced]</span> Sync Trading Activity
+              </p>
               <p className="text-xs text-slate-400 mb-3">
-                Import BUY/SELL activity from related sub-funds (e.g., {fundPlatform.toLowerCase()}-btc, {fundPlatform.toLowerCase()}-eth).
-                BUYs become withdrawals, SELLs become deposits.
+                Import historical BUY/SELL activity from related sub-funds (e.g., {fundPlatform.toLowerCase()}-btc, {fundPlatform.toLowerCase()}-eth).
+                BUYs become withdrawals, SELLs become deposits. Use with caution - may create duplicates if data already exists.
               </p>
               <button
                 type="button"
                 onClick={handleSyncFromSubfunds}
                 disabled={syncing}
-                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 text-sm bg-yellow-600 text-white rounded hover:bg-yellow-700 transition-colors disabled:opacity-50"
               >
                 {syncing ? 'Syncing...' : 'Sync from Sub-funds'}
               </button>
