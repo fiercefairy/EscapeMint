@@ -1,8 +1,23 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import { useSettings } from '../contexts/SettingsContext'
 
 const API_BASE = '/api/v1'
+
+interface BackupConfig {
+  backup_dir: string
+  is_icloud: boolean
+}
+
+interface BackupInfo {
+  name: string
+  date: string
+}
+
+interface BackupListResponse {
+  backup_dir: string
+  backups: BackupInfo[]
+}
 
 interface ExportData {
   version: string
@@ -24,8 +39,63 @@ export function Settings() {
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge')
+  const [backingUp, setBackingUp] = useState(false)
+  const [backupConfig, setBackupConfig] = useState<BackupConfig | null>(null)
+  const [backups, setBackups] = useState<BackupInfo[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { settings, updateSetting } = useSettings()
+
+  // Load backup config and list on mount
+  useEffect(() => {
+    const loadBackupInfo = async () => {
+      const [configRes, listRes] = await Promise.all([
+        fetch(`${API_BASE}/backup/config`),
+        fetch(`${API_BASE}/backup`)
+      ])
+
+      if (configRes.ok) {
+        const config: BackupConfig = await configRes.json()
+        setBackupConfig(config)
+      }
+
+      if (listRes.ok) {
+        const list: BackupListResponse = await listRes.json()
+        setBackups(list.backups)
+      }
+    }
+
+    loadBackupInfo()
+  }, [])
+
+  const handleBackup = async () => {
+    setBackingUp(true)
+
+    const response = await fetch(`${API_BASE}/backup`, {
+      method: 'POST'
+    })
+
+    if (!response.ok) {
+      toast.error('Failed to create backup')
+      setBackingUp(false)
+      return
+    }
+
+    const result = await response.json()
+
+    if (result.success) {
+      toast.success(`Backup created with ${result.fund_count} funds`)
+      // Refresh backup list
+      const listRes = await fetch(`${API_BASE}/backup`)
+      if (listRes.ok) {
+        const list: BackupListResponse = await listRes.json()
+        setBackups(list.backups)
+      }
+    } else {
+      toast.error(result.error ?? 'Backup failed')
+    }
+
+    setBackingUp(false)
+  }
 
   const handleExport = async () => {
     setExporting(true)
@@ -199,6 +269,52 @@ export function Settings() {
         </button>
       </div>
 
+      {/* iCloud Backup Section */}
+      <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
+        <h2 className="text-base font-semibold text-white mb-2">
+          {backupConfig?.is_icloud ? 'iCloud Backup' : 'Data Backup'}
+        </h2>
+        <p className="text-sm text-slate-400 mb-3">
+          {backupConfig?.is_icloud
+            ? 'Backup fund data and configs to iCloud for safekeeping.'
+            : 'Backup fund data and configs to a local directory.'}
+        </p>
+
+        {backupConfig && (
+          <p className="text-xs text-slate-500 mb-3">
+            <span className="text-slate-400">Backup location:</span>{' '}
+            <code className="bg-slate-700 px-1 rounded">{backupConfig.backup_dir}</code>
+          </p>
+        )}
+
+        <button
+          onClick={handleBackup}
+          disabled={backingUp}
+          className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
+        >
+          {backingUp ? 'Creating Backup...' : 'Create Backup'}
+        </button>
+
+        {backups.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-sm font-medium text-slate-300 mb-2">Recent Backups</h3>
+            <ul className="space-y-1 text-xs text-slate-400">
+              {backups.slice(0, 5).map((backup) => (
+                <li key={backup.name} className="flex items-center gap-2">
+                  <span className="text-slate-500">-</span>
+                  <span>{backup.date}</span>
+                </li>
+              ))}
+            </ul>
+            {backups.length > 5 && (
+              <p className="text-xs text-slate-500 mt-1">
+                + {backups.length - 5} more backups
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Advanced/Beta Tools */}
       <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
         <h2 className="text-base font-semibold text-white mb-2">Advanced/Beta Tools</h2>
@@ -227,13 +343,6 @@ export function Settings() {
             <span className="text-white">Format:</span> TSV files with config header
           </p>
         </div>
-      </div>
-
-      {/* About */}
-      <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
-        <h2 className="text-base font-semibold text-white mb-2">About</h2>
-        <p className="text-sm text-slate-400">Local-first capital allocation engine.</p>
-        <p className="text-xs text-slate-500 mt-1">Version 1.0.0</p>
       </div>
     </div>
   )

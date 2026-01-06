@@ -1,0 +1,141 @@
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { join, basename } from 'node:path'
+import { readAllFunds, type FundData } from './fund-store.js'
+
+export interface BackupData {
+  version: string
+  backup_date: string
+  funds: FundData[]
+  platforms: Record<string, unknown> | null
+  totals_snapshot: unknown | null
+  scrape_archives: Record<string, unknown>
+}
+
+export interface BackupResult {
+  success: boolean
+  path: string
+  backup_date: string
+  fund_count: number
+  error?: string
+}
+
+/**
+ * Get the default iCloud backup directory for EscapeMint.
+ */
+export function getDefaultBackupDir(): string {
+  const home = process.env['HOME'] ?? ''
+  return join(home, 'Library', 'Mobile Documents', 'com~apple~CloudDocs', 'EscapeMint-Backups')
+}
+
+/**
+ * Read a JSON file if it exists.
+ */
+async function readJsonFile(filePath: string): Promise<unknown | null> {
+  if (!existsSync(filePath)) {
+    return null
+  }
+  const content = await readFile(filePath, 'utf-8')
+  return JSON.parse(content)
+}
+
+/**
+ * Read all scrape archive files from the scrape-archives directory.
+ */
+async function readScrapeArchives(dataDir: string): Promise<Record<string, unknown>> {
+  const archivesDir = join(dataDir, 'scrape-archives')
+  if (!existsSync(archivesDir)) {
+    return {}
+  }
+
+  const files = await readdir(archivesDir)
+  const archives: Record<string, unknown> = {}
+
+  for (const file of files) {
+    if (file.endsWith('.json')) {
+      const name = basename(file, '.json')
+      const content = await readJsonFile(join(archivesDir, file))
+      if (content) {
+        archives[name] = content
+      }
+    }
+  }
+
+  return archives
+}
+
+/**
+ * Create a timestamped backup filename.
+ */
+function createBackupFilename(): string {
+  const now = new Date()
+  const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  return `escapemint-backup-${timestamp}.json`
+}
+
+/**
+ * Create a backup of all fund data and configuration.
+ *
+ * @param dataDir - The data directory containing funds, platforms.json, etc.
+ * @param backupDir - The directory to save the backup to.
+ * @returns BackupResult with success status and backup path.
+ */
+export async function createBackup(dataDir: string, backupDir: string): Promise<BackupResult> {
+  const backupDate = new Date().toISOString()
+
+  // Ensure backup directory exists
+  if (!existsSync(backupDir)) {
+    await mkdir(backupDir, { recursive: true })
+  }
+
+  // Read all data
+  const fundsDir = join(dataDir, 'funds')
+  const funds = await readAllFunds(fundsDir)
+  const platforms = await readJsonFile(join(dataDir, 'platforms.json')) as Record<string, unknown> | null
+  const totalsSnapshot = await readJsonFile(join(dataDir, 'totals-snapshot.json'))
+  const scrapeArchives = await readScrapeArchives(dataDir)
+
+  const backupData: BackupData = {
+    version: '1.0.0',
+    backup_date: backupDate,
+    funds,
+    platforms,
+    totals_snapshot: totalsSnapshot,
+    scrape_archives: scrapeArchives
+  }
+
+  // Write backup file
+  const filename = createBackupFilename()
+  const backupPath = join(backupDir, filename)
+
+  await writeFile(backupPath, JSON.stringify(backupData, null, 2), 'utf-8')
+
+  return {
+    success: true,
+    path: backupPath,
+    backup_date: backupDate,
+    fund_count: funds.length
+  }
+}
+
+/**
+ * List all backups in a directory.
+ */
+export async function listBackups(backupDir: string): Promise<{ name: string; date: string }[]> {
+  if (!existsSync(backupDir)) {
+    return []
+  }
+
+  const files = await readdir(backupDir)
+  const backups = files
+    .filter(f => f.startsWith('escapemint-backup-') && f.endsWith('.json'))
+    .map(name => {
+      // Extract date from filename: escapemint-backup-2025-01-05T12-30-45.json
+      const match = name.match(/escapemint-backup-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})\.json/)
+      const date = match ? match[1]!.replace(/-/g, (m, i) => (i > 9 && i < 17) ? ':' : m).replace('T', ' ') : name
+      return { name, date }
+    })
+    .sort((a, b) => b.name.localeCompare(a.name)) // Most recent first
+
+  return backups
+}

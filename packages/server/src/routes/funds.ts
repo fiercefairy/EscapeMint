@@ -760,7 +760,7 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
     if (entry.action === 'BUY' && entry.amount) {
       _totalBuys += entry.amount
     } else if (entry.action === 'SELL' && entry.amount) {
-      totalSells += entry.amount
+      _totalSells += entry.amount
       // Check for full liquidation
       // Use cumShares check if fund has share tracking, otherwise fall back to value-based check
       const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
