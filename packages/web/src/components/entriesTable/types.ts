@@ -5,7 +5,7 @@ export const ALL_COLUMNS = [
   { id: 'date', label: 'Date', defaultVisible: true, excludeFrom: [] },
   { id: 'equity', label: 'Equity', defaultVisible: true, excludeFrom: [] },
   { id: 'cash', label: 'Cash', defaultVisible: true, excludeFrom: ['cash'] },
-  { id: 'action', label: 'Action', defaultVisible: true, excludeFrom: [] },
+  { id: 'action', label: 'Action', defaultVisible: true, excludeFrom: ['cash'] },
   { id: 'amount', label: 'Amount', defaultVisible: true, excludeFrom: [] },
   { id: 'shares', label: 'Shares', defaultVisible: false, excludeFrom: ['cash'] },
   { id: 'cumShares', label: 'Σ Shares', defaultVisible: false, excludeFrom: ['cash'] },
@@ -39,13 +39,14 @@ export const getColumnsForFundType = (fundType: FundType = 'stock') => {
 }
 
 // Cash fund specific defaults - use 'equity' for cash balance (not 'cash' which is for stock funds)
+// Action column excluded since cash funds always use HOLD with signed amounts
 const CASH_FUND_DEFAULT_COLUMNS: ColumnId[] = [
-  'date', 'equity', 'action', 'amount', 'expense', 'cashInt', 'fundSize',
+  'date', 'equity', 'amount', 'expense', 'cashInt', 'fundSize',
   'realized', 'realizedApy', 'cumExpense', 'cumCashInt', 'marginAvail', 'marginBorrowed', 'edit'
 ]
 
 const CASH_FUND_COLUMN_ORDER: ColumnId[] = [
-  'date', 'equity', 'action', 'amount', 'expense', 'cashInt', 'fundSize',
+  'date', 'equity', 'amount', 'expense', 'cashInt', 'fundSize',
   'realized', 'realizedApy', 'cumExpense', 'cumCashInt', 'marginAvail', 'marginBorrowed', 'notes', 'edit'
 ]
 

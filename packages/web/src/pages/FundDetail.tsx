@@ -991,8 +991,8 @@ export function FundDetail() {
                   </svg>
                   {fund.config.audited ? 'Audited' : 'Audit'}
                 </button>
-                {/* Recommendation Badge */}
-                {state?.recommendation && (
+                {/* Recommendation Badge - not shown for cash funds */}
+                {state?.recommendation && fund.config.fund_type !== 'cash' && (
                   <span
                     className={`px-2 py-0.5 text-[10px] font-bold rounded ${
                       state.recommendation.action === 'BUY'
@@ -1343,7 +1343,7 @@ export function FundDetail() {
           <AddEntryModal
             fundId={fund.id}
             fundTicker={fund.ticker}
-            currentRecommendation={state?.recommendation}
+            currentRecommendation={fund.config.fund_type === 'cash' ? undefined : state?.recommendation}
             existingEntries={fund.entries}
             targetApy={fund.config.target_apy}
             minProfitUsd={fund.config.min_profit_usd}
