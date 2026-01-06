@@ -646,6 +646,22 @@ export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: n
     return entry.action ? 'HOLD' : ''
   }
 
+  // For DEPOSIT/WITHDRAW actions, use the amount field directly
+  // Otherwise fall back to parsing from notes
+  const getDeposit = (): string => {
+    if (entry.action === 'DEPOSIT' && entry.amount) {
+      return entry.amount.toFixed(2)
+    }
+    return parseDepositFromNotes(entry.notes)
+  }
+
+  const getWithdrawal = (): string => {
+    if (entry.action === 'WITHDRAW' && entry.amount) {
+      return entry.amount.toFixed(2)
+    }
+    return parseWithdrawalFromNotes(entry.notes)
+  }
+
   return {
     date: entry.date,
     value: entry.value.toFixed(2),
@@ -654,8 +670,8 @@ export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: n
     amount: entry.amount?.toFixed(2) ?? '',
     shares: entry.shares?.toString() ?? '',
     price: entry.price?.toFixed(8) ?? '',
-    deposit: parseDepositFromNotes(entry.notes),
-    withdrawal: parseWithdrawalFromNotes(entry.notes),
+    deposit: getDeposit(),
+    withdrawal: getWithdrawal(),
     dividend: entry.dividend?.toFixed(2) ?? '',
     expense: entry.expense?.toFixed(2) ?? '',
     cash_interest: entry.cash_interest?.toFixed(2) ?? '',
