@@ -508,7 +508,7 @@ export function EntriesTable({
                           {formatCurrency(entry.value)}
                         </td>
                       )
-                    case 'action':
+                    case 'action': {
                       // Show "Close" only when it's a SELL that fully liquidated
                       // Use cumShares check if fund has share tracking, otherwise fall back to value-based check
                       const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
@@ -535,6 +535,7 @@ export function EntriesTable({
                           )}
                         </td>
                       )
+                    }
                     case 'amount':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-white">
@@ -547,14 +548,15 @@ export function EntriesTable({
                           {entry.shares ? entry.shares.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 }) : '-'}
                         </td>
                       )
-                    case 'cumShares':
+                    case 'cumShares': {
                       const displayShares = entry.cumShares && Math.abs(entry.cumShares) < 0.00000001 ? 0 : entry.cumShares
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
                           {displayShares ? displayShares.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 }) : entry.cumShares === 0 || displayShares === 0 ? '0' : '-'}
                         </td>
                       )
-                    case 'price':
+                    }
+                    case 'price': {
                       const canCalcPrice = !entry.price && entry.amount && entry.shares && entry.shares !== 0
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
@@ -569,13 +571,14 @@ export function EntriesTable({
                           ) : '-'}
                         </td>
                       )
+                    }
                     case 'invested':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-blue-400">
                           {formatCurrency(entry.totalInvested)}
                         </td>
                       )
-                    case 'cash':
+                    case 'cash': {
                       // Prefer tracked cash from entry, fall back to calculated
                       const displayCash = entry.cash ?? entry.calculatedCash
                       return (
@@ -583,7 +586,8 @@ export function EntriesTable({
                           {formatCurrency(displayCash)}
                         </td>
                       )
-                    case 'fundSize':
+                    }
+                    case 'fundSize': {
                       // Only show "closed" for true closing entries (SELL with full liquidation)
                       // Use cumShares check if fund has share tracking, otherwise fall back to value-based check
                       const hasShareTrackingForFundSize = entry.shares !== undefined && entry.shares !== 0
@@ -601,6 +605,7 @@ export function EntriesTable({
                           )}
                         </td>
                       )
+                    }
                     case 'marginAvail':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-purple-300">

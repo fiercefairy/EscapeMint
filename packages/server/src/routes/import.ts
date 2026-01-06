@@ -2013,12 +2013,11 @@ importRouter.post('/robinhood/scrape', async (req, res, next) => {
   }
 
   // Connect to browser
-  let browser: Browser
   const connectResult = await connectToBrowser(cdpUrl).catch((err: Error) => err)
   if (connectResult instanceof Error) {
     return next(badRequest(`Failed to connect to browser: ${connectResult.message}`))
   }
-  browser = connectResult
+  const browser: Browser = connectResult
 
   // First, try to find an existing Robinhood page
   let page: Page | null = await findRobinhoodPage(browser)
@@ -3688,7 +3687,7 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
 
   // Get list of existing downloaded files
   await mkdir(M1_STATEMENTS_DIR, { recursive: true })
-  let existingFiles: string[] = await readdir(M1_STATEMENTS_DIR).catch(() => [] as string[])
+  const existingFiles: string[] = await readdir(M1_STATEMENTS_DIR).catch(() => [] as string[])
 
   let totalDownloaded = 0
   let totalSkipped = 0

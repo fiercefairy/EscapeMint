@@ -413,10 +413,10 @@ function ChartSettings({
 }) {
   const [isOpen, setIsOpen] = useState(false)
   // Convert from decimal to percent for display if isPercent
-  const toDisplay = (val: number | undefined) => {
+  const toDisplay = useCallback((val: number | undefined) => {
     if (val === undefined) return ''
     return isPercent ? (val * 100).toString() : val.toString()
-  }
+  }, [isPercent])
   const [localMin, setLocalMin] = useState(() => toDisplay(bounds.yMin))
   const [localMax, setLocalMax] = useState(() => toDisplay(bounds.yMax))
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -424,7 +424,7 @@ function ChartSettings({
   useEffect(() => {
     setLocalMin(toDisplay(bounds.yMin))
     setLocalMax(toDisplay(bounds.yMax))
-  }, [bounds, isPercent])
+  }, [bounds, toDisplay])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

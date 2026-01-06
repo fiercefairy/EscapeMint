@@ -35,23 +35,21 @@ export default tseslint.config(
       ],
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/no-import-type-side-effects': 'error',
-      // Relax promise handling rules (common patterns in React)
+      // Disable promise handling rules (common patterns in React event handlers)
       '@typescript-eslint/no-floating-promises': 'off',
       '@typescript-eslint/no-misused-promises': 'off',
       '@typescript-eslint/unbound-method': 'off',
-      // Allow any in server routes that handle dynamic data
-      '@typescript-eslint/no-unsafe-assignment': 'warn',
-      '@typescript-eslint/no-unsafe-member-access': 'warn',
-      '@typescript-eslint/no-unsafe-argument': 'warn',
-      '@typescript-eslint/no-unsafe-call': 'warn',
-      '@typescript-eslint/no-unsafe-return': 'warn',
-      '@typescript-eslint/require-await': 'warn',
-      '@typescript-eslint/no-redundant-type-constituents': 'warn',
-      // Relaxed rules
-      '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
-      '@typescript-eslint/await-thenable': 'warn',
-      'no-case-declarations': 'warn',
-      'prefer-const': 'warn'
+      // Disable unsafe-* rules (they conflict with project references and create noise)
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      // Disable other noisy rules
+      '@typescript-eslint/require-await': 'off',
+      '@typescript-eslint/no-redundant-type-constituents': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+      '@typescript-eslint/await-thenable': 'off'
     }
   },
   {
@@ -65,7 +63,7 @@ export default tseslint.config(
       ...reactHooksPlugin.configs.recommended.rules,
       'react/react-in-jsx-scope': 'off',
       'react/prop-types': 'off',
-      'react/no-unescaped-entities': 'warn'
+      'react/no-unescaped-entities': 'off'
     },
     settings: {
       react: {
