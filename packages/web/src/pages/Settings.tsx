@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import { useSettings } from '../contexts/SettingsContext'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 
 const API_BASE = '/api/v1'
 
@@ -40,8 +41,10 @@ export function Settings() {
   const [importing, setImporting] = useState(false)
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge')
   const [backingUp, setBackingUp] = useState(false)
+  const [restoring, setRestoring] = useState(false)
   const [backupConfig, setBackupConfig] = useState<BackupConfig | null>(null)
   const [backups, setBackups] = useState<BackupInfo[]>([])
+  const [restoreConfirm, setRestoreConfirm] = useState<BackupInfo | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { settings, updateSetting } = useSettings()
 
@@ -95,6 +98,33 @@ export function Settings() {
     }
 
     setBackingUp(false)
+  }
+
+  const handleRestore = async (backup: BackupInfo) => {
+    setRestoring(true)
+    setRestoreConfirm(null)
+
+    const response = await fetch(`${API_BASE}/backup/restore/${encodeURIComponent(backup.name)}`, {
+      method: 'POST'
+    })
+
+    if (!response.ok) {
+      toast.error('Failed to restore backup')
+      setRestoring(false)
+      return
+    }
+
+    const result = await response.json()
+
+    if (result.success) {
+      toast.success(`Restored ${result.fund_count} funds from backup`)
+      // Reload the page to reflect restored data
+      window.location.reload()
+    } else {
+      toast.error(result.error ?? 'Restore failed')
+    }
+
+    setRestoring(false)
   }
 
   const handleExport = async () => {
@@ -298,11 +328,20 @@ export function Settings() {
         {backups.length > 0 && (
           <div className="mt-4">
             <h3 className="text-sm font-medium text-slate-300 mb-2">Recent Backups</h3>
-            <ul className="space-y-1 text-xs text-slate-400">
+            <ul className="space-y-2 text-xs text-slate-400">
               {backups.slice(0, 5).map((backup) => (
-                <li key={backup.name} className="flex items-center gap-2">
-                  <span className="text-slate-500">-</span>
-                  <span>{backup.date}</span>
+                <li key={backup.name} className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500">-</span>
+                    <span>{backup.date}</span>
+                  </div>
+                  <button
+                    onClick={() => setRestoreConfirm(backup)}
+                    disabled={restoring}
+                    className="px-2 py-0.5 text-xs bg-slate-700 text-slate-300 rounded hover:bg-slate-600 hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    Restore
+                  </button>
                 </li>
               ))}
             </ul>
@@ -344,6 +383,18 @@ export function Settings() {
           </p>
         </div>
       </div>
+
+      {/* Restore Confirmation Dialog */}
+      {restoreConfirm && (
+        <ConfirmDialog
+          title="Restore Backup"
+          message={`Are you sure you want to restore the backup from ${restoreConfirm.date}?\n\nThis will replace ALL current data with the backup data. This action cannot be undone.`}
+          confirmLabel="Restore"
+          variant="danger"
+          onConfirm={() => handleRestore(restoreConfirm)}
+          onCancel={() => setRestoreConfirm(null)}
+        />
+      )}
     </div>
   )
 }

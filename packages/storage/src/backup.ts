@@ -1,7 +1,7 @@
-import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, basename } from 'node:path'
-import { readAllFunds, type FundData } from './fund-store.js'
+import { readAllFunds, writeFund, type FundData } from './fund-store.js'
 
 export interface BackupData {
   version: string
@@ -15,6 +15,13 @@ export interface BackupData {
 export interface BackupResult {
   success: boolean
   path: string
+  backup_date: string
+  fund_count: number
+  error?: string
+}
+
+export interface RestoreResult {
+  success: boolean
   backup_date: string
   fund_count: number
   error?: string
@@ -138,4 +145,95 @@ export async function listBackups(backupDir: string): Promise<{ name: string; da
     .sort((a, b) => b.name.localeCompare(a.name)) // Most recent first
 
   return backups
+}
+
+/**
+ * Read a backup file.
+ */
+export async function readBackup(backupDir: string, filename: string): Promise<BackupData | null> {
+  const backupPath = join(backupDir, filename)
+  if (!existsSync(backupPath)) {
+    return null
+  }
+  const content = await readFile(backupPath, 'utf-8')
+  return JSON.parse(content) as BackupData
+}
+
+/**
+ * Write scrape archives to the data directory.
+ */
+async function writeScrapeArchives(dataDir: string, archives: Record<string, unknown>): Promise<void> {
+  const archivesDir = join(dataDir, 'scrape-archives')
+  if (!existsSync(archivesDir)) {
+    await mkdir(archivesDir, { recursive: true })
+  }
+
+  for (const [name, content] of Object.entries(archives)) {
+    const filePath = join(archivesDir, `${name}.json`)
+    await writeFile(filePath, JSON.stringify(content, null, 2), 'utf-8')
+  }
+}
+
+/**
+ * Restore a backup to the data directory.
+ * This replaces all existing data with the backup data.
+ *
+ * @param backupDir - The directory containing backups.
+ * @param filename - The backup filename to restore.
+ * @param dataDir - The data directory to restore to.
+ * @returns RestoreResult with success status.
+ */
+export async function restoreBackup(backupDir: string, filename: string, dataDir: string): Promise<RestoreResult> {
+  const backup = await readBackup(backupDir, filename)
+  if (!backup) {
+    return {
+      success: false,
+      backup_date: '',
+      fund_count: 0,
+      error: `Backup file not found: ${filename}`
+    }
+  }
+
+  const fundsDir = join(dataDir, 'funds')
+
+  // Clear existing funds directory
+  if (existsSync(fundsDir)) {
+    await rm(fundsDir, { recursive: true })
+  }
+  await mkdir(fundsDir, { recursive: true })
+
+  // Restore funds
+  for (const fund of backup.funds) {
+    const filePath = join(fundsDir, `${fund.id}.tsv`)
+    await writeFund(filePath, fund)
+  }
+
+  // Restore platforms.json
+  if (backup.platforms) {
+    await writeFile(
+      join(dataDir, 'platforms.json'),
+      JSON.stringify(backup.platforms, null, 2),
+      'utf-8'
+    )
+  }
+
+  // Restore totals-snapshot.json
+  if (backup.totals_snapshot) {
+    await writeFile(
+      join(dataDir, 'totals-snapshot.json'),
+      JSON.stringify(backup.totals_snapshot, null, 2),
+      'utf-8'
+    )
+  }
+
+  // Restore scrape archives
+  if (backup.scrape_archives && Object.keys(backup.scrape_archives).length > 0) {
+    await writeScrapeArchives(dataDir, backup.scrape_archives)
+  }
+
+  return {
+    success: true,
+    backup_date: backup.backup_date,
+    fund_count: backup.funds.length
+  }
 }
