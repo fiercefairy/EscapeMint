@@ -35,6 +35,8 @@ const PLATFORMS_FILE = join(DATA_DIR, 'platforms.json')
 interface PlatformConfig {
   name: string
   manage_cash?: boolean
+  /** When true, trades auto-create entries in the cash fund. Defaults to true for robinhood. */
+  auto_sync_cash?: boolean
 }
 
 async function readPlatformsData(): Promise<Record<string, PlatformConfig>> {
@@ -958,6 +960,128 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
 
   await appendEntry(filePath, entry).catch(next)
 
+  // Auto-sync to cash fund for platforms with auto_sync_cash enabled
+  // (defaults to true for robinhood)
+  let cashSyncResult: { action: string; amount: number; cashFundId: string; combined?: boolean } | null = null
+  if (!isCashFund) {
+    const platformId = fund.platform.toLowerCase()
+    const platformsData = await readPlatformsData()
+    const platformConfig = platformsData[platformId]
+    // Default auto_sync_cash to true for robinhood
+    const autoSyncCash = platformConfig?.auto_sync_cash ?? (platformId === 'robinhood')
+
+    if (autoSyncCash) {
+      const cashFundId = `${platformId}-cash`
+      const cashFundPath = join(FUNDS_DIR, `${cashFundId}.tsv`)
+      const cashFundData = await readFund(cashFundPath).catch(() => null)
+
+      if (cashFundData) {
+        // Calculate the cash change from this trade
+        let cashChange = 0
+        let changeType: 'deposit' | 'withdraw' | null = null
+        const notesParts: string[] = []
+
+        // BUY → WITHDRAW from cash (money goes to buy assets)
+        if (entry.action === 'BUY' && entry.amount && entry.amount > 0) {
+          cashChange -= entry.amount
+          changeType = 'withdraw'
+          notesParts.push(`Buy ${fund.ticker.toUpperCase()}${entry.shares ? ` (${entry.shares} shares)` : ''}`)
+        }
+
+        // SELL → DEPOSIT to cash (money comes from selling assets)
+        if (entry.action === 'SELL' && entry.amount && entry.amount > 0) {
+          cashChange += entry.amount
+          changeType = 'deposit'
+          notesParts.push(`Sell ${fund.ticker.toUpperCase()}${entry.shares ? ` (${entry.shares} shares)` : ''}`)
+        }
+
+        // Dividend → DEPOSIT to cash
+        if (entry.dividend && entry.dividend > 0) {
+          cashChange += entry.dividend
+          if (!changeType) changeType = 'deposit'
+          notesParts.push(`Dividend ${fund.ticker.toUpperCase()} $${entry.dividend.toFixed(2)}`)
+        }
+
+        // Only proceed if there's a cash change
+        if (cashChange !== 0 && changeType) {
+          // Check if there's already an entry for the same date
+          const existingEntryIndex = cashFundData.entries.findIndex(e => e.date === entry.date)
+          const round2 = (n: number) => Math.round(n * 100) / 100
+
+          if (existingEntryIndex >= 0) {
+            // Update existing same-day entry
+            const existingEntry = cashFundData.entries[existingEntryIndex]!
+            const existingValue = existingEntry.value ?? existingEntry.cash ?? 0
+
+            // Apply the change to the existing entry
+            const newValue = round2(existingValue + cashChange)
+            existingEntry.value = newValue
+            existingEntry.cash = newValue
+            existingEntry.fund_size = newValue
+
+            // Update amount based on net change direction
+            if (cashChange > 0) {
+              existingEntry.amount = round2((existingEntry.amount ?? 0) + cashChange)
+              if (existingEntry.action === 'WITHDRAW') {
+                // Net direction might have changed, recalculate
+                existingEntry.action = existingEntry.amount >= 0 ? 'DEPOSIT' : 'WITHDRAW'
+                existingEntry.amount = Math.abs(existingEntry.amount)
+              }
+            } else {
+              existingEntry.amount = round2((existingEntry.amount ?? 0) + Math.abs(cashChange))
+              if (existingEntry.action === 'DEPOSIT') {
+                existingEntry.action = 'WITHDRAW'
+              }
+            }
+
+            // Append to notes
+            const autoNote = `Auto: ${notesParts.join(', ')}`
+            existingEntry.notes = existingEntry.notes
+              ? `${existingEntry.notes} | ${autoNote}`
+              : autoNote
+
+            // Write updated fund data
+            await writeFund(cashFundPath, cashFundData)
+
+            cashSyncResult = {
+              action: changeType === 'deposit' ? 'DEPOSIT' : 'WITHDRAW',
+              amount: Math.abs(cashChange),
+              cashFundId,
+              combined: true
+            }
+          } else {
+            // No existing entry for this date, create new one
+            // Get previous cash balance (from latest entry before this date)
+            const entriesBefore = cashFundData.entries.filter(e => e.date < entry.date)
+            const prevEntry = entriesBefore.length > 0
+              ? entriesBefore[entriesBefore.length - 1]
+              : cashFundData.entries[cashFundData.entries.length - 1]
+            const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? 0
+
+            const newBalance = round2(prevBalance + cashChange)
+            const newCashEntry: FundEntry = {
+              date: entry.date,
+              value: newBalance,
+              cash: newBalance,
+              action: changeType === 'deposit' ? 'DEPOSIT' : 'WITHDRAW',
+              amount: round2(Math.abs(cashChange)),
+              fund_size: newBalance,
+              notes: `Auto: ${notesParts.join(', ')}`
+            }
+
+            await appendEntry(cashFundPath, newCashEntry).catch(() => {})
+
+            cashSyncResult = {
+              action: changeType === 'deposit' ? 'DEPOSIT' : 'WITHDRAW',
+              amount: Math.abs(cashChange),
+              cashFundId
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Re-read to get updated fund
   const updated = await readFund(filePath).catch(next)
   if (!updated) {
@@ -1024,7 +1148,8 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
   res.status(201).json({
     entry,
     state: correctedState,
-    recommendation
+    recommendation,
+    cashSync: cashSyncResult  // Included if auto-sync created an entry in cash fund
   })
 })
 

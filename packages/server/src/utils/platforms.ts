@@ -18,6 +18,10 @@ export interface PlatformConfig {
   notes?: string
   /** When true, platform manages a shared cash pool via a {platform}-cash fund */
   manage_cash?: boolean
+  /** When true, trades (BUY/SELL/dividends) on trading funds auto-create corresponding entries in the cash fund.
+   *  Use this for platforms like Robinhood where cash is shared across all trading within the platform.
+   *  Defaults to true for robinhood platform. */
+  auto_sync_cash?: boolean
   /** Column order for funds table */
   funds_column_order?: string[]
   /** Visible columns for funds table */

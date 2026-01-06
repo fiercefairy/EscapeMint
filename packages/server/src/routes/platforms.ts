@@ -30,6 +30,10 @@ interface PlatformConfig {
   notes?: string
   /** When true, platform manages a shared cash pool via a {platform}-cash fund */
   manage_cash?: boolean
+  /** When true, trades (BUY/SELL/dividends) on trading funds auto-create corresponding entries in the cash fund.
+   *  Use this for platforms like Robinhood where cash is shared across all trading within the platform.
+   *  Defaults to true for robinhood platform. */
+  auto_sync_cash?: boolean
   /** Column order for funds table */
   funds_column_order?: string[]
   /** Visible columns for funds table */
@@ -414,6 +418,9 @@ platformsRouter.patch('/:id/config', async (req, res, next) => {
   if (updates.notes !== undefined) {
     platformConfig.notes = updates.notes
   }
+  if (updates.auto_sync_cash !== undefined) {
+    platformConfig.auto_sync_cash = updates.auto_sync_cash
+  }
 
   data[platformId] = platformConfig
   await writePlatformsData(data)
@@ -434,6 +441,9 @@ platformsRouter.get('/:id/cash', async (req, res, next) => {
     return next(notFound(`Platform '${platformId}' not found`))
   }
 
+  // Determine auto_sync_cash (defaults to true for robinhood)
+  const autoSyncCash = platformConfig.auto_sync_cash ?? (platformId === 'robinhood')
+
   // Check if cash tracking is enabled
   if (!platformConfig.manage_cash) {
     return res.json({
@@ -442,7 +452,8 @@ platformsRouter.get('/:id/cash', async (req, res, next) => {
       balance: 0,
       marginAvailable: 0,
       marginBorrowed: 0,
-      interestEarned: 0
+      interestEarned: 0,
+      autoSyncCash
     })
   }
 
@@ -464,6 +475,7 @@ platformsRouter.get('/:id/cash', async (req, res, next) => {
       marginAvailable: 0,
       marginBorrowed: 0,
       interestEarned: 0,
+      autoSyncCash,
       autoDisabled: true
     })
   }
@@ -484,7 +496,8 @@ platformsRouter.get('/:id/cash', async (req, res, next) => {
     marginAvailable,
     marginBorrowed,
     interestEarned,
-    entriesCount: cashFund.entries.length
+    entriesCount: cashFund.entries.length,
+    autoSyncCash
   })
 })
 

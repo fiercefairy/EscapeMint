@@ -9,6 +9,8 @@ export interface Platform {
   name: string
   color?: string
   manage_cash?: boolean
+  /** When true, trades auto-create entries in the cash fund */
+  auto_sync_cash?: boolean
 }
 
 export async function fetchPlatforms(): Promise<ApiResult<Platform[]>> {
@@ -96,6 +98,8 @@ export interface PlatformCashStatus {
   marginBorrowed: number
   interestEarned: number
   entriesCount?: number
+  /** When true, trades auto-create entries in the cash fund */
+  autoSyncCash?: boolean
   error?: string
 }
 
@@ -145,6 +149,8 @@ export interface PlatformConfigUpdate {
   color?: string
   url?: string
   notes?: string
+  /** When true, trades auto-create entries in the cash fund */
+  auto_sync_cash?: boolean
 }
 
 export async function updatePlatformConfig(platformId: string, config: PlatformConfigUpdate): Promise<ApiResult<{ success: boolean }>> {

@@ -6,6 +6,7 @@ import {
   fetchPlatformCashStatus,
   enableCashTracking,
   disableCashTracking,
+  updatePlatformConfig,
   type PlatformMetrics,
   type PlatformCashStatus
 } from '../api/platforms'
@@ -232,6 +233,46 @@ export function PlatformDetail() {
               </div>
             )}
           </div>
+
+          {/* Auto Sync Cash Section */}
+          {cashStatus?.enabled && (
+            <div className="mt-6 pt-4 border-t border-slate-700">
+              <h3 className="text-md font-semibold text-white mb-3">Auto-Sync Trades to Cash</h3>
+              <div className="flex items-start gap-4">
+                <div className="flex-1">
+                  <p className="text-sm text-slate-400">
+                    {cashStatus.autoSyncCash
+                      ? 'When you record a BUY/SELL/dividend on a trading fund, the cash fund is automatically updated.'
+                      : 'Trades on trading funds do not automatically update the cash fund. You must manually record cash movements.'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Use this for platforms like Robinhood where cash is shared across all trading.
+                  </p>
+                </div>
+                <div>
+                  <button
+                    onClick={async () => {
+                      const newValue = !cashStatus.autoSyncCash
+                      const result = await updatePlatformConfig(platformId!, { auto_sync_cash: newValue })
+                      if (result.error) {
+                        toast.error(result.error)
+                      } else {
+                        toast.success(`Auto-sync ${newValue ? 'enabled' : 'disabled'}`)
+                        loadData()
+                      }
+                    }}
+                    className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                      cashStatus.autoSyncCash
+                        ? 'bg-mint-600 text-white hover:bg-mint-700'
+                        : 'bg-slate-600 text-white hover:bg-slate-500'
+                    }`}
+                  >
+                    {cashStatus.autoSyncCash ? 'Enabled' : 'Disabled'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
