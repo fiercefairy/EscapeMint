@@ -536,12 +536,22 @@ export function EntriesTable({
                         </td>
                       )
                     }
-                    case 'amount':
+                    case 'amount': {
+                      // For cash funds, amount is signed: positive=deposit, negative=withdraw
+                      const isCashFund = fundType === 'cash'
+                      const amountValue = entry.amount
+                      const colorClass = isCashFund && amountValue
+                        ? amountValue > 0 ? 'text-green-400' : 'text-red-400'
+                        : 'text-white'
+                      const displayAmount = isCashFund && amountValue
+                        ? (amountValue > 0 ? '+' : '') + formatCurrency(amountValue)
+                        : amountValue ? formatCurrency(amountValue) : '-'
                       return (
-                        <td key={col.id} className="px-2 py-1.5 text-right text-white">
-                          {entry.amount ? formatCurrency(entry.amount) : '-'}
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${colorClass}`}>
+                          {displayAmount}
                         </td>
                       )
+                    }
                     case 'shares':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">

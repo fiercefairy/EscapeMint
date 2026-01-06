@@ -931,9 +931,10 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     }
   }
 
-  // For cash funds with DEPOSIT/WITHDRAW actions, auto-calculate value and cash
-  // Value represents the cash balance after the transaction
-  if (isCashFund && (entry.action === 'DEPOSIT' || entry.action === 'WITHDRAW')) {
+  // For cash funds, auto-calculate value and cash from signed amount
+  // Amount is signed: positive = deposit, negative = withdraw
+  // Legacy DEPOSIT/WITHDRAW actions are converted to signed amounts
+  if (isCashFund) {
     const sortedEntries = [...fund.entries].sort((a, b) =>
       new Date(a.date).getTime() - new Date(b.date).getTime()
     )
@@ -942,12 +943,19 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     // Previous balance is from cash field, or value, or 0 if first entry
     const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? 0
 
-    // Calculate new balance
-    let newBalance = prevBalance
+    // Convert legacy DEPOSIT/WITHDRAW actions to signed amounts
     if (entry.action === 'DEPOSIT' && entry.amount) {
-      newBalance = prevBalance + entry.amount
+      entry.amount = Math.abs(entry.amount)  // Ensure positive
+      entry.action = 'HOLD'
     } else if (entry.action === 'WITHDRAW' && entry.amount) {
-      newBalance = prevBalance - entry.amount
+      entry.amount = -Math.abs(entry.amount)  // Ensure negative
+      entry.action = 'HOLD'
+    }
+
+    // Calculate new balance from signed amount
+    let newBalance = prevBalance
+    if (entry.amount) {
+      newBalance = prevBalance + entry.amount  // amount is signed
     }
     // Add cash interest if provided
     if (entry.cash_interest) {
@@ -1003,36 +1011,26 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
         }
 
         // Only proceed if there's a cash change
-        if (cashChange !== 0 && changeType) {
+        if (cashChange !== 0) {
           // Check if there's already an entry for the same date
           const existingEntryIndex = cashFundData.entries.findIndex(e => e.date === entry.date)
           const round2 = (n: number) => Math.round(n * 100) / 100
 
           if (existingEntryIndex >= 0) {
-            // Update existing same-day entry
+            // Update existing same-day entry - just add the signed amount
             const existingEntry = cashFundData.entries[existingEntryIndex]!
             const existingValue = existingEntry.value ?? existingEntry.cash ?? 0
+            const existingAmount = existingEntry.amount ?? 0
 
-            // Apply the change to the existing entry
+            // Apply the change (cashChange is already signed: positive=deposit, negative=withdraw)
             const newValue = round2(existingValue + cashChange)
+            const newAmount = round2(existingAmount + cashChange)
+
             existingEntry.value = newValue
             existingEntry.cash = newValue
             existingEntry.fund_size = newValue
-
-            // Update amount based on net change direction
-            if (cashChange > 0) {
-              existingEntry.amount = round2((existingEntry.amount ?? 0) + cashChange)
-              if (existingEntry.action === 'WITHDRAW') {
-                // Net direction might have changed, recalculate
-                existingEntry.action = existingEntry.amount >= 0 ? 'DEPOSIT' : 'WITHDRAW'
-                existingEntry.amount = Math.abs(existingEntry.amount)
-              }
-            } else {
-              existingEntry.amount = round2((existingEntry.amount ?? 0) + Math.abs(cashChange))
-              if (existingEntry.action === 'DEPOSIT') {
-                existingEntry.action = 'WITHDRAW'
-              }
-            }
+            existingEntry.amount = newAmount
+            existingEntry.action = 'HOLD'
 
             // Append to notes
             const autoNote = `Auto: ${notesParts.join(', ')}`
@@ -1044,7 +1042,7 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
             await writeFund(cashFundPath, cashFundData)
 
             cashSyncResult = {
-              action: changeType === 'deposit' ? 'DEPOSIT' : 'WITHDRAW',
+              action: cashChange > 0 ? 'DEPOSIT' : 'WITHDRAW',
               amount: Math.abs(cashChange),
               cashFundId,
               combined: true
@@ -1063,8 +1061,8 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
               date: entry.date,
               value: newBalance,
               cash: newBalance,
-              action: changeType === 'deposit' ? 'DEPOSIT' : 'WITHDRAW',
-              amount: round2(Math.abs(cashChange)),
+              action: 'HOLD',
+              amount: round2(cashChange),  // Signed amount: positive=deposit, negative=withdraw
               fund_size: newBalance,
               notes: `Auto: ${notesParts.join(', ')}`
             }
@@ -1072,7 +1070,7 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
             await appendEntry(cashFundPath, newCashEntry).catch(() => {})
 
             cashSyncResult = {
-              action: changeType === 'deposit' ? 'DEPOSIT' : 'WITHDRAW',
+              action: cashChange > 0 ? 'DEPOSIT' : 'WITHDRAW',
               amount: Math.abs(cashChange),
               cashFundId
             }
@@ -1608,32 +1606,32 @@ fundsRouter.post('/:id/sync-from-subfunds', async (req, res, next) => {
       let cashEntry: FundEntry | null = null
 
       if (entry.action === 'BUY') {
-        // BUY in sub-fund = WITHDRAW from cash
+        // BUY in sub-fund = negative amount (money leaving cash)
         cashEntry = {
           date: entry.date,
           value: 0, // Will be recalculated
-          action: 'WITHDRAW',
-          amount: entry.amount,
+          action: 'HOLD',
+          amount: -Math.abs(entry.amount),  // Negative = withdraw
           notes: `Trade: Buy ${subFund.ticker.toUpperCase()} (${entry.shares ?? ''} shares @ $${entry.price ?? ''})`
         }
       } else if (entry.action === 'SELL') {
-        // SELL in sub-fund = DEPOSIT to cash
+        // SELL in sub-fund = positive amount (money entering cash)
         cashEntry = {
           date: entry.date,
           value: 0, // Will be recalculated
-          action: 'DEPOSIT',
-          amount: entry.amount,
+          action: 'HOLD',
+          amount: Math.abs(entry.amount),  // Positive = deposit
           notes: `Trade: Sell ${subFund.ticker.toUpperCase()} (${entry.shares ?? ''} shares @ $${entry.price ?? ''})`
         }
       }
 
-      // Also capture dividends
+      // Also capture dividends (positive = money in)
       if (entry.dividend && entry.dividend > 0) {
         const divEntry: FundEntry = {
           date: entry.date,
           value: 0,
-          action: 'DEPOSIT',
-          amount: entry.dividend,
+          action: 'HOLD',
+          amount: Math.abs(entry.dividend),  // Positive = deposit
           notes: `Dividend: ${subFund.ticker.toUpperCase()}`
         }
         const divNotesPrefix = divEntry.notes?.substring(0, 50) ?? ''
@@ -1667,13 +1665,12 @@ fundsRouter.post('/:id/sync-from-subfunds', async (req, res, next) => {
   // Sort entries by date
   cashFund.entries.sort((a, b) => a.date.localeCompare(b.date))
 
-  // Recalculate running balance
+  // Recalculate running balance using signed amounts
   let runningBalance = 0
   for (const entry of cashFund.entries) {
-    if (entry.action === 'DEPOSIT' && entry.amount) {
+    // Amount is signed: positive = deposit, negative = withdraw
+    if (entry.amount) {
       runningBalance += entry.amount
-    } else if (entry.action === 'WITHDRAW' && entry.amount) {
-      runningBalance -= entry.amount
     }
     if (entry.cash_interest) {
       runningBalance += entry.cash_interest
