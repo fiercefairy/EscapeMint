@@ -84,8 +84,9 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     }
   }, [preview])
 
-  // Fetch preview when equity value changes
+  // Fetch preview when equity value changes (skip for cash funds - no recommendations)
   useEffect(() => {
+    if (fundType === 'cash') return
     const value = parseFloat(formData.value)
     if (!isNaN(value) && value >= 0) {
       const timeoutId = setTimeout(() => {
@@ -93,7 +94,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
       }, 300)
       return () => clearTimeout(timeoutId)
     }
-  }, [formData.value, formData.date, fetchPreview])
+  }, [formData.value, formData.date, fetchPreview, fundType])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -194,8 +195,8 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
         <h2 className="text-xl font-bold text-white mb-2">Take Action</h2>
         <p className="text-slate-400 text-sm mb-4">Record activity for {fundTicker.toUpperCase()}</p>
 
-        {/* Live Recommendation Banner */}
-        {formData.value && (
+        {/* Live Recommendation Banner - not shown for cash funds */}
+        {formData.value && fundType !== 'cash' && (
           <div className={`rounded-lg p-3 mb-4 ${
             previewLoading
               ? 'bg-slate-700/50 border border-slate-600'
