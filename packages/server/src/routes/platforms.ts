@@ -762,7 +762,7 @@ platformsRouter.post('/:id/enable-cash-tracking', async (req, res, next) => {
     const fundPath = join(FUNDS_DIR, `${fund.id}.tsv`)
     // Clear cash, margin, interest and expense from all entries (now tracked in cash fund)
     const clearedEntries = fund.entries.map(entry => {
-      const { cash, margin_available, margin_borrowed, cash_interest, expense, ...rest } = entry
+      const { cash: _cash, margin_available: _margin_available, margin_borrowed: _margin_borrowed, cash_interest: _cash_interest, expense: _expense, ...rest } = entry
       return rest
     })
     // Write fund with cleared entries and updated config

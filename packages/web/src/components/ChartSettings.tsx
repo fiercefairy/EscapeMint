@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type { ChartBounds } from '../api/funds'
 
 interface ChartSettingsProps {
@@ -9,10 +9,10 @@ interface ChartSettingsProps {
 
 export function ChartSettings({ bounds, onChange, isPercent = false }: ChartSettingsProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const toDisplay = (val: number | undefined) => {
+  const toDisplay = useCallback((val: number | undefined) => {
     if (val === undefined) return ''
     return isPercent ? (val * 100).toString() : val.toString()
-  }
+  }, [isPercent])
   const [localMin, setLocalMin] = useState(() => toDisplay(bounds.yMin))
   const [localMax, setLocalMax] = useState(() => toDisplay(bounds.yMax))
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -20,7 +20,7 @@ export function ChartSettings({ bounds, onChange, isPercent = false }: ChartSett
   useEffect(() => {
     setLocalMin(toDisplay(bounds.yMin))
     setLocalMax(toDisplay(bounds.yMax))
-  }, [bounds, isPercent])
+  }, [bounds, toDisplay])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

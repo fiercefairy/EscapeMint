@@ -35,13 +35,6 @@ export function ImportCSVModal({ onClose, onImported }: ImportCSVModalProps) {
   const [scrapeUrl, setScrapeUrl] = useState('')
   const [scraping, setScraping] = useState(false)
 
-  // Check browser connection status on mount and when switching to scrape mode
-  useEffect(() => {
-    if (importMode === 'scrape' && browserStatus === 'unknown') {
-      checkBrowserStatus()
-    }
-  }, [importMode, browserStatus])
-
   const checkBrowserStatus = useCallback(async () => {
     setBrowserStatus('checking')
     const result = await getBrowserStatus()
@@ -51,6 +44,13 @@ export function ImportCSVModal({ onClose, onImported }: ImportCSVModalProps) {
       setBrowserStatus(result.data?.connected ? 'connected' : 'disconnected')
     }
   }, [])
+
+  // Check browser connection status on mount and when switching to scrape mode
+  useEffect(() => {
+    if (importMode === 'scrape' && browserStatus === 'unknown') {
+      checkBrowserStatus()
+    }
+  }, [importMode, browserStatus, checkBrowserStatus])
 
   const handleConnectBrowser = useCallback(async () => {
     setBrowserStatus('connecting')

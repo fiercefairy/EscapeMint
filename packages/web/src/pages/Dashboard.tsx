@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { FundCard } from '../components/FundCard'
@@ -27,7 +27,7 @@ export function Dashboard() {
   const [showImportModal, setShowImportModal] = useState(false)
   const [showTestData, setShowTestData] = useState(false)
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true)
 
     const [fundsResult, metricsResult, historyResult] = await Promise.all([
@@ -55,11 +55,11 @@ export function Dashboard() {
     }
 
     setLoading(false)
-  }
+  }, [showTestData])
 
   useEffect(() => {
     loadData()
-  }, [showTestData])
+  }, [loadData])
 
   // Get unique platforms
   const platforms = [...new Set(funds.map(f => f.platform))]

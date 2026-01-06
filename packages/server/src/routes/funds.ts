@@ -198,7 +198,7 @@ fundsRouter.get('/history', async (req, res, next) => {
     let totalStartInput = 0
     let totalDividends = 0
     let totalExpenses = 0
-    let totalMarginAccess = 0
+    let _totalMarginAccess = 0
 
     for (const fund of funds) {
       // Find the latest entry on or before this date
@@ -235,7 +235,7 @@ fundsRouter.get('/history', async (req, res, next) => {
 
       // Margin access
       if (fund.config.margin_access_usd) {
-        totalMarginAccess += fund.config.margin_access_usd
+        _totalMarginAccess += fund.config.margin_access_usd
       }
 
       // Cumulative dividends and expenses up to date (all positive in data)
@@ -395,8 +395,8 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
   const configWithActualFundSize = { ...fund.config, fund_size_usd: actualFundSize }
 
   // Calculate invested amount (total buys - total sells, accounting for full liquidations)
-  let totalBuys = 0
-  let totalSells = 0
+  let _totalBuys = 0
+  let _totalSells = 0
   let cumShares = 0
   const hasShareTracking = fund.entries.some(e => e.shares !== undefined && e.shares !== 0)
   const sortedEntries = [...fund.entries].sort((a, b) => a.date.localeCompare(b.date))
@@ -409,7 +409,7 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
     }
 
     if (entry.action === 'BUY' && entry.amount) {
-      totalBuys += entry.amount
+      _totalBuys += entry.amount
     } else if (entry.action === 'SELL' && entry.amount) {
       // Check for full liquidation
       const isFullLiquidation = hasShareTracking
@@ -418,11 +418,11 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
 
       if (isFullLiquidation) {
         // Reset on full liquidation
-        totalBuys = 0
-        totalSells = 0
+        _totalBuys = 0
+        _totalSells = 0
         cumShares = 0
       } else {
-        totalSells += entry.amount
+        _totalSells += entry.amount
       }
     }
   }
@@ -747,8 +747,8 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
 
   // Calculate invested amount with full liquidation reset (same as FundDetail.tsx)
   // Only consider entries up to the snapshot date
-  let totalBuys = 0
-  let totalSells = 0
+  let _totalBuys = 0
+  let _totalSells = 0
   let cumShares = 0
   for (const entry of entriesUpToDate) {
     // Track shares first - BUY adds, SELL subtracts
@@ -758,7 +758,7 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
     }
 
     if (entry.action === 'BUY' && entry.amount) {
-      totalBuys += entry.amount
+      _totalBuys += entry.amount
     } else if (entry.action === 'SELL' && entry.amount) {
       totalSells += entry.amount
       // Check for full liquidation
@@ -768,8 +768,8 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
         ? Math.abs(cumShares) < 0.0001
         : entry.value <= entry.amount + 0.01
       if (isFullLiquidation) {
-        totalBuys = 0
-        totalSells = 0
+        _totalBuys = 0
+        _totalSells = 0
         cumShares = 0
       }
     }

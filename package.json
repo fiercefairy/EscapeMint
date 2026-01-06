@@ -1,6 +1,7 @@
 {
   "name": "escapemint",
   "version": "0.6.0",
+  "type": "module",
   "private": true,
   "description": "A local-first, open-source capital allocation engine for rules-based fund management",
   "scripts": {
@@ -30,7 +31,8 @@
     "typecheck": "tsc --noEmit",
     "start": "pm2 start ecosystem.config.cjs --env production",
     "stop": "pm2 stop ecosystem.config.cjs",
-    "logs": "pm2 logs"
+    "logs": "pm2 logs",
+    "prepare": "husky"
   },
   "keywords": [
     "investing",
@@ -50,6 +52,8 @@
     "eslint": "^9.17.0",
     "eslint-plugin-react": "^7.37.3",
     "eslint-plugin-react-hooks": "^5.1.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "pm2": "^5.4.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
@@ -61,5 +65,10 @@
   ],
   "dependencies": {
     "pdf-parse": "^2.4.5"
+  },
+  "lint-staged": {
+    "packages/**/*.{ts,tsx}": [
+      "eslint"
+    ]
   }
 }

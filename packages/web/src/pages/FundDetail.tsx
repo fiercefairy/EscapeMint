@@ -52,7 +52,7 @@ export function FundDetail() {
     setApyBounds(fund.config.chart_bounds?.apy ?? {})
     setPnlBounds(fund.config.chart_bounds?.pnl ?? {})
     setChartsCollapsed(fund.config.charts_collapsed ?? false)
-  }, [fund?.id])
+  }, [fund])
 
   // Update APY chart bounds
   const updateApyBounds = useCallback(async (bounds: ChartBounds) => {

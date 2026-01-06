@@ -51,7 +51,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   let cumExpenses = 0
   let cumCashInterest = 0
   let cumExtracted = 0
-  let previousCyclesGain = 0
+  let _previousCyclesGain = 0
   // Track total ever invested across all cycles (for APY calculation on fully liquidated funds)
   let totalEverInvested = 0
 
@@ -97,7 +97,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
       let extracted = 0
       if (isFullLiquidation) {
         extracted = entry.amount - costBasis
-        previousCyclesGain += extracted
+        _previousCyclesGain += extracted
         costBasis = 0
         totalBuys = 0
         totalSells = 0

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -26,7 +26,7 @@ export function PlatformDetail() {
   const [cashActionLoading, setCashActionLoading] = useState(false)
   const [disableTargetFund, setDisableTargetFund] = useState<string>('')
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!platformId) return
     setLoading(true)
 
@@ -46,11 +46,11 @@ export function PlatformDetail() {
     }
 
     setLoading(false)
-  }
+  }, [platformId])
 
   useEffect(() => {
     loadData()
-  }, [platformId])
+  }, [loadData])
 
   const handleEnableCashTracking = async () => {
     if (!platformId) return

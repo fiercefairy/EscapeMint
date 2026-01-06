@@ -104,8 +104,8 @@ export function computeRecommendation(
         cash_available_usd,
         limit_usd: limit,
         reasoning: accumulate
-          ? `Above target by $${target_diff_usd.toFixed(2)} (> $${min_profit_usd} threshold). Accumulate mode: SELL $${sellAmount.toFixed(2)}.`
-          : `Above target by $${target_diff_usd.toFixed(2)} (> $${min_profit_usd} threshold). Liquidating entire position of $${sellAmount.toFixed(2)}.`
+          ? `Above target by $${target_diff_usd.toFixed(2)} (> $${min_profit_usd.toFixed(2)} threshold). Accumulate mode: SELL $${sellAmount.toFixed(2)}.`
+          : `Above target by $${target_diff_usd.toFixed(2)} (> $${min_profit_usd.toFixed(2)} threshold). Liquidating entire position of $${sellAmount.toFixed(2)}.`
       },
       insufficient_cash: false
     }

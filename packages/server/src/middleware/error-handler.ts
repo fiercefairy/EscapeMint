@@ -14,7 +14,7 @@ export const errorHandler: ErrorRequestHandler = (
   const statusCode = err.statusCode ?? 500
   const message = err.message || 'Internal Server Error'
 
-  console.error(`[Error] ${statusCode}: ${message}`, err.stack)
+  console.error(`[Error] ${String(statusCode)}: ${message}`, err.stack)
 
   res.status(statusCode).json({
     error: {

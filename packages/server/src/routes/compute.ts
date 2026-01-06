@@ -15,7 +15,7 @@ interface ComputeRequest {
   equity_value_usd: number
 }
 
-computeRouter.post('/recommendation', async (req, res, next) => {
+computeRouter.post('/recommendation', (req, res, next) => {
   const input = req.body as ComputeRequest
 
   if (!input.config) {

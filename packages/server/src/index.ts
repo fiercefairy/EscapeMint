@@ -34,7 +34,7 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/version', async (_req, res) => {
   const pkgPath = join(__dirname, '..', '..', '..', 'package.json')
   const pkgContent = await readFile(pkgPath, 'utf-8')
-  const pkg = JSON.parse(pkgContent)
+  const pkg = JSON.parse(pkgContent) as { version: string; name: string }
   res.json({ version: pkg.version, name: pkg.name })
 })
 
@@ -42,7 +42,7 @@ app.get('/api/version', async (_req, res) => {
 app.use(errorHandler)
 
 app.listen(PORT, () => {
-  console.log(`EscapeMint API running on http://localhost:${PORT}`)
+  console.log(`EscapeMint API running on http://localhost:${String(PORT)}`)
 })
 
 export { app }

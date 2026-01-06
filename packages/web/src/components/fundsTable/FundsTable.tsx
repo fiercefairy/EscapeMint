@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { updatePlatformConfig, type PlatformFundMetrics } from '../../api/platforms'
@@ -23,7 +23,7 @@ export function FundsTable({
   const navigate = useNavigate()
   const [showColumnMenu, setShowColumnMenu] = useState(false)
   // Get valid column IDs from the current column definitions
-  const validColumnIds = new Set(ALL_FUND_COLUMNS.map(c => c.id))
+  const validColumnIds = useMemo(() => new Set(ALL_FUND_COLUMNS.map(c => c.id)), [])
 
   const [visibleColumns, setVisibleColumns] = useState<Set<FundColumnId>>(() => {
     if (savedVisibleColumns) {
@@ -67,7 +67,7 @@ export function FundsTable({
     } else {
       setVisibleColumns(getDefaultFundColumns())
     }
-  }, [savedColumnOrder, savedVisibleColumns])
+  }, [savedColumnOrder, savedVisibleColumns, validColumnIds])
 
   // Close column menu on outside click
   useEffect(() => {
