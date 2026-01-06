@@ -341,8 +341,11 @@ export function Dashboard() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                     {platformFunds.map(fund => {
                       const fundMetrics = filteredMetrics?.funds.find(f => f.id === fund.id)
+                      const fundPath = fund.config.fund_type === 'derivatives'
+                        ? `/derivatives/${fund.id}`
+                        : `/fund/${fund.id}`
                       return (
-                        <Link key={fund.id} to={`/fund/${fund.id}`}>
+                        <Link key={fund.id} to={fundPath}>
                           <FundCard fund={fund} impactPct={fundMetrics?.fundSharesPct} />
                         </Link>
                       )

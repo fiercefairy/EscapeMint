@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import { Dashboard } from './pages/Dashboard'
 import { FundDetail } from './pages/FundDetail'
+import { DerivativesFundDetail } from './pages/DerivativesFundDetail'
 import { PlatformDetail } from './pages/PlatformDetail'
 import { AuditTrail } from './pages/AuditTrail'
 import { Platforms } from './pages/Platforms'
@@ -15,6 +16,9 @@ export default function App() {
         <Route path="fund/:id" element={<FundDetail />} />
         <Route path="fund/:id/edit" element={<FundDetail />} />
         <Route path="fund/:id/add" element={<FundDetail />} />
+        <Route path="derivatives/:id" element={<DerivativesFundDetail />} />
+        <Route path="derivatives/:id/funding" element={<DerivativesFundDetail />} />
+        <Route path="derivatives/:id/history" element={<DerivativesFundDetail />} />
         <Route path="platform/:platformId" element={<PlatformDetail />} />
         <Route path="audit" element={<AuditTrail />} />
         <Route path="platforms" element={<Platforms />} />

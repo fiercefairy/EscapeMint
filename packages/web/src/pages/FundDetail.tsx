@@ -99,7 +99,7 @@ export function FundDetail() {
   // Toggle audited status
   const toggleAudited = useCallback(async () => {
     if (!id || !fund) return
-    const newAuditedValue: string = fund.config.audited ? '' : new Date().toISOString().split('T')[0]
+    const newAuditedValue = fund.config.audited ? '' : new Date().toISOString().split('T')[0]
     const result = await updateFundConfig(id, { audited: newAuditedValue })
     if (result.error) {
       toast.error(result.error)
@@ -1045,7 +1045,15 @@ export function FundDetail() {
                   // Trading fund (stock/crypto): full trading config
                   <>
                     <span title="Fund Type">
-                      <span className="text-slate-500">Type:</span> <span className={fund.config.fund_type === 'crypto' ? 'text-yellow-300' : 'text-green-300'}>{fund.config.fund_type === 'crypto' ? 'Crypto' : 'Stock'}</span>
+                      <span className="text-slate-500">Type:</span> <span className={
+                        fund.config.fund_type === 'crypto' ? 'text-yellow-300'
+                        : fund.config.fund_type === 'derivatives' ? 'text-orange-300'
+                        : 'text-green-300'
+                      }>{
+                        fund.config.fund_type === 'crypto' ? 'Crypto'
+                        : fund.config.fund_type === 'derivatives' ? 'Futures'
+                        : 'Stock'
+                      }</span>
                     </span>
                     <span className="text-slate-600">|</span>
                     <span title="Mode">

@@ -52,6 +52,12 @@ export function computeRecommendation(
     return null
   }
 
+  // Derivatives funds use their own order management system
+  // Standard BUY/SELL recommendations don't apply to perpetual futures
+  if (config.fund_type === 'derivatives') {
+    return null
+  }
+
   // Closed fund - no recommendation (only if explicitly closed or legacy undefined status with zero fund size)
   const isClosed = config.status === 'closed' || (config.status === undefined && config.fund_size_usd === 0)
   if (isClosed) {

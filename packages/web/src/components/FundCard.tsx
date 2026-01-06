@@ -12,6 +12,7 @@ export function FundCard({ fund, impactPct }: FundCardProps) {
   // Use explicit status if set, otherwise fall back to legacy check (undefined status + zero fund size)
   const isClosed = fund.config.status === 'closed' || (fund.config.status === undefined && fundSize === 0)
   const isCashFund = fund.config.fund_type === 'cash'
+  const isDerivativesFund = fund.config.fund_type === 'derivatives'
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -26,9 +27,13 @@ export function FundCard({ fund, impactPct }: FundCardProps) {
     return (value * 100).toFixed(1) + '%'
   }
 
-  // Cash funds have a blue color scheme
-  const borderHoverClass = isCashFund ? 'hover:border-blue-500' : 'hover:border-mint-600'
-  const valueColorClass = isCashFund ? 'text-blue-400 font-medium' : 'text-mint-400 font-medium'
+  // Different color schemes by fund type
+  const borderHoverClass = isCashFund ? 'hover:border-blue-500'
+    : isDerivativesFund ? 'hover:border-orange-500'
+    : 'hover:border-mint-600'
+  const valueColorClass = isCashFund ? 'text-blue-400 font-medium'
+    : isDerivativesFund ? 'text-orange-400 font-medium'
+    : 'text-mint-400 font-medium'
 
   return (
     <div className={`bg-slate-800 rounded-lg p-3 border transition-all ${borderHoverClass} ${
@@ -55,10 +60,13 @@ export function FundCard({ fund, impactPct }: FundCardProps) {
           {isCashFund && (
             <span className="px-1.5 py-0.5 text-xs bg-blue-900 text-blue-400 rounded">Cash</span>
           )}
+          {isDerivativesFund && (
+            <span className="px-1.5 py-0.5 text-xs bg-orange-900 text-orange-400 rounded">Futures</span>
+          )}
           {isClosed && (
             <span className="px-1.5 py-0.5 text-xs bg-slate-700 text-slate-400 rounded">Closed</span>
           )}
-          {!isClosed && !isCashFund && fund.config.accumulate && (
+          {!isClosed && !isCashFund && !isDerivativesFund && fund.config.accumulate && (
             <span className="px-1.5 py-0.5 text-xs bg-mint-900 text-mint-400 rounded">Acc</span>
           )}
         </div>

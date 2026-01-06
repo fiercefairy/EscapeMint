@@ -1,4 +1,4 @@
-import type { SubFundConfig, Trade, CashFlow, FundState } from './types.js'
+import type { SubFundConfig, Trade, CashFlow, FundState, FundType } from './types.js'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const DAYS_PER_YEAR = 365
@@ -14,7 +14,7 @@ export interface FundMetrics {
   platform: string
   ticker: string
   status: 'active' | 'closed'
-  fundType: 'cash' | 'stock' | 'crypto'
+  fundType: FundType
   fundSize: number
   currentValue: number
   startInput: number

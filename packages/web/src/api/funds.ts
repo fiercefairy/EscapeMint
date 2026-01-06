@@ -17,7 +17,7 @@ export interface ChartBounds {
 }
 
 export type FundStatus = 'active' | 'closed'
-export type FundType = 'cash' | 'stock' | 'crypto'
+export type FundType = 'cash' | 'stock' | 'crypto' | 'derivatives'
 
 export interface FundConfig {
   fund_type?: FundType
@@ -46,6 +46,13 @@ export interface FundConfig {
   entries_column_order?: string[]
   entries_visible_columns?: string[]
   audited?: string
+  // Derivatives-specific config
+  product_id?: string  // Coinbase product ID (e.g., 'BIP-20DEC30-CDE')
+  initial_margin_rate?: number  // Default 0.20 (20%)
+  maintenance_margin_rate?: number  // Default 0.05 (5%)
+  contract_multiplier?: number  // 0.01 for BIP micro-futures
+  api_key_name?: string  // Reference to stored Keychain credential
+  liquidation_threshold_pct?: number  // Alert threshold
 }
 
 export interface FundSummary {

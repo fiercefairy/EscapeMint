@@ -22,6 +22,15 @@ export interface FundEntry {
   margin_available?: number
   margin_borrowed?: number
   notes?: string
+
+  // Derivatives-specific fields
+  contracts?: number           // Number of contracts (position size)
+  entry_price?: number         // Average entry price at snapshot
+  liquidation_price?: number   // Calculated liquidation price
+  unrealized_pnl?: number      // Unrealized P&L at snapshot
+  funding_profit?: number      // Funding rate profit (positive)
+  funding_loss?: number        // Funding loss + fees (negative, stored as positive)
+  margin_locked?: number       // Total margin locked in positions
 }
 
 /**
@@ -36,7 +45,7 @@ export interface FundData {
   entries: FundEntry[]
 }
 
-const ENTRY_HEADERS = ['date', 'value', 'cash', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'notes']
+const ENTRY_HEADERS = ['date', 'value', 'cash', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'notes', 'contracts', 'entry_price', 'liquidation_price', 'unrealized_pnl', 'funding_profit', 'funding_loss', 'margin_locked']
 
 /**
  * Get the JSON config file path for a TSV file.
@@ -127,6 +136,28 @@ function parseEntry(line: string, headers: string[]): FundEntry {
       case 'notes':
         if (val) entry.notes = val.replace(/\\t/g, '\t').replace(/\\n/g, '\n')
         break
+      // Derivatives-specific fields
+      case 'contracts':
+        if (val) entry.contracts = parseFloat(val)
+        break
+      case 'entry_price':
+        if (val) entry.entry_price = parseFloat(val)
+        break
+      case 'liquidation_price':
+        if (val) entry.liquidation_price = parseFloat(val)
+        break
+      case 'unrealized_pnl':
+        if (val) entry.unrealized_pnl = parseFloat(val)
+        break
+      case 'funding_profit':
+        if (val) entry.funding_profit = parseFloat(val)
+        break
+      case 'funding_loss':
+        if (val) entry.funding_loss = parseFloat(val)
+        break
+      case 'margin_locked':
+        if (val) entry.margin_locked = parseFloat(val)
+        break
     }
   }
 
@@ -151,7 +182,15 @@ function serializeEntry(entry: FundEntry): string {
     entry.fund_size?.toString() ?? '',
     entry.margin_available?.toString() ?? '',
     entry.margin_borrowed?.toString() ?? '',
-    (entry.notes ?? '').replace(/\t/g, '\\t').replace(/\n/g, '\\n')
+    (entry.notes ?? '').replace(/\t/g, '\\t').replace(/\n/g, '\\n'),
+    // Derivatives-specific fields
+    entry.contracts?.toString() ?? '',
+    entry.entry_price?.toString() ?? '',
+    entry.liquidation_price?.toString() ?? '',
+    entry.unrealized_pnl?.toString() ?? '',
+    entry.funding_profit?.toString() ?? '',
+    entry.funding_loss?.toString() ?? '',
+    entry.margin_locked?.toString() ?? ''
   ]
   return values.join('\t')
 }

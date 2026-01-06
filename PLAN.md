@@ -21,7 +21,7 @@ A local-first, open-source capital allocation engine for rules-based fund manage
 
 - No live market data or price feeds
 - No automated trade execution
-- No Coinbase derivatives logic
+- ~~No Coinbase derivatives logic~~ **Implemented in v0.6**
 - No M1 margin borrowing logic
 - No multi-user or authentication
 - No cloud sync or remote storage
@@ -35,8 +35,77 @@ A local-first, open-source capital allocation engine for rules-based fund manage
 | v2.0 | Strategy plugins, per-holding allocation, advanced analytics |
 | v0.3 | Platform dashboards, CSV import (Robinhood), platform-level configs, APY history tracking |
 | v0.4 | ✅ Platform-level cash tracking, Cash sub-funds, auto-create cash funds, cash isolation, TWFS-based aggregate contributions |
+| v0.6 | ✅ Coinbase derivatives integration (BTC perpetual futures), API key management, FIFO cost basis, funding tracker |
 
-### Recently Completed: Shared Cash Fund for Recommendations
+### Recently Completed: Coinbase Derivatives Integration (v0.6)
+
+**Status: COMPLETE** (2026-01-05)
+
+Integrated Coinbase BTC perpetual futures tracking into EscapeMint. This adds a new `derivatives` fund type with:
+
+#### Features Implemented:
+- **New `derivatives` fund type**: Separate from cash/stock/crypto for perpetual futures
+- **API Key Management**: Secure storage in macOS Keychain via `security` command
+- **Coinbase API Client**: JWT-authenticated (ES256) read-only access to:
+  - Positions (`/api/v3/brokerage/intx/positions`)
+  - Portfolio summary (`/api/v3/brokerage/intx/portfolio`)
+  - Historical fills (`/api/v3/brokerage/orders/historical/fills`)
+  - Funding payments (`/api/v3/brokerage/cfm/funding`)
+  - Current price (`/api/v3/brokerage/products/{productId}`)
+- **FIFO Cost Basis Tracking**: Process trades with proper lot tracking for tax purposes
+- **Liquidation Price Calculation**: Based on margin, position size, and equity
+- **Safe Order Ladder**: Suggest limit orders that keep equity positive at $0 BTC
+- **Funding/Rewards Archive**: Manual and bulk import of funding payments and USDC rewards
+- **UI Components**:
+  - `DerivativesDashboard`: Position summary with P&L, margin, contracts
+  - `FundingTracker`: Funding payments and USDC rewards with cumulative totals
+  - `ApiKeyModal`: Manage Coinbase API keys stored in Keychain
+  - `DerivativesFundDetail` page with tabbed navigation
+
+#### API Endpoints Added:
+- `GET/POST/DELETE /api/v1/derivatives/api-keys` - Key management
+- `POST /api/v1/derivatives/api-keys/:name/test` - Test credentials
+- `GET /api/v1/derivatives/positions` - Fetch live positions
+- `GET /api/v1/derivatives/portfolio` - Fetch margin/equity summary
+- `GET /api/v1/derivatives/fills/:productId` - Fetch trade history
+- `GET /api/v1/derivatives/funding/:productId` - Fetch funding payments
+- `GET /api/v1/derivatives/price/:productId` - Fetch current price
+- `GET /api/v1/import/coinbase-btcd/archive` - View funding/rewards archive
+- `POST /api/v1/import/coinbase-btcd/funding/manual` - Add manual funding entry
+- `POST /api/v1/import/coinbase-btcd/funding/bulk` - Bulk import funding
+- `POST /api/v1/import/coinbase-btcd/rewards/manual` - Add manual reward entry
+- `POST /api/v1/import/coinbase-btcd/rewards/bulk` - Bulk import rewards
+
+#### Routes Added:
+- `/derivatives/:id` - Position dashboard
+- `/derivatives/:id/funding` - Funding & rewards tracker
+- `/derivatives/:id/history` - Trade history (placeholder)
+
+#### Key Files:
+| Package | File | Description |
+|---------|------|-------------|
+| engine | `types.ts` | Extended FundType, SubFundConfig |
+| engine | `derivatives-types.ts` | CostBasisLot, DerivativesPosition, etc. |
+| engine | `derivatives-calculations.ts` | FIFO, liquidation, order ladder |
+| storage | `fund-store.ts` | Extended FundEntry with derivatives fields |
+| server | `utils/keychain.ts` | macOS Keychain utilities |
+| server | `utils/coinbase-api.ts` | JWT auth, API client |
+| server | `routes/derivatives.ts` | API endpoints |
+| server | `routes/import.ts` | Coinbase archive endpoints |
+| web | `api/derivatives.ts` | Frontend API client |
+| web | `components/DerivativesDashboard.tsx` | Position dashboard |
+| web | `components/FundingTracker.tsx` | Funding/rewards UI |
+| web | `components/ApiKeyModal.tsx` | API key management |
+| web | `pages/DerivativesFundDetail.tsx` | Main detail page |
+
+#### Safety Constraints:
+- **READ-ONLY API**: All Coinbase operations are GET-only - no trade execution
+- **Keychain Security**: API secrets never stored in files or logged
+- **JWT Refresh**: Fresh JWT generated for each request (2-min expiry)
+
+---
+
+### Previously Completed: Shared Cash Fund for Recommendations
 
 **Status: COMPLETE**
 

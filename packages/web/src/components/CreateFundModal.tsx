@@ -112,7 +112,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
           <div>
             <label className="block text-xs text-slate-400 mb-2">Fund Type</label>
             <div className="flex gap-2">
-              {(['stock', 'crypto', 'cash'] as FundType[]).map(type => (
+              {(['stock', 'crypto', 'cash', 'derivatives'] as FundType[]).map(type => (
                 <button
                   key={type}
                   type="button"
@@ -123,11 +123,13 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                         ? 'bg-blue-600 text-white'
                         : type === 'crypto'
                         ? 'bg-yellow-600 text-white'
+                        : type === 'derivatives'
+                        ? 'bg-orange-600 text-white'
                         : 'bg-green-600 text-white'
                       : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                   }`}
                 >
-                  {type === 'stock' ? 'Stock' : type === 'crypto' ? 'Crypto' : 'Cash'}
+                  {type === 'stock' ? 'Stock' : type === 'crypto' ? 'Crypto' : type === 'derivatives' ? 'Futures' : 'Cash'}
                 </button>
               ))}
             </div>
@@ -136,6 +138,8 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                 ? 'Cash funds track deposits/withdrawals and earn interest'
                 : fundType === 'crypto'
                 ? 'Crypto funds track buy/sell without dividends'
+                : fundType === 'derivatives'
+                ? 'Futures funds track perpetual contracts with FIFO cost basis'
                 : 'Stock funds support full trading, dividends, and DCA strategies'}
             </p>
           </div>

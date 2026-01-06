@@ -509,7 +509,9 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
 
   const correctedState = { ...state, cash_available_usd: cashAvailable }
 
-  const recommendation = computeRecommendation(configWithActualFundSize, correctedState)
+  // Skip recommendation for cash funds - they don't need trading recommendations
+  const isCashFund = fund.config.fund_type === 'cash'
+  const recommendation = isCashFund ? null : computeRecommendation(configWithActualFundSize, correctedState)
 
   // Compute closed fund metrics if fund is closed (explicit status or legacy undefined status with zero fund size)
   let closedMetrics = null
@@ -734,7 +736,7 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
   const sortedEntries = [...fund.entries].sort((a, b) =>
     new Date(a.date).getTime() - new Date(b.date).getTime()
   )
-  const entriesUpToDate = sortedEntries.filter(e => e.date < snapshotDate)
+  const entriesUpToDate = sortedEntries.filter(e => e.date <= snapshotDate)
   const precedingEntry = entriesUpToDate[entriesUpToDate.length - 1]
 
   const trades = entriesToTrades(entriesUpToDate)
@@ -810,7 +812,9 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
   }
   const correctedState = { ...state, cash_available_usd: correctedCashAvailable }
 
-  const recommendation = computeRecommendation(configWithActualFundSize, correctedState)
+  // Skip recommendation for cash funds - they don't need trading recommendations
+  const isCashFund = fund.config.fund_type === 'cash'
+  const recommendation = isCashFund ? null : computeRecommendation(configWithActualFundSize, correctedState)
 
   // Include margin info for UI suggestions (from preceding entry)
   const marginAvailable = precedingEntry?.margin_available ?? 0
@@ -925,6 +929,33 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     }
   }
 
+  // For cash funds with DEPOSIT/WITHDRAW actions, auto-calculate value and cash
+  // Value represents the cash balance after the transaction
+  if (isCashFund && (entry.action === 'DEPOSIT' || entry.action === 'WITHDRAW')) {
+    const sortedEntries = [...fund.entries].sort((a, b) =>
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    )
+    const entriesBefore = sortedEntries.filter(e => e.date < entry.date)
+    const prevEntry = entriesBefore[entriesBefore.length - 1]
+    // Previous balance is from cash field, or value, or 0 if first entry
+    const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? 0
+
+    // Calculate new balance
+    let newBalance = prevBalance
+    if (entry.action === 'DEPOSIT' && entry.amount) {
+      newBalance = prevBalance + entry.amount
+    } else if (entry.action === 'WITHDRAW' && entry.amount) {
+      newBalance = prevBalance - entry.amount
+    }
+    // Add cash interest if provided
+    if (entry.cash_interest) {
+      newBalance += entry.cash_interest
+    }
+
+    entry.value = Math.round(newBalance * 100) / 100
+    entry.cash = entry.value
+  }
+
   await appendEntry(filePath, entry).catch(next)
 
   // Re-read to get updated fund
@@ -933,8 +964,9 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     return next(notFound('Fund'))
   }
 
-  // Compute new state
-  const trades = entriesToTrades(updated.entries)
+  // Compute state using trades BEFORE this entry's action for accurate gain display
+  // The equity value entered represents portfolio value at snapshot time, before BUY/SELL executes
+  const tradesBeforeAction = entriesToTrades(fund.entries) // fund.entries is before the new entry
   const dividends = entriesToDividends(updated.entries)
   const expenses = entriesToExpenses(updated.entries)
 
@@ -942,9 +974,10 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
   const actualFundSize = entry.fund_size ?? updated.config.fund_size_usd
   const configWithActualFundSize = { ...updated.config, fund_size_usd: actualFundSize }
 
+  // Compute state with pre-action trades so gain reflects equity vs previous invested
   const state = computeFundState(
     configWithActualFundSize,
-    trades,
+    tradesBeforeAction,
     [],
     dividends,
     expenses,
@@ -952,11 +985,45 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     entry.date
   )
 
-  const recommendation = computeRecommendation(configWithActualFundSize, state)
+  // Correct cash_available for funds that don't manage their own cash
+  const manageCashSelf2 = updated.config.manage_cash === true
+  let correctedCashAvailable = state.cash_available_usd
+  if (!manageCashSelf2 && updated.config.fund_type !== 'cash') {
+    // Look up platform cash fund
+    const cashFundId = updated.config.cash_fund ?? `${updated.platform.toLowerCase()}-cash`
+    const cashFundPath = join(FUNDS_DIR, `${cashFundId}.tsv`)
+    const cashFundData = await readFund(cashFundPath).catch(() => null)
+    if (cashFundData && cashFundData.entries.length > 0) {
+      const cashFundLatest = cashFundData.entries[cashFundData.entries.length - 1]
+      correctedCashAvailable = cashFundLatest?.cash ?? cashFundLatest?.value ?? 0
+    } else {
+      correctedCashAvailable = 0
+    }
+  }
+  const correctedState = { ...state, cash_available_usd: correctedCashAvailable }
+
+  // Compute recommendation using post-action state (includes new entry's action)
+  // This tells the user what to do NEXT after this action
+  // Skip recommendation for cash funds - they don't need trading recommendations
+  let recommendation = null
+  if (!isCashFund) {
+    const tradesAfterAction = entriesToTrades(updated.entries)
+    const stateForRecommendation = computeFundState(
+      configWithActualFundSize,
+      tradesAfterAction,
+      [],
+      dividends,
+      expenses,
+      entry.value,
+      entry.date
+    )
+    const correctedStateForRec = { ...stateForRecommendation, cash_available_usd: correctedCashAvailable }
+    recommendation = computeRecommendation(configWithActualFundSize, correctedStateForRec)
+  }
 
   res.status(201).json({
     entry,
-    state,
+    state: correctedState,
     recommendation
   })
 })

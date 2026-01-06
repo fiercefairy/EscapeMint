@@ -4354,3 +4354,609 @@ importRouter.post('/m1-statements/apply', async (req, res, next) => {
     }
   })
 })
+
+// ============================================================================
+// Coinbase Derivatives Scraping (for funding/rewards not in API)
+// ============================================================================
+
+// Types for Coinbase scraped data
+interface CoinbaseFundingEntry {
+  id: string  // unique ID based on date + amount
+  date: string  // ISO date YYYY-MM-DD
+  amount: number  // Funding amount (positive = received, negative = paid)
+  rate?: string  // Funding rate if available
+  productId?: string  // Product ID like 'BIP-20DEC30-CDE'
+}
+
+interface CoinbaseRewardEntry {
+  id: string
+  date: string  // ISO date YYYY-MM-DD
+  amount: number  // Reward amount (always positive)
+  type: 'usdc_interest' | 'staking' | 'other'
+  description?: string
+}
+
+interface CoinbaseDerivativesArchive {
+  platform: 'coinbase-btcd'
+  createdAt: string
+  updatedAt: string
+  fundingPayments: CoinbaseFundingEntry[]
+  rewards: CoinbaseRewardEntry[]
+}
+
+/**
+ * Load or create Coinbase derivatives archive
+ */
+const loadCoinbaseArchive = async (): Promise<CoinbaseDerivativesArchive> => {
+  await mkdir(SCRAPE_ARCHIVE_DIR, { recursive: true })
+  const archivePath = join(SCRAPE_ARCHIVE_DIR, 'coinbase-btcd.json')
+
+  const content = await readFile(archivePath, 'utf-8').catch(() => null)
+  if (content) {
+    return JSON.parse(content) as CoinbaseDerivativesArchive
+  }
+
+  return {
+    platform: 'coinbase-btcd',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    fundingPayments: [],
+    rewards: []
+  }
+}
+
+/**
+ * Save Coinbase derivatives archive
+ */
+const saveCoinbaseArchive = async (archive: CoinbaseDerivativesArchive): Promise<void> => {
+  await mkdir(SCRAPE_ARCHIVE_DIR, { recursive: true })
+  const archivePath = join(SCRAPE_ARCHIVE_DIR, 'coinbase-btcd.json')
+  archive.updatedAt = new Date().toISOString()
+  await writeFile(archivePath, JSON.stringify(archive, null, 2), 'utf-8')
+}
+
+/**
+ * Generate unique ID for funding entry
+ */
+const generateFundingId = (date: string, amount: number): string => {
+  return `funding-${date}-${amount.toFixed(2).replace(/[-.]/g, '_')}`
+}
+
+/**
+ * Generate unique ID for reward entry
+ */
+const generateRewardId = (date: string, amount: number, type: string): string => {
+  return `reward-${date}-${type}-${amount.toFixed(2).replace(/[-.]/g, '_')}`
+}
+
+/**
+ * Add funding entry to archive if not already present
+ */
+const addFundingToArchive = (archive: CoinbaseDerivativesArchive, entry: CoinbaseFundingEntry): boolean => {
+  const exists = archive.fundingPayments.some(f => f.id === entry.id)
+  if (!exists) {
+    archive.fundingPayments.push(entry)
+    // Sort by date descending
+    archive.fundingPayments.sort((a, b) => b.date.localeCompare(a.date))
+    return true
+  }
+  return false
+}
+
+/**
+ * Add reward entry to archive if not already present
+ */
+const addRewardToArchive = (archive: CoinbaseDerivativesArchive, entry: CoinbaseRewardEntry): boolean => {
+  const exists = archive.rewards.some(r => r.id === entry.id)
+  if (!exists) {
+    archive.rewards.push(entry)
+    // Sort by date descending
+    archive.rewards.sort((a, b) => b.date.localeCompare(a.date))
+    return true
+  }
+  return false
+}
+
+/**
+ * Find Coinbase perpetual futures page in browser
+ */
+const findCoinbaseFuturesPage = async (browser: Browser): Promise<Page | null> => {
+  const contexts = browser.contexts()
+  console.log(`[Coinbase] Found ${contexts.length} browser contexts`)
+
+  for (let i = 0; i < contexts.length; i++) {
+    const context = contexts[i]!
+    const pages = context.pages()
+    for (const page of pages) {
+      const pageUrl = page.url()
+      // Look for perpetual futures or portfolio pages
+      if (pageUrl.includes('coinbase.com') &&
+          (pageUrl.includes('perpetual') || pageUrl.includes('portfolio') || pageUrl.includes('intx')) &&
+          !pageUrl.includes('/signin') && !pageUrl.includes('/login')) {
+        console.log(`[Coinbase] Found Coinbase page: ${pageUrl}`)
+        return page
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Find Coinbase rewards/interest page
+ */
+const findCoinbaseRewardsPage = async (browser: Browser): Promise<Page | null> => {
+  const contexts = browser.contexts()
+
+  for (let i = 0; i < contexts.length; i++) {
+    const context = contexts[i]!
+    const pages = context.pages()
+    for (const page of pages) {
+      const pageUrl = page.url()
+      if (pageUrl.includes('coinbase.com') &&
+          (pageUrl.includes('rewards') || pageUrl.includes('earn')) &&
+          !pageUrl.includes('/signin') && !pageUrl.includes('/login')) {
+        console.log(`[Coinbase] Found Coinbase rewards page: ${pageUrl}`)
+        return page
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * GET /import/coinbase-btcd/archive
+ * Get the Coinbase derivatives scrape archive with summary.
+ */
+importRouter.get('/coinbase-btcd/archive', async (_req, res) => {
+  const archive = await loadCoinbaseArchive()
+
+  // Calculate summary
+  let totalFundingProfit = 0
+  let totalFundingLoss = 0
+  let totalRewards = 0
+
+  for (const funding of archive.fundingPayments) {
+    if (funding.amount >= 0) {
+      totalFundingProfit += funding.amount
+    } else {
+      totalFundingLoss += Math.abs(funding.amount)
+    }
+  }
+
+  for (const reward of archive.rewards) {
+    totalRewards += reward.amount
+  }
+
+  res.json({
+    platform: archive.platform,
+    createdAt: archive.createdAt,
+    updatedAt: archive.updatedAt,
+    summary: {
+      fundingPaymentCount: archive.fundingPayments.length,
+      rewardCount: archive.rewards.length,
+      totalFundingProfit,
+      totalFundingLoss,
+      netFunding: totalFundingProfit - totalFundingLoss,
+      totalRewards
+    },
+    fundingPayments: archive.fundingPayments,
+    rewards: archive.rewards
+  })
+})
+
+/**
+ * POST /import/coinbase-btcd/funding/manual
+ * Add manual funding entry (for funding not captured by API or scraping).
+ *
+ * Body: { date: string, amount: number, productId?: string }
+ */
+importRouter.post('/coinbase-btcd/funding/manual', async (req, res) => {
+  const { date, amount, productId } = req.body as {
+    date?: string
+    amount?: number
+    productId?: string
+  }
+
+  if (!date || amount === undefined) {
+    res.status(400).json({ error: 'Missing required fields: date, amount' })
+    return
+  }
+
+  // Validate date format
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' })
+    return
+  }
+
+  const archive = await loadCoinbaseArchive()
+
+  const entry: CoinbaseFundingEntry = {
+    id: generateFundingId(date, amount),
+    date,
+    amount,
+    productId: productId ?? 'BIP-20DEC30-CDE'
+  }
+
+  const added = addFundingToArchive(archive, entry)
+
+  if (added) {
+    await saveCoinbaseArchive(archive)
+    res.json({
+      success: true,
+      message: `Added funding entry for ${date}: ${amount >= 0 ? '+' : ''}${amount.toFixed(2)}`,
+      entry
+    })
+  } else {
+    res.json({
+      success: false,
+      message: `Funding entry already exists for ${date} with amount ${amount}`,
+      entry
+    })
+  }
+})
+
+/**
+ * POST /import/coinbase-btcd/rewards/manual
+ * Add manual reward entry (USDC interest, etc.).
+ *
+ * Body: { date: string, amount: number, type?: string, description?: string }
+ */
+importRouter.post('/coinbase-btcd/rewards/manual', async (req, res) => {
+  const { date, amount, type, description } = req.body as {
+    date?: string
+    amount?: number
+    type?: 'usdc_interest' | 'staking' | 'other'
+    description?: string
+  }
+
+  if (!date || amount === undefined) {
+    res.status(400).json({ error: 'Missing required fields: date, amount' })
+    return
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' })
+    return
+  }
+
+  const archive = await loadCoinbaseArchive()
+
+  const rewardType = type ?? 'usdc_interest'
+  const entry: CoinbaseRewardEntry = {
+    id: generateRewardId(date, amount, rewardType),
+    date,
+    amount,
+    type: rewardType,
+    ...(description && { description })
+  }
+
+  const added = addRewardToArchive(archive, entry)
+
+  if (added) {
+    await saveCoinbaseArchive(archive)
+    res.json({
+      success: true,
+      message: `Added reward entry for ${date}: +${amount.toFixed(2)}`,
+      entry
+    })
+  } else {
+    res.json({
+      success: false,
+      message: `Reward entry already exists for ${date}`,
+      entry
+    })
+  }
+})
+
+/**
+ * POST /import/coinbase-btcd/funding/bulk
+ * Import funding entries in bulk from JSON format (like funding-manual.json).
+ *
+ * Body: { entries: Record<string, number> }  // { "YYYY-MM-DD": amount, ... }
+ */
+importRouter.post('/coinbase-btcd/funding/bulk', async (req, res) => {
+  const { entries, productId } = req.body as {
+    entries?: Record<string, number>
+    productId?: string
+  }
+
+  if (!entries || typeof entries !== 'object') {
+    res.status(400).json({ error: 'Missing required field: entries (object of date -> amount)' })
+    return
+  }
+
+  const archive = await loadCoinbaseArchive()
+  let added = 0
+  let skipped = 0
+
+  for (const [date, amount] of Object.entries(entries)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      console.log(`[Coinbase] Skipping invalid date format: ${date}`)
+      skipped++
+      continue
+    }
+
+    const entry: CoinbaseFundingEntry = {
+      id: generateFundingId(date, amount),
+      date,
+      amount,
+      productId: productId ?? 'BIP-20DEC30-CDE'
+    }
+
+    if (addFundingToArchive(archive, entry)) {
+      added++
+    } else {
+      skipped++
+    }
+  }
+
+  await saveCoinbaseArchive(archive)
+
+  res.json({
+    success: true,
+    message: `Imported ${added} funding entries, ${skipped} skipped (duplicates or invalid)`,
+    added,
+    skipped,
+    total: archive.fundingPayments.length
+  })
+})
+
+/**
+ * POST /import/coinbase-btcd/rewards/bulk
+ * Import reward entries in bulk from JSON format (like rewards-manual.json).
+ *
+ * Body: { entries: Record<string, number>, type?: string }
+ */
+importRouter.post('/coinbase-btcd/rewards/bulk', async (req, res) => {
+  const { entries, type } = req.body as {
+    entries?: Record<string, number>
+    type?: 'usdc_interest' | 'staking' | 'other'
+  }
+
+  if (!entries || typeof entries !== 'object') {
+    res.status(400).json({ error: 'Missing required field: entries (object of date -> amount)' })
+    return
+  }
+
+  const archive = await loadCoinbaseArchive()
+  let added = 0
+  let skipped = 0
+  const rewardType = type ?? 'usdc_interest'
+
+  for (const [date, amount] of Object.entries(entries)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      console.log(`[Coinbase] Skipping invalid date format: ${date}`)
+      skipped++
+      continue
+    }
+
+    const entry: CoinbaseRewardEntry = {
+      id: generateRewardId(date, amount, rewardType),
+      date,
+      amount,
+      type: rewardType
+    }
+
+    if (addRewardToArchive(archive, entry)) {
+      added++
+    } else {
+      skipped++
+    }
+  }
+
+  await saveCoinbaseArchive(archive)
+
+  res.json({
+    success: true,
+    message: `Imported ${added} reward entries, ${skipped} skipped (duplicates or invalid)`,
+    added,
+    skipped,
+    total: archive.rewards.length
+  })
+})
+
+/**
+ * GET /import/browser/status/coinbase
+ * Check if Coinbase is open and logged in the browser.
+ */
+importRouter.get('/browser/status/coinbase', async (_req, res) => {
+  const browser = await connectToBrowser().catch(() => null)
+
+  if (!browser) {
+    res.json({
+      browserConnected: false,
+      coinbaseFound: false,
+      loggedIn: false,
+      message: 'Browser not connected. Launch browser first.'
+    })
+    return
+  }
+
+  const futuresPage = await findCoinbaseFuturesPage(browser)
+
+  if (!futuresPage) {
+    res.json({
+      browserConnected: true,
+      coinbaseFound: false,
+      loggedIn: false,
+      message: 'No Coinbase perpetual futures page found. Navigate to coinbase.com/portfolio/perpetual-futures and log in.'
+    })
+    return
+  }
+
+  // Check if logged in by looking for user-specific elements
+  const isLoggedIn = await futuresPage.evaluate(() => {
+    // Look for signs of being logged in
+    const hasPortfolio = document.querySelector('[data-testid="portfolio"]') !== null
+    const hasBalance = document.body.innerText.includes('Total Balance') ||
+                       document.body.innerText.includes('Portfolio Value') ||
+                       document.body.innerText.includes('USDC')
+    const hasSignInPrompt = document.body.innerText.includes('Sign in') &&
+                           !document.body.innerText.includes('Signed in')
+    return (hasPortfolio || hasBalance) && !hasSignInPrompt
+  }).catch(() => false)
+
+  res.json({
+    browserConnected: true,
+    coinbaseFound: true,
+    loggedIn: isLoggedIn,
+    currentUrl: futuresPage.url(),
+    message: isLoggedIn
+      ? 'Coinbase is connected and logged in'
+      : 'Coinbase page found but may not be logged in'
+  })
+})
+
+/**
+ * POST /import/scrape/coinbase/funding
+ * Scrape funding payments from Coinbase perpetual futures UI.
+ * Note: Scraping may not capture all data - use API where possible.
+ *
+ * This is a placeholder for future implementation.
+ * The Coinbase API (fetchFundingPayments) is the preferred method.
+ */
+importRouter.post('/scrape/coinbase/funding', async (_req, res, next) => {
+  const browser = await connectToBrowser().catch((err: Error) => {
+    return next(badRequest(`Failed to connect to browser: ${err.message}`))
+  })
+
+  if (!browser || !(browser instanceof Object && 'contexts' in browser)) {
+    return next(badRequest('Browser connection failed'))
+  }
+
+  const page = await findCoinbaseFuturesPage(browser as Browser)
+  if (!page) {
+    res.status(400).json({
+      error: 'Coinbase perpetual futures page not found',
+      hint: 'Navigate to coinbase.com/portfolio/perpetual-futures and log in first'
+    })
+    return
+  }
+
+  // For now, return guidance since Coinbase API is the better source
+  res.json({
+    message: 'Coinbase funding scraping not yet implemented',
+    hint: 'Use the API endpoints at /api/v1/derivatives/funding/:productId for funding data. The API provides more reliable data than UI scraping.',
+    alternatives: [
+      'POST /api/v1/import/coinbase-btcd/funding/manual - Add individual entries',
+      'POST /api/v1/import/coinbase-btcd/funding/bulk - Import from JSON',
+      'GET /api/v1/derivatives/funding/:productId - Fetch from Coinbase API'
+    ]
+  })
+})
+
+/**
+ * POST /import/scrape/coinbase/rewards
+ * Scrape USDC rewards/interest from Coinbase UI.
+ *
+ * This is a placeholder for future implementation.
+ */
+importRouter.post('/scrape/coinbase/rewards', async (_req, res, next) => {
+  const browser = await connectToBrowser().catch((err: Error) => {
+    return next(badRequest(`Failed to connect to browser: ${err.message}`))
+  })
+
+  if (!browser || !(browser instanceof Object && 'contexts' in browser)) {
+    return next(badRequest('Browser connection failed'))
+  }
+
+  const page = await findCoinbaseRewardsPage(browser as Browser)
+  if (!page) {
+    res.status(400).json({
+      error: 'Coinbase rewards page not found',
+      hint: 'Navigate to coinbase.com rewards or earnings page and log in first'
+    })
+    return
+  }
+
+  // For now, return guidance
+  res.json({
+    message: 'Coinbase rewards scraping not yet implemented',
+    hint: 'Use manual entry endpoints for now. USDC interest is typically paid weekly.',
+    alternatives: [
+      'POST /api/v1/import/coinbase-btcd/rewards/manual - Add individual entries',
+      'POST /api/v1/import/coinbase-btcd/rewards/bulk - Import from JSON'
+    ]
+  })
+})
+
+/**
+ * DELETE /import/coinbase-btcd/funding/:date
+ * Delete a funding entry by date and amount.
+ *
+ * Query: { amount: number }
+ */
+importRouter.delete('/coinbase-btcd/funding/:date', async (req, res) => {
+  const date = req.params['date']
+  const amount = parseFloat(req.query['amount'] as string)
+
+  if (!date) {
+    res.status(400).json({ error: 'Missing date parameter' })
+    return
+  }
+
+  if (isNaN(amount)) {
+    res.status(400).json({ error: 'Missing or invalid amount query parameter' })
+    return
+  }
+
+  const archive = await loadCoinbaseArchive()
+  const id = generateFundingId(date, amount)
+  const index = archive.fundingPayments.findIndex(f => f.id === id)
+
+  if (index === -1) {
+    res.status(404).json({ error: `Funding entry not found for ${date} with amount ${amount}` })
+    return
+  }
+
+  archive.fundingPayments.splice(index, 1)
+  await saveCoinbaseArchive(archive)
+
+  res.json({
+    success: true,
+    message: `Deleted funding entry for ${date}`,
+    remaining: archive.fundingPayments.length
+  })
+})
+
+/**
+ * DELETE /import/coinbase-btcd/rewards/:date
+ * Delete a reward entry by date.
+ *
+ * Query: { amount: number, type?: string }
+ */
+importRouter.delete('/coinbase-btcd/rewards/:date', async (req, res) => {
+  const date = req.params['date']
+  const amount = parseFloat(req.query['amount'] as string)
+  const type = (req.query['type'] as string) ?? 'usdc_interest'
+
+  if (!date) {
+    res.status(400).json({ error: 'Missing date parameter' })
+    return
+  }
+
+  if (isNaN(amount)) {
+    res.status(400).json({ error: 'Missing or invalid amount query parameter' })
+    return
+  }
+
+  const archive = await loadCoinbaseArchive()
+  const id = generateRewardId(date, amount, type)
+  const index = archive.rewards.findIndex(r => r.id === id)
+
+  if (index === -1) {
+    res.status(404).json({ error: `Reward entry not found for ${date} with amount ${amount}` })
+    return
+  }
+
+  archive.rewards.splice(index, 1)
+  await saveCoinbaseArchive(archive)
+
+  res.json({
+    success: true,
+    message: `Deleted reward entry for ${date}`,
+    remaining: archive.rewards.length
+  })
+})
