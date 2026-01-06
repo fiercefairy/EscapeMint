@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useLocation, useNavigate, Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { fetchFund, type FundDetail } from '../api/funds'
-import { listApiKeys, type ApiKeyInfo } from '../api/derivatives'
+import { listApiKeys, fetchFills, type ApiKeyInfo, type Fill } from '../api/derivatives'
 import { DerivativesDashboard } from '../components/DerivativesDashboard'
 import { FundingTracker } from '../components/FundingTracker'
 import { ApiKeyModal } from '../components/ApiKeyModal'
@@ -32,6 +32,9 @@ export function DerivativesFundDetail() {
   const [apiKeys, setApiKeys] = useState<ApiKeyInfo[]>([])
   const [selectedKey, setSelectedKey] = useState<string>('')
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [fills, setFills] = useState<Fill[]>([])
+  const [loadingFills, setLoadingFills] = useState(false)
 
   // Load fund data
   const loadFund = useCallback(async () => {
@@ -97,6 +100,52 @@ export function DerivativesFundDetail() {
   // Get product ID from fund config
   const productId = fund?.config.product_id ?? 'BIP-20DEC30-CDE'
 
+  // Load fills from Coinbase API
+  const loadFills = useCallback(async () => {
+    if (!selectedKey || !productId) return
+
+    setLoadingFills(true)
+    const result = await fetchFills(selectedKey, productId)
+    if (result.data) {
+      setFills(result.data.fills)
+    } else if (result.error) {
+      toast.error(result.error)
+    }
+    setLoadingFills(false)
+  }, [selectedKey, productId])
+
+  // Sync data from Coinbase API
+  const handleSync = async () => {
+    if (!selectedKey) {
+      toast.error('Please select an API key first')
+      return
+    }
+
+    setSyncing(true)
+    toast.info('Fetching data from Coinbase API...')
+
+    // Fetch fills
+    const fillsResult = await fetchFills(selectedKey, productId)
+    if (fillsResult.error) {
+      toast.error(`Failed to fetch fills: ${fillsResult.error}`)
+      setSyncing(false)
+      return
+    }
+
+    const fetchedFills = fillsResult.data?.fills ?? []
+    setFills(fetchedFills)
+
+    toast.success(`Fetched ${fetchedFills.length} fills from Coinbase`)
+    setSyncing(false)
+  }
+
+  // Load fills when switching to history tab
+  useEffect(() => {
+    if (activeTab === 'history' && selectedKey && fills.length === 0) {
+      loadFills()
+    }
+  }, [activeTab, selectedKey, fills.length, loadFills])
+
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto p-4">
@@ -138,7 +187,7 @@ export function DerivativesFundDetail() {
           </div>
         </div>
 
-        {/* API Key Selector */}
+        {/* API Key Selector and Sync */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             {selectedKey ? (
@@ -151,6 +200,15 @@ export function DerivativesFundDetail() {
               </span>
             )}
           </div>
+          {selectedKey && (
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="px-3 py-1.5 text-sm bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors disabled:opacity-50"
+            >
+              {syncing ? 'Syncing...' : 'Sync from API'}
+            </button>
+          )}
           <button
             onClick={() => setShowApiKeyModal(true)}
             className="px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
@@ -206,11 +264,71 @@ export function DerivativesFundDetail() {
           )}
 
           {activeTab === 'history' && (
-            <div className="text-center py-8 text-slate-400">
-              <p className="mb-2">Trade history view coming soon.</p>
-              <p className="text-sm">
-                Use the API at <code className="bg-slate-700 px-2 py-1 rounded">/api/v1/derivatives/fills/{productId}</code> to view fills.
-              </p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-white">Trade History</h3>
+                <button
+                  onClick={loadFills}
+                  disabled={loadingFills || !selectedKey}
+                  className="px-3 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 text-white rounded transition-colors disabled:opacity-50"
+                >
+                  {loadingFills ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+
+              {!selectedKey ? (
+                <div className="text-center py-8 text-slate-400">
+                  <p>Select an API key to view trade history</p>
+                </div>
+              ) : loadingFills ? (
+                <div className="text-center py-8 text-slate-400">Loading fills...</div>
+              ) : fills.length === 0 ? (
+                <div className="text-center py-8 text-slate-400">
+                  <p>No fills found. Click "Sync from API" to fetch data.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-700 text-slate-400 text-xs">
+                        <th className="text-left py-2 px-3">Time</th>
+                        <th className="text-left py-2 px-3">Side</th>
+                        <th className="text-right py-2 px-3">Contracts</th>
+                        <th className="text-right py-2 px-3">Price</th>
+                        <th className="text-right py-2 px-3">Value</th>
+                        <th className="text-right py-2 px-3">Fee</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fills.map((fill) => (
+                        <tr key={fill.tradeId} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                          <td className="py-2 px-3 text-slate-300">
+                            {new Date(fill.tradeTime).toLocaleString()}
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className={fill.side === 'BUY' ? 'text-green-400' : 'text-red-400'}>
+                              {fill.side}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right text-white">{fill.size}</td>
+                          <td className="py-2 px-3 text-right text-white">
+                            ${Number(fill.price).toLocaleString()}
+                          </td>
+                          <td className="py-2 px-3 text-right text-white">
+                            ${(Number(fill.size) * Number(fill.price) * 0.01).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-400">
+                            ${Number(fill.commission).toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="text-xs text-slate-500 mt-2">
+                    Showing {fills.length} fills
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

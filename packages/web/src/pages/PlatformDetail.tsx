@@ -159,6 +159,14 @@ export function PlatformDetail() {
           >
             Import
           </button>
+          {platformId?.toLowerCase() === 'coinbase' && (
+            <Link
+              to={`/platform/${platformId}/settings`}
+              className="px-3 py-1.5 text-sm bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors"
+            >
+              API Keys
+            </Link>
+          )}
           <button
             onClick={() => setEditingConfig(!editingConfig)}
             className="px-3 py-1.5 text-sm bg-slate-700 text-white rounded hover:bg-slate-600 transition-colors"

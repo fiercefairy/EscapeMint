@@ -13,9 +13,10 @@ interface ApiKeyModalProps {
   onClose: () => void
   onKeySelected?: (keyName: string) => void
   selectedKey?: string
+  embedded?: boolean  // Render inline without modal wrapper
 }
 
-export function ApiKeyModal({ isOpen, onClose, onKeySelected, selectedKey }: ApiKeyModalProps) {
+export function ApiKeyModal({ isOpen, onClose, onKeySelected, selectedKey, embedded = false }: ApiKeyModalProps) {
   const [keys, setKeys] = useState<ApiKeyInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [testing, setTesting] = useState<string | null>(null)
@@ -23,9 +24,7 @@ export function ApiKeyModal({ isOpen, onClose, onKeySelected, selectedKey }: Api
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   // Add form state
-  const [newKeyName, setNewKeyName] = useState('')
-  const [newApiKey, setNewApiKey] = useState('')
-  const [newApiSecret, setNewApiSecret] = useState('')
+  const [keyJson, setKeyJson] = useState('')
   const [saving, setSaving] = useState(false)
 
   const loadKeys = useCallback(async () => {
@@ -46,25 +45,42 @@ export function ApiKeyModal({ isOpen, onClose, onKeySelected, selectedKey }: Api
   }, [isOpen, loadKeys])
 
   const handleAddKey = async () => {
-    if (!newKeyName.trim() || !newApiKey.trim() || !newApiSecret.trim()) {
-      toast.error('All fields are required')
+    if (!keyJson.trim()) {
+      toast.error('Please paste your API key JSON')
       return
     }
 
+    // Parse the JSON
+    let parsed: { name?: string; privateKey?: string }
+    try {
+      parsed = JSON.parse(keyJson.trim())
+    } catch {
+      toast.error('Invalid JSON format')
+      return
+    }
+
+    if (!parsed.name || !parsed.privateKey) {
+      toast.error('JSON must contain "name" and "privateKey" fields')
+      return
+    }
+
+    // Extract a short name from the full API key name for display
+    // Format: "organizations/.../apiKeys/xxx" -> use last part as display name
+    const parts = parsed.name.split('/')
+    const shortName = parts[parts.length - 1] ?? 'coinbase-key'
+
     setSaving(true)
-    const result = await storeApiKey(newKeyName.trim(), newApiKey.trim(), newApiSecret.trim())
+    const result = await storeApiKey(shortName, parsed.name, parsed.privateKey)
 
     if (result.data?.success) {
       toast.success(result.data.message)
       setShowAddForm(false)
-      setNewKeyName('')
-      setNewApiKey('')
-      setNewApiSecret('')
+      setKeyJson('')
       await loadKeys()
 
       // Auto-select newly added key
       if (onKeySelected) {
-        onKeySelected(newKeyName.trim())
+        onKeySelected(shortName)
       }
     } else {
       toast.error(result.error ?? 'Failed to store API key')
@@ -101,26 +117,10 @@ export function ApiKeyModal({ isOpen, onClose, onKeySelected, selectedKey }: Api
     setDeleteConfirm(null)
   }
 
-  if (!isOpen) return null
+  if (!isOpen && !embedded) return null
 
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-lg border border-slate-700">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-700">
-          <h2 className="text-lg font-semibold text-white">Coinbase API Keys</h2>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-4 space-y-4 max-h-96 overflow-y-auto">
+  const content = (
+    <div className={embedded ? "space-y-4" : "p-4 space-y-4 max-h-96 overflow-y-auto"}>
           {loading ? (
             <div className="text-center py-8 text-slate-400">Loading...</div>
           ) : keys.length === 0 && !showAddForm ? (
@@ -190,36 +190,17 @@ export function ApiKeyModal({ isOpen, onClose, onKeySelected, selectedKey }: Api
                   <h3 className="text-sm font-medium text-white mb-3">Add New API Key</h3>
 
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Key Name</label>
-                    <input
-                      type="text"
-                      value={newKeyName}
-                      onChange={(e) => setNewKeyName(e.target.value)}
-                      placeholder="e.g., coinbase-main"
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white text-sm focus:border-orange-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">API Key</label>
-                    <input
-                      type="text"
-                      value={newApiKey}
-                      onChange={(e) => setNewApiKey(e.target.value)}
-                      placeholder="organizations/xxx/apiKeys/xxx"
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white text-sm font-mono focus:border-orange-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">API Secret (ES256 Private Key)</label>
+                    <label className="block text-xs text-slate-400 mb-1">API Key JSON</label>
                     <textarea
-                      value={newApiSecret}
-                      onChange={(e) => setNewApiSecret(e.target.value)}
-                      placeholder="-----BEGIN EC PRIVATE KEY-----&#10;...&#10;-----END EC PRIVATE KEY-----"
-                      rows={4}
+                      value={keyJson}
+                      onChange={(e) => setKeyJson(e.target.value)}
+                      placeholder={'{\n  "name": "organizations/.../apiKeys/...",\n  "privateKey": "-----BEGIN EC PRIVATE KEY-----\\n...\\n-----END EC PRIVATE KEY-----\\n"\n}'}
+                      rows={8}
                       className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white text-sm font-mono focus:border-orange-500 focus:outline-none resize-none"
                     />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Paste the JSON from your Coinbase CDP API key file
+                    </p>
                   </div>
 
                   <div className="flex gap-2 pt-2">
@@ -233,9 +214,7 @@ export function ApiKeyModal({ isOpen, onClose, onKeySelected, selectedKey }: Api
                     <button
                       onClick={() => {
                         setShowAddForm(false)
-                        setNewKeyName('')
-                        setNewApiKey('')
-                        setNewApiSecret('')
+                        setKeyJson('')
                       }}
                       className="px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition-colors"
                     >
@@ -257,6 +236,48 @@ export function ApiKeyModal({ isOpen, onClose, onKeySelected, selectedKey }: Api
               )}
             </>
           )}
+        </div>
+  )
+
+  // Embedded mode: just return content without modal wrapper
+  if (embedded) {
+    return (
+      <>
+        {content}
+        {deleteConfirm && (
+          <ConfirmDialog
+            title="Delete API Key"
+            message={`Are you sure you want to delete the API key "${deleteConfirm}"? This cannot be undone.`}
+            confirmLabel="Delete"
+            variant="danger"
+            onConfirm={() => handleDeleteKey(deleteConfirm)}
+            onCancel={() => setDeleteConfirm(null)}
+          />
+        )}
+      </>
+    )
+  }
+
+  // Modal mode: wrap content in modal
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-lg border border-slate-700">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-slate-700">
+          <h2 className="text-lg font-semibold text-white">Coinbase API Keys</h2>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-4 max-h-96 overflow-y-auto">
+          {content}
         </div>
 
         {/* Footer */}
