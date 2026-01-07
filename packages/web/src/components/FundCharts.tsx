@@ -1262,7 +1262,34 @@ interface ChartBoundsState {
 }
 
 export function FundCharts({ entries, config, fundId, computedEntries, resize: externalResize }: FundChartsProps) {
-  const timeSeries = useMemo(() => computeTimeSeries(entries, config), [entries, config])
+  const isDerivativesFund = config.fund_type === 'derivatives'
+
+  // For derivatives, use computedEntries which has proper state; for others use raw entries
+  const timeSeries = useMemo(() => {
+    if (isDerivativesFund && computedEntries && computedEntries.length > 0) {
+      // Build time series from computed derivatives state
+      return computedEntries.map(entry => ({
+        date: new Date(entry.date),
+        value: entry.derivEquity ?? 0,  // Equity = marginBalance + unrealized
+        startInput: entry.derivCostBasis ?? 0,  // Cost basis (invested in position)
+        fundSize: entry.derivMarginBalance ?? 0,  // Margin balance (cash)
+        cashAvailable: (entry.derivMarginBalance ?? 0) - (entry.derivCostBasis ?? 0),  // Available after position
+        cumulativeDividends: 0,
+        cumulativeExpenses: entry.derivCumFees ?? 0,
+        realizedGains: entry.derivRealized ?? 0,
+        cashInterest: entry.derivCumInterest ?? 0,
+        unrealizedGain: entry.derivUnrealized ?? 0,
+        capturedProfit: (entry.derivRealized ?? 0) + (entry.derivCumFunding ?? 0) +
+          (entry.derivCumInterest ?? 0) + (entry.derivCumRebates ?? 0) - (entry.derivCumFees ?? 0),
+        cashPct: 0,
+        assetPct: 0,
+        apy: entry.realizedApy ?? 0,
+        marginAvailable: entry.derivAvailableFunds ?? 0,
+        marginBorrowed: 0
+      }))
+    }
+    return computeTimeSeries(entries, config)
+  }, [entries, config, isDerivativesFund, computedEntries])
   const [chartResize, setChartResize] = useState(0)
 
   // Resize handler for charts
@@ -1319,7 +1346,6 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
   }
 
   const isCashFund = config.fund_type === 'cash'
-  const isDerivativesFund = config.fund_type === 'derivatives'
   const hasMarginData = timeSeries.some(d => d.marginAvailable > 0 || d.marginBorrowed > 0)
 
   const manageCash = config.manage_cash !== false
