@@ -562,6 +562,7 @@ export interface DerivativesEntryState {
   cumFunding: number         // Cumulative funding payments
   cumInterest: number        // Cumulative USDC interest
   cumRebates: number         // Cumulative rebates
+  cumFees: number            // Cumulative trading fees
   equity: number             // Position value at entry price (cost basis)
   // Margin tracking
   notionalValue: number      // Position value at avgEntry price
@@ -581,6 +582,7 @@ interface DerivativesFundEntry {
   amount?: number
   contracts?: number
   price?: number
+  fee?: number  // Trading fee associated with BUY/SELL
   notes?: string
 }
 
@@ -631,6 +633,7 @@ export const computeDerivativesEntriesState = (
   let cumFunding = 0
   let cumInterest = 0
   let cumRebates = 0
+  let cumFees = 0
 
   // FIFO cost basis queue for realized P&L calculation
   const costBasisQueue: { contracts: number; price: number; cost: number }[] = []
@@ -642,6 +645,7 @@ export const computeDerivativesEntriesState = (
     const amount = entry.amount ?? 0
     const contracts = entry.contracts ?? 0
     const price = entry.price ?? 0
+    const fee = entry.fee ?? 0
 
     // Process based on action type
     switch (action) {
@@ -669,6 +673,7 @@ export const computeDerivativesEntriesState = (
         break
 
       case 'FEE':
+        cumFees += Math.abs(amount)
         marginBalance -= Math.abs(amount)  // Fees reduce margin
         break
 
@@ -689,6 +694,11 @@ export const computeDerivativesEntriesState = (
           price,
           cost: price * contracts  // Total dollar cost
         })
+        // Process fee if present on entry
+        if (fee > 0) {
+          cumFees += fee
+          marginBalance -= fee  // Fees reduce margin
+        }
         break
 
       case 'SELL': {
@@ -731,6 +741,11 @@ export const computeDerivativesEntriesState = (
         } else if (position === 0) {
           avgEntry = 0
         }
+        // Process fee if present on entry
+        if (fee > 0) {
+          cumFees += fee
+          marginBalance -= fee  // Fees reduce margin
+        }
         break
       }
     }
@@ -757,10 +772,9 @@ export const computeDerivativesEntriesState = (
     // Lower is safer (Coinbase shows this as a percentage)
     const marginRatio = marginBalance > 0 ? maintenanceMargin / marginBalance : 0
 
-    // Unrealized P&L: For historical entries, show 0 (we don't have historical prices)
-    // The final entry's unrealized will be recalculated with current price
-    // For now, set to 0 - caller can update the last entry with current market price
-    const unrealizedPnl = 0
+    // Unrealized P&L: Will be calculated at the end using current market price
+    // Unrealized P&L only makes sense relative to current market price, not historical prices
+    const unrealizedPnl = 0  // Placeholder, will be set after loop
 
     const entryState: DerivativesEntryState = {
       date: entry.date,
@@ -777,6 +791,7 @@ export const computeDerivativesEntriesState = (
       cumFunding,
       cumInterest,
       cumRebates,
+      cumFees,
       equity,
       notionalValue,
       initialMargin,
@@ -790,12 +805,15 @@ export const computeDerivativesEntriesState = (
     results.push(entryState)
   }
 
-  // Update the last entry with current market price for unrealized P&L
-  if (results.length > 0 && currentPrice > 0) {
-    const lastEntry = results[results.length - 1]
-    if (lastEntry && lastEntry.position > 0) {
-      const currentPositionValue = lastEntry.position * contractMultiplier * currentPrice
-      lastEntry.unrealizedPnl = currentPositionValue - lastEntry.costBasis
+  // Calculate unrealized P&L for ALL entries using current market price
+  // Unrealized P&L = (position * contractMultiplier * currentPrice) - costBasis
+  // This shows what the unrealized P&L would be TODAY for each historical position
+  if (currentPrice > 0) {
+    for (const entry of results) {
+      if (entry.position > 0 && entry.costBasis > 0) {
+        const currentPositionValue = entry.position * contractMultiplier * currentPrice
+        entry.unrealizedPnl = currentPositionValue - entry.costBasis
+      }
     }
   }
 

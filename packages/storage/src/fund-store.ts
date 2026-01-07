@@ -40,6 +40,7 @@ export interface FundEntry {
   funding_profit?: number      // Funding rate profit (positive) - DEPRECATED, use FUNDING action
   funding_loss?: number        // Funding loss + fees (negative) - DEPRECATED, use FUNDING action
   margin_locked?: number       // Total margin locked in positions
+  fee?: number                 // Trading fee associated with BUY/SELL action
 }
 
 /**
@@ -54,7 +55,7 @@ export interface FundData {
   entries: FundEntry[]
 }
 
-const ENTRY_HEADERS = ['date', 'value', 'cash', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'notes', 'contracts', 'entry_price', 'liquidation_price', 'unrealized_pnl', 'funding_profit', 'funding_loss', 'margin_locked']
+const ENTRY_HEADERS = ['date', 'value', 'cash', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'notes', 'contracts', 'entry_price', 'liquidation_price', 'unrealized_pnl', 'funding_profit', 'funding_loss', 'margin_locked', 'fee']
 
 /**
  * Get the JSON config file path for a TSV file.
@@ -171,6 +172,9 @@ function parseEntry(line: string, headers: string[]): FundEntry {
       case 'margin_locked':
         if (val) entry.margin_locked = parseFloat(val)
         break
+      case 'fee':
+        if (val) entry.fee = parseFloat(val)
+        break
     }
   }
 
@@ -203,7 +207,8 @@ function serializeEntry(entry: FundEntry): string {
     entry.unrealized_pnl?.toString() ?? '',
     entry.funding_profit?.toString() ?? '',
     entry.funding_loss?.toString() ?? '',
-    entry.margin_locked?.toString() ?? ''
+    entry.margin_locked?.toString() ?? '',
+    entry.fee?.toString() ?? ''
   ]
   return values.join('\t')
 }

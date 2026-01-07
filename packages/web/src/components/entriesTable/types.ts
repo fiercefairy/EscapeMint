@@ -37,7 +37,9 @@ export const ALL_COLUMNS = [
   { id: 'derivEquity', label: 'Equity', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
   { id: 'cumFunding', label: 'Σ Funding', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
   { id: 'cumInterest', label: 'Σ Interest', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
-  { id: 'cumRebates', label: 'Σ Rebates', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] }
+  { id: 'cumRebates', label: 'Σ Rebates', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
+  { id: 'cumFees', label: 'Σ Fees', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
+  { id: 'fee', label: 'Fee', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] }
 ] as const
 
 export type ColumnId = typeof ALL_COLUMNS[number]['id']
@@ -61,15 +63,15 @@ const CASH_FUND_COLUMN_ORDER: ColumnId[] = [
 
 // Derivatives fund specific defaults
 const DERIVATIVES_FUND_DEFAULT_COLUMNS: ColumnId[] = [
-  'date', 'action', 'amount', 'contracts', 'price', 'position', 'avgEntry',
+  'date', 'action', 'amount', 'contracts', 'price', 'fee', 'position', 'avgEntry',
   'marginBalance', 'derivEquity', 'unrealized', 'realized', 'liquidPnl',
-  'realizedApy', 'liquidApy', 'cumFunding', 'cumInterest', 'cumRebates', 'notes', 'edit'
+  'realizedApy', 'cumFunding', 'cumInterest', 'cumRebates', 'cumFees', 'notes', 'edit'
 ]
 
 const DERIVATIVES_FUND_COLUMN_ORDER: ColumnId[] = [
-  'date', 'action', 'amount', 'contracts', 'price', 'position', 'avgEntry',
+  'date', 'action', 'amount', 'contracts', 'price', 'fee', 'position', 'avgEntry',
   'marginBalance', 'derivEquity', 'unrealized', 'realized', 'liquidPnl',
-  'realizedApy', 'liquidApy', 'cumFunding', 'cumInterest', 'cumRebates', 'notes', 'edit'
+  'realizedApy', 'cumFunding', 'cumInterest', 'cumRebates', 'cumFees', 'notes', 'edit'
 ]
 
 export const getDefaultColumns = (fundType: FundType = 'stock'): Set<ColumnId> => {
@@ -125,6 +127,7 @@ export interface ComputedEntry extends FundEntry {
   derivCumFunding?: number     // Cumulative funding
   derivCumInterest?: number    // Cumulative interest
   derivCumRebates?: number     // Cumulative rebates
+  derivCumFees?: number        // Cumulative fees (trading fees)
   // Margin tracking
   derivNotionalValue?: number      // Position value at avgEntry price
   derivInitialMargin?: number      // Margin locked (typically 20%)

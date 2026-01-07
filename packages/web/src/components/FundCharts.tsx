@@ -2,11 +2,15 @@ import { useEffect, useRef, useMemo, useState, useCallback } from 'react'
 import * as d3 from 'd3'
 import type { FundEntry, FundConfig, ChartBounds } from '../api/funds'
 import { updateFundConfig } from '../api/funds'
+import { DerivativesCapturedProfitChart } from './DerivativesCapturedProfitChart'
+import type { ComputedEntry } from './entriesTable'
 
 interface FundChartsProps {
   entries: FundEntry[]
   config: FundConfig
   fundId: string
+  computedEntries?: ComputedEntry[] | undefined
+  resize?: number | undefined
 }
 
 interface TimeSeriesPoint {
@@ -1257,7 +1261,7 @@ interface ChartBoundsState {
   value: ChartBounds
 }
 
-export function FundCharts({ entries, config, fundId }: FundChartsProps) {
+export function FundCharts({ entries, config, fundId, computedEntries, resize: externalResize }: FundChartsProps) {
   const timeSeries = useMemo(() => computeTimeSeries(entries, config), [entries, config])
   const [chartResize, setChartResize] = useState(0)
 
@@ -1267,6 +1271,9 @@ export function FundCharts({ entries, config, fundId }: FundChartsProps) {
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  // Use external resize signal if provided, otherwise use internal
+  const effectiveResize = externalResize ?? chartResize
 
   // Initialize state from config.chart_bounds
   const [chartBounds, setChartBounds] = useState<ChartBoundsState>(() => ({
@@ -1312,6 +1319,7 @@ export function FundCharts({ entries, config, fundId }: FundChartsProps) {
   }
 
   const isCashFund = config.fund_type === 'cash'
+  const isDerivativesFund = config.fund_type === 'derivatives'
   const hasMarginData = timeSeries.some(d => d.marginAvailable > 0 || d.marginBorrowed > 0)
 
   const manageCash = config.manage_cash !== false
@@ -1327,19 +1335,19 @@ export function FundCharts({ entries, config, fundId }: FundChartsProps) {
           color="#f59e0b"
           bounds={chartBounds.value}
           onBoundsChange={updateBounds('value')}
-          resize={chartResize}
+          resize={effectiveResize}
         />
       ) : (
         <ValueAndFundSizeChart
           data={timeSeries}
           title="Value & Allocation"
           manageCash={manageCash}
-          resize={chartResize}
+          resize={effectiveResize}
         />
       )}
 
-      {/* Captured Profit - only for trading funds */}
-      {!isCashFund && (
+      {/* Captured Profit - different chart for derivatives vs stock/crypto */}
+      {!isCashFund && !isDerivativesFund && (
         <StackedAreaChart
           data={timeSeries}
           title="Captured Profit"
@@ -1348,7 +1356,15 @@ export function FundCharts({ entries, config, fundId }: FundChartsProps) {
             ...(manageCash ? [{ key: 'cashInterest' as const, label: 'Cash Int', color: '#86efac' }] : []),
             { key: 'realizedGains', label: 'Extracted', color: '#3b82f6' }
           ]}
-          resize={chartResize}
+          resize={effectiveResize}
+        />
+      )}
+
+      {/* Derivatives Captured Profit Chart */}
+      {isDerivativesFund && computedEntries && (
+        <DerivativesCapturedProfitChart
+          entries={computedEntries}
+          resize={effectiveResize}
         />
       )}
 
@@ -1357,7 +1373,7 @@ export function FundCharts({ entries, config, fundId }: FundChartsProps) {
         <MarginChart
           data={timeSeries}
           title="Margin"
-          resize={chartResize}
+          resize={effectiveResize}
         />
       )}
 

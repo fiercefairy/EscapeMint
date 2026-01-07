@@ -53,6 +53,7 @@ export interface FundConfig {
   contract_multiplier?: number  // 0.01 for BIP micro-futures
   api_key_name?: string  // Reference to stored Keychain credential
   liquidation_threshold_pct?: number  // Alert threshold
+  initial_deposit?: number  // Starting margin deposit (added on re-import)
 }
 
 export interface FundSummary {
@@ -101,6 +102,7 @@ export interface FundEntry {
   funding_profit?: number      // Funding rate profit (positive) - DEPRECATED
   funding_loss?: number        // Funding loss + fees (negative) - DEPRECATED
   margin_locked?: number       // Total margin locked in positions
+  fee?: number                 // Trading fee associated with BUY/SELL action
 }
 
 export interface FundState {
@@ -170,6 +172,7 @@ export interface DerivativesEntryState {
   cumFunding: number         // Cumulative funding payments
   cumInterest: number        // Cumulative USDC interest
   cumRebates: number         // Cumulative rebates
+  cumFees: number            // Cumulative trading fees
   equity: number             // Position value at entry price (cost basis)
   // Margin tracking
   notionalValue: number      // Position value at avgEntry price
@@ -341,7 +344,7 @@ export interface AuditEntry {
   ticker: string
   date: string
   value: number
-  action?: 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
+  action?: FundAction
   amount?: number
   dividend?: number
   expense?: number

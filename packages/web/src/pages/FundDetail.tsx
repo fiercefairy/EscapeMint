@@ -39,6 +39,9 @@ export function FundDetail() {
   const [pnlBounds, setPnlBounds] = useState<ChartBounds>({})
   const [chartsCollapsed, setChartsCollapsed] = useState(false)
 
+  // Derived state
+  const isDerivativesFund = fund?.config.fund_type === 'derivatives'
+
   // Resize handler for charts
   useEffect(() => {
     const handleResize = () => setChartResize(n => n + 1)
@@ -442,6 +445,38 @@ export function FundDetail() {
       // For derivatives funds, merge server-computed state
       if (isDerivativesFund && derivativesState && derivativesState[index]) {
         const derivState = derivativesState[index]
+
+        // Derivatives Liquid P&L = Realized + Unrealized + Funding + Interest + Rebates
+        const derivLiquidPnl = derivState.realizedPnl + derivState.unrealizedPnl +
+          derivState.cumFunding + derivState.cumInterest + derivState.cumRebates
+
+        // For derivatives APY, we need to use margin deposits as the denominator
+        // marginBalance includes: deposits + all income/expenses + realized P&L - withdrawals
+        // So the "invested" amount is roughly marginBalance - all gains
+        // A simpler approach: use the first entry's margin balance as the starting capital
+        // Or use marginBalance - liquidPnl as the "cost basis" (capital deployed)
+        const derivCapitalBase = derivState.marginBalance - derivLiquidPnl
+        const derivDenominator = derivCapitalBase > 0 ? derivCapitalBase : derivState.marginBalance
+
+        // Calculate derivatives-specific APY
+        let derivRealizedApy = 0
+        let derivLiquidApy = 0
+        if (!isFirstEntry && daysElapsed > 0 && derivDenominator > 0) {
+          // Realized APY: based on realized gains relative to capital
+          const realizedPlusFunding = derivState.realizedPnl + derivState.cumFunding +
+            derivState.cumInterest + derivState.cumRebates
+          const realizedReturnPct = realizedPlusFunding / derivDenominator
+          const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
+          derivRealizedApy = Math.pow(1 + clampedRealizedPct, 365 / daysElapsed) - 1
+          derivRealizedApy = Math.max(-0.99, Math.min(derivRealizedApy, 10))
+
+          // Liquid APY: based on total P&L (including unrealized) relative to capital
+          const liquidReturnPct = derivLiquidPnl / derivDenominator
+          const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
+          derivLiquidApy = Math.pow(1 + clampedLiquidPct, 365 / daysElapsed) - 1
+          derivLiquidApy = Math.max(-0.99, Math.min(derivLiquidApy, 10))
+        }
+
         return {
           ...baseEntry,
           // Override with derivatives-specific computed values
@@ -455,17 +490,20 @@ export function FundDetail() {
           derivCumFunding: derivState.cumFunding,
           derivCumInterest: derivState.cumInterest,
           derivCumRebates: derivState.cumRebates,
+          derivCumFees: derivState.cumFees,
           // Margin tracking
           derivNotionalValue: derivState.notionalValue,
           derivInitialMargin: derivState.initialMargin,
           derivMaintenanceMargin: derivState.maintenanceMargin,
           derivAvailableFunds: derivState.availableFunds,
           derivMarginRatio: derivState.marginRatio,
-          // Also use derivatives values for fundSize and realized
+          // Also use derivatives values for fundSize and P&L
           fundSize: derivState.marginBalance + derivState.unrealizedPnl,  // Account value = cash + unrealized
           realized: derivState.realizedPnl,
           unrealized: derivState.unrealizedPnl,
-          liquidPnl: derivState.realizedPnl + derivState.unrealizedPnl
+          liquidPnl: derivLiquidPnl,
+          realizedApy: derivRealizedApy,
+          liquidApy: derivLiquidApy
         }
       }
 
@@ -1340,7 +1378,13 @@ export function FundDetail() {
               </div>
 
               {/* Fund Analysis Charts */}
-              <FundCharts entries={fund.entries} config={fund.config} fundId={fund.id} />
+              <FundCharts
+                entries={fund.entries}
+                config={fund.config}
+                fundId={fund.id}
+                computedEntries={isDerivativesFund ? computedEntries as ComputedEntry[] : undefined}
+                resize={chartResize}
+              />
             </div>
           )}
         </div>
@@ -1373,6 +1417,9 @@ export function FundDetail() {
           onEdit={(index, entry, calculatedFundSize) => setEditingEntry({ index, entry, calculatedFundSize })}
           onAddEntry={() => setShowAddEntry(true)}
           onReload={loadData}
+          showCoinbaseUpdate={fund.config.fund_type === 'derivatives'}
+          lastEntryDate={fund.entries.length > 0 ? fund.entries[fund.entries.length - 1]?.date : undefined}
+          fundStartDate={fund.config.start_date}
         />
 
         {/* Take Action Modal */}

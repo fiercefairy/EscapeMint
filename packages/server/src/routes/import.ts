@@ -4406,6 +4406,7 @@ interface CoinbaseScrapedTransaction {
   contracts?: number            // For perp trades
   price?: number                // For perp trades (USD per contract)
   symbol?: string               // BTC, USDC, etc.
+  fee?: number                  // Trading fee (from detail dialog)
   isPerpRelated: boolean        // Filter flag
 }
 
@@ -4594,6 +4595,158 @@ const findCoinbaseTransactionsPage = async (browser: Browser): Promise<Page | nu
 }
 
 /**
+ * Closes any open detail dialog reliably
+ */
+const closeDetailDialog = async (page: Page): Promise<void> => {
+  const dialogSelector = '[data-testid="advanced-trade-details-body"]'
+
+  // Check if dialog is open
+  const dialog = await page.$(dialogSelector)
+  if (!dialog) return
+
+  console.log('[Coinbase TX] Closing open dialog...')
+
+  // Try close button first
+  const closeButton = await page.$('[data-testid="close-cta"]')
+  if (closeButton) {
+    await closeButton.click()
+  } else {
+    await page.keyboard.press('Escape')
+  }
+
+  // Wait for dialog to close
+  await page.waitForSelector(dialogSelector, { state: 'hidden', timeout: 3000 }).catch(() => {
+    console.warn('[Coinbase TX] Dialog did not close via button/Escape')
+  })
+
+  // Double-check and try clicking outside if still open
+  const stillOpen = await page.$(dialogSelector)
+  if (stillOpen) {
+    await page.click('body', { position: { x: 10, y: 10 } }).catch(() => null)
+    await page.waitForTimeout(500)
+    await page.waitForSelector(dialogSelector, { state: 'hidden', timeout: 2000 }).catch(() => {
+      console.error('[Coinbase TX] Dialog STILL open after all close attempts!')
+    })
+  }
+
+  await page.waitForTimeout(200)
+}
+
+/**
+ * Extract fee from transaction detail dialog.
+ * Clicks on the row to open the dialog, extracts fee info, then closes it.
+ * Returns the total fee (sum of Coinbase fee + Reg and exchange fee if present).
+ *
+ * IMPORTANT: This function re-queries the row by ID before clicking to avoid stale
+ * element handles. It also verifies the dialog content after opening to ensure we
+ * clicked on the correct row.
+ */
+const extractFeeFromDetailDialog = async (
+  page: Page,
+  rowId: string,
+  rowSelector: string,
+  expectedTitle: string
+): Promise<number | undefined> => {
+  const dialogSelector = '[data-testid="advanced-trade-details-body"]'
+
+  // First, ensure no dialog is already open
+  await closeDetailDialog(page)
+
+  // Re-query for the row by ID to get a fresh element handle
+  // This avoids stale element handles that might point to wrong content after DOM changes
+  const freshRow = await page.$(`${rowSelector}[id="${rowId}"]`)
+  if (!freshRow) {
+    console.log(`[Coinbase TX] Row with ID "${rowId.substring(0, 30)}..." no longer exists, skipping fee extraction`)
+    return undefined
+  }
+
+  // Verify the row title is still a BUY/SELL
+  const rowTitle = await freshRow.$('p[class*="headline"]').then(el => el?.textContent()).catch(() => null)
+  if (!rowTitle) {
+    console.log('[Coinbase TX] Row headline not found, skipping fee extraction')
+    return undefined
+  }
+
+  const titleUpper = rowTitle.toUpperCase()
+  if (!titleUpper.includes('BOUGHT') && !titleUpper.includes('SOLD')) {
+    console.warn(`[Coinbase TX] Row title "${rowTitle}" is not a BUY/SELL, skipping click (expected: "${expectedTitle}")`)
+    return undefined
+  }
+
+  // Extra safety: verify title matches what we expected
+  if (rowTitle.trim() !== expectedTitle.trim()) {
+    console.warn(`[Coinbase TX] Row title mismatch! Found "${rowTitle}" but expected "${expectedTitle}", skipping click`)
+    return undefined
+  }
+
+  console.log(`[Coinbase TX] Clicking on row: "${rowTitle}" (ID: ${rowId.substring(0, 20)}...)`)
+
+  // Click on the freshly queried row
+  await freshRow.click()
+
+  // Wait for the detail dialog to appear
+  const dialog = await page.waitForSelector(dialogSelector, {
+    timeout: 5000
+  }).catch(() => null)
+
+  if (!dialog) {
+    console.log('[Coinbase TX] Could not open detail dialog for fee extraction')
+    return undefined
+  }
+
+  // Small delay to ensure dialog is fully rendered
+  await page.waitForTimeout(500)
+
+  // CRITICAL: Verify the dialog is for a BUY/SELL, not a Funding entry
+  // The dialog title should contain "Bought" or "Sold"
+  const dialogTitle = await page.$eval(
+    '[data-testid="advanced-trade-details-body"] [class*="headline"]',
+    el => el.textContent
+  ).catch(() => null)
+
+  if (dialogTitle) {
+    const dialogTitleUpper = dialogTitle.toUpperCase()
+    if (!dialogTitleUpper.includes('BOUGHT') && !dialogTitleUpper.includes('SOLD')) {
+      console.error(`[Coinbase TX] WRONG DIALOG OPENED! Dialog title: "${dialogTitle}", expected BUY/SELL. Closing immediately.`)
+      await closeDetailDialog(page)
+      return undefined
+    }
+    console.log(`[Coinbase TX] Dialog title verified: "${dialogTitle}"`)
+  }
+
+  let totalFee = 0
+
+  // Find all base-row elements that might contain fee info
+  const feeRows = await page.$$('[data-testid="base-row"]')
+
+  for (const feeRow of feeRows) {
+    const rowText = await feeRow.textContent()
+    if (!rowText) continue
+
+    const lowerText = rowText.toLowerCase()
+
+    // Check if this row contains fee information
+    // Look for: "Coinbase fee", "Reg and exchange fee", or just "Fee"
+    if (lowerText.includes('fee')) {
+      // Extract the dollar amount from this row
+      // The format is typically: "Coinbase fee$0.68" or "Fee$8.45"
+      const dollarMatch = rowText.match(/\$([0-9,.]+)/)
+      if (dollarMatch && dollarMatch[1]) {
+        const feeValue = parseFloat(dollarMatch[1].replace(/,/g, ''))
+        if (!isNaN(feeValue)) {
+          totalFee += feeValue
+        }
+      }
+    }
+  }
+
+  // Close the dialog
+  await closeDetailDialog(page)
+
+  return totalFee > 0 ? totalFee : undefined
+}
+
+/**
  * Parse a single Coinbase transaction row
  */
 const parseCoinbaseTransactionRow = async (
@@ -4674,7 +4827,8 @@ const scrapeCoinbaseTransactionsWithProgress = async (
   archive: CoinbaseTransactionArchive,
   onProgress: (current: number, total: number, tx: CoinbaseScrapedTransaction | null) => void,
   stopDate?: string,
-  maxScrolls = 500
+  maxScrolls = 500,
+  onNewTransaction?: (tx: CoinbaseScrapedTransaction) => Promise<void>
 ): Promise<{ newCount: number; totalScraped: number; stoppedAtDate: boolean }> => {
   // Wait for transaction rows to load
   await page.waitForSelector('tr[data-testid="transaction-history-row"]', {
@@ -4691,24 +4845,76 @@ const scrapeCoinbaseTransactionsWithProgress = async (
 
   const rowSelector = 'tr[data-testid="transaction-history-row"]'
 
+  // Helper to close any open dialog - uses the shared closeDetailDialog function
+  const closeAnyOpenDialog = async () => {
+    await closeDetailDialog(page)
+  }
+
+  // Track processed row IDs to avoid reprocessing after DOM changes
+  const processedRowIds = new Set<string>()
+
   // Process items and scroll loop
   for (let scroll = 0; scroll < maxScrolls; scroll++) {
-    const rows = await page.$$(rowSelector)
-    const currentItemCount = rows.length
+    // Ensure no dialog is open before processing rows
+    await closeAnyOpenDialog()
 
-    // Process new rows
-    for (let i = previousItemCount; i < currentItemCount; i++) {
-      const row = rows[i]
-      if (!row) continue
+    // Keep processing rows until we've handled all visible ones
+    let madeProgress = true
+    while (madeProgress) {
+      madeProgress = false
 
-      const tx = await parseCoinbaseTransactionRow(row)
-      if (tx) {
+      // Re-fetch rows each iteration since DOM may have changed
+      const rows = await page.$$(rowSelector)
+
+      for (const row of rows) {
+        // Get the row ID to check if we've already processed it
+        const rowId = await row.getAttribute('id')
+        if (!rowId || processedRowIds.has(rowId)) continue
+
+        // Safety check: close any dialog that might have been opened unexpectedly
+        await closeAnyOpenDialog()
+
+        const tx = await parseCoinbaseTransactionRow(row)
+        if (!tx) {
+          // Mark as processed even if we couldn't parse it
+          processedRowIds.add(rowId)
+          continue
+        }
+
+        // Mark as processed
+        processedRowIds.add(rowId)
+        madeProgress = true
+
         // Check if we've reached the stop date
         if (stopDate && tx.date < stopDate) {
           console.log(`[Coinbase TX] Reached stop date ${stopDate}, stopping at ${tx.date}`)
           stoppedAtDate = true
           await saveCoinbaseTransactionsArchive(archive)
           return { newCount, totalScraped, stoppedAtDate }
+        }
+
+        // Check if this is a new transaction before extracting fees (expensive operation)
+        const existsInArchive = archive.transactions.some(t => t.id === tx.id)
+
+        // For BUY/SELL transactions, extract fee from detail dialog (only for new transactions)
+        // Double-check title contains "Bought" or "Sold" to avoid clicking on funding/other entries
+        const titleUpper = tx.title.toUpperCase()
+        const isBuySellTitle = titleUpper.includes('BOUGHT') || titleUpper.includes('SOLD')
+
+        let didExtractFee = false
+        if (!existsInArchive && (tx.type === 'BUY' || tx.type === 'SELL') && isBuySellTitle) {
+          console.log(`[Coinbase TX] Extracting fee for: "${tx.title}" (type: ${tx.type}, rowId: ${rowId.substring(0, 20)}...)`)
+          // Pass rowId and rowSelector so the function can re-query the row by ID
+          // This ensures we click on the correct row even if DOM shifted
+          const fee = await extractFeeFromDetailDialog(page, rowId, rowSelector, tx.title)
+          if (fee !== undefined) {
+            tx.fee = fee
+            console.log(`[Coinbase TX] Extracted fee $${fee.toFixed(2)} for ${tx.type} ${tx.contracts} contracts`)
+          }
+          didExtractFee = true
+        } else if (!existsInArchive && (tx.type === 'BUY' || tx.type === 'SELL') && !isBuySellTitle) {
+          // Log a warning if type detection is wrong
+          console.warn(`[Coinbase TX] Skipping fee extraction - type is ${tx.type} but title is "${tx.title}"`)
         }
 
         totalScraped++
@@ -4719,12 +4925,22 @@ const scrapeCoinbaseTransactionsWithProgress = async (
           if (newCount % 10 === 0) {
             await saveCoinbaseTransactionsArchive(archive)
           }
+          // Call real-time apply callback if provided
+          if (onNewTransaction) {
+            await onNewTransaction(tx)
+          }
         }
-        onProgress(totalScraped, currentItemCount, tx)
+        onProgress(totalScraped, rows.length, tx)
+
+        // After opening a dialog for fee extraction, break and re-fetch rows since DOM may have shifted
+        if (didExtractFee) {
+          break
+        }
       }
     }
 
-    previousItemCount = currentItemCount
+    // Ensure no dialog is open before scrolling
+    await closeAnyOpenDialog()
 
     // Scroll to load more
     await page.evaluate(() => {
@@ -4745,7 +4961,8 @@ const scrapeCoinbaseTransactionsWithProgress = async (
 
     // Check if we got new items
     const newRows = await page.$$(rowSelector)
-    if (newRows.length === currentItemCount) {
+    const currentRowCount = newRows.length
+    if (currentRowCount === previousItemCount) {
       noNewItemsCount++
       // Wait for 5 consecutive scrolls with no new items
       if (noNewItemsCount >= 5) {
@@ -4755,17 +4972,18 @@ const scrapeCoinbaseTransactionsWithProgress = async (
         })
         await page.waitForTimeout(3000)
         const finalCheck = await page.$$(rowSelector)
-        if (finalCheck.length === currentItemCount) {
+        if (finalCheck.length === currentRowCount) {
           console.log(`[Coinbase TX] End of list detected after ${totalScraped} transactions`)
           break
         }
         // Aggressive scroll loaded more items - reset counter to continue normal scrolling
-        console.log(`[Coinbase TX] Aggressive scroll loaded ${finalCheck.length - currentItemCount} more items`)
+        console.log(`[Coinbase TX] Aggressive scroll loaded ${finalCheck.length - currentRowCount} more items`)
         noNewItemsCount = 0
       }
     } else {
       noNewItemsCount = 0
     }
+    previousItemCount = currentRowCount
 
     // Safety limit
     if (totalScraped > 10000) {
@@ -5406,15 +5624,139 @@ importRouter.get('/coinbase/transactions/archive', async (_req, res) => {
 })
 
 /**
+ * Convert a single Coinbase transaction to fund entries
+ */
+const coinbaseTxToFundEntries = (tx: CoinbaseScrapedTransaction): FundEntry[] => {
+  const entries: FundEntry[] = []
+
+  switch (tx.type) {
+    case 'DEPOSIT':
+      entries.push({
+        date: tx.date,
+        value: 0,
+        action: 'DEPOSIT',
+        amount: tx.amount
+      })
+      break
+
+    case 'WITHDRAWAL':
+      entries.push({
+        date: tx.date,
+        value: 0,
+        action: 'WITHDRAW',
+        amount: Math.abs(tx.amount)
+      })
+      break
+
+    case 'OTHER':
+      // Handle "Deposited funds" as margin deposit
+      if (tx.title.toLowerCase().includes('deposited funds')) {
+        entries.push({
+          date: tx.date,
+          value: 0,
+          action: 'DEPOSIT',
+          amount: tx.amount
+        })
+      }
+      break
+
+    case 'FUNDING_PROFIT':
+    case 'FUNDING_LOSS':
+      entries.push({
+        date: tx.date,
+        value: 0,
+        action: 'FUNDING',
+        amount: tx.amount  // Can be positive (profit) or negative (loss)
+      })
+      break
+
+    case 'USDC_INTEREST':
+      entries.push({
+        date: tx.date,
+        value: 0,
+        action: 'INTEREST',
+        amount: tx.amount
+      })
+      break
+
+    case 'REBATE':
+      entries.push({
+        date: tx.date,
+        value: 0,
+        action: 'REBATE',
+        amount: tx.amount
+      })
+      break
+
+    case 'BUY':
+    case 'SELL': {
+      const entry: FundEntry = {
+        date: tx.date,
+        value: 0,
+        action: tx.type,
+        amount: Math.abs(tx.amount)
+      }
+      if (tx.contracts !== undefined) {
+        entry.contracts = tx.contracts
+      }
+      if (tx.price !== undefined) {
+        entry.price = tx.price
+      }
+      // Add fee directly to the BUY/SELL entry
+      if (tx.fee !== undefined && tx.fee > 0) {
+        entry.fee = tx.fee
+      }
+      entries.push(entry)
+      break
+    }
+  }
+
+  return entries
+}
+
+/**
+ * Sort fund entries by date and action priority
+ */
+const sortFundEntries = (entries: FundEntry[]): FundEntry[] => {
+  const actionOrder: Record<string, number> = {
+    'DEPOSIT': 1,
+    'WITHDRAW': 2,
+    'INTEREST': 3,
+    'REBATE': 4,
+    'BUY': 5,
+    'SELL': 6,
+    'FEE': 7,  // Fee comes after the trade it's associated with
+    'FUNDING': 8,
+    'HOLD': 9
+  }
+
+  return [...entries].sort((a, b) => {
+    const dateCompare = a.date.localeCompare(b.date)
+    if (dateCompare !== 0) return dateCompare
+
+    const aAction = a.action ?? 'HOLD'
+    const bAction = b.action ?? 'HOLD'
+    const aPriority = actionOrder[aAction] ?? 99
+    const bPriority = actionOrder[bAction] ?? 99
+    return aPriority - bPriority
+  })
+}
+
+/**
  * GET /import/coinbase/transactions/scrape-stream
  * Stream Coinbase transactions scraping progress via SSE.
  *
  * Query params:
  *   - stopDate: ISO date to stop scraping at (default: scrape all)
- *   - fundId: Fund ID to get start date from (optional)
+ *   - fundId: Fund ID to get start date from and apply transactions to after scraping
+ *   - clearFundEntries: If true, clear fund entries immediately before scraping
  */
 importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
-  const { stopDate: stopDateParam, fundId } = req.query as { stopDate?: string; fundId?: string }
+  const { stopDate: stopDateParam, fundId, clearFundEntries } = req.query as {
+    stopDate?: string
+    fundId?: string
+    clearFundEntries?: string
+  }
 
   // Set up SSE
   res.setHeader('Content-Type', 'text/event-stream')
@@ -5519,6 +5861,33 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     stopDate
   })
 
+  // Set up fund for clearing and batch apply
+  let fund: FundData | null = null
+  let fundPath: string | null = null
+  const shouldClearFund = clearFundEntries === 'true' && fundId
+  const shouldApplyToFund = fundId !== undefined
+  let entriesApplied = 0
+
+  if (fundId && shouldClearFund) {
+    fundPath = join(FUNDS_DIR, `${fundId}.tsv`)
+    fund = await readFund(fundPath).catch(() => null)
+
+    if (fund) {
+      // Clear fund entries immediately
+      const previousCount = fund.entries.length
+      fund.entries = []
+      await writeFund(fundPath, fund)
+      sendEvent('status', {
+        message: `Cleared ${previousCount} existing entries from fund`,
+        phase: 'loading',
+        cleared: previousCount
+      })
+      console.log(`[Coinbase TX] Cleared ${previousCount} entries from fund ${fundId}`)
+    } else {
+      console.warn(`[Coinbase TX] Could not load fund ${fundId}`)
+    }
+  }
+
   // Load existing archive
   const archive = await loadCoinbaseTransactionsArchive()
   const existingCount = archive.transactions.length
@@ -5531,7 +5900,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     existingCount
   })
 
-  // Scrape with progress updates
+  // Scrape with progress updates (no real-time apply - we'll batch apply at the end)
   const result = await scrapeCoinbaseTransactionsWithProgress(
     page,
     archive,
@@ -5540,6 +5909,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
         current,
         total,
         newCount: archive.transactions.length - existingCount,
+        entriesApplied: 0, // Will be set after batch apply
         lastTransaction: tx ? {
           date: tx.date,
           type: tx.type,
@@ -5550,11 +5920,57 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
         } : null
       })
     },
-    stopDate
+    stopDate,
+    500,
+    undefined // No real-time apply callback
   ).catch((err: Error) => {
     sendEvent('error', { message: `Scraping error: ${err.message}` })
     return null
   })
+
+  // Batch apply all perp-related transactions to fund after scraping completes
+  if (result && shouldApplyToFund && fundId) {
+    sendEvent('status', {
+      message: 'Applying transactions to fund...',
+      phase: 'applying'
+    })
+
+    // Re-load the fund (it was cleared earlier)
+    fundPath = join(FUNDS_DIR, `${fundId}.tsv`)
+    fund = await readFund(fundPath).catch(() => null)
+
+    if (fund) {
+      // Convert all perp-related transactions to fund entries
+      const perpTxns = archive.transactions.filter(t => t.isPerpRelated)
+      const allEntries: FundEntry[] = []
+
+      // Add initial deposit from config if set (for derivatives funds)
+      const initialDeposit = (fund.config as { initial_deposit?: number }).initial_deposit
+      if (initialDeposit && initialDeposit > 0) {
+        allEntries.push({
+          date: fund.config.start_date,
+          value: 0,
+          action: 'DEPOSIT',
+          amount: initialDeposit,
+          notes: 'Initial margin deposit'
+        })
+      }
+
+      for (const tx of perpTxns) {
+        const entries = coinbaseTxToFundEntries(tx)
+        allEntries.push(...entries)
+      }
+
+      // Sort all entries properly and add to fund
+      fund.entries = sortFundEntries(allEntries)
+      entriesApplied = fund.entries.length
+
+      await writeFund(fundPath, fund)
+      console.log(`[Coinbase TX] Batch applied ${entriesApplied} entries to fund ${fundId}`)
+
+      sendEvent('applied', { entriesApplied, lastDate: fund.entries[fund.entries.length - 1]?.date || '' })
+    }
+  }
 
   // Only close the page if we created it
   if (pageCreated) await page.close().catch(() => {})
@@ -5563,15 +5979,20 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     // Calculate summary of scraped data
     const perpTxns = archive.transactions.filter(t => t.isPerpRelated)
 
+    const message = entriesApplied > 0
+      ? `Scraped ${result.totalScraped} transactions, applied ${entriesApplied} entries to fund`
+      : result.newCount > 0
+        ? `Scraped ${result.totalScraped} transactions, ${result.newCount} new (${perpTxns.length} perp-related)`
+        : `Scraped ${result.totalScraped} transactions, all already in archive`
+
     sendEvent('complete', {
       totalScraped: result.totalScraped,
       newCount: result.newCount,
       archiveTotal: archive.transactions.length,
       perpRelatedCount: perpTxns.length,
       stoppedAtDate: result.stoppedAtDate,
-      message: result.newCount > 0
-        ? `Scraped ${result.totalScraped} transactions, ${result.newCount} new (${perpTxns.length} perp-related)`
-        : `Scraped ${result.totalScraped} transactions, all already in archive`
+      entriesApplied,
+      message
     })
   }
 
@@ -5651,6 +6072,18 @@ importRouter.post('/coinbase/transactions/apply', async (req, res) => {
   // Clear existing entries if requested
   if (clearBeforeImport) {
     fund.entries = []
+
+    // Add initial deposit from config if set (for derivatives funds)
+    const initialDeposit = (fund.config as { initial_deposit?: number }).initial_deposit
+    if (initialDeposit && initialDeposit > 0) {
+      fund.entries.push({
+        date: fund.config.start_date,
+        value: 0,
+        action: 'DEPOSIT',
+        amount: initialDeposit,
+        notes: 'Initial margin deposit'
+      })
+    }
   }
 
   // Get existing entry dates to check for duplicates
@@ -5663,7 +6096,7 @@ importRouter.post('/coinbase/transactions/apply', async (req, res) => {
     funding: number      // Net funding (profit - loss)
     interest: number     // USDC interest
     rebate: number       // Trading rebates
-    trades: { type: string; amount: number; contracts?: number; price?: number }[]
+    trades: { type: string; amount: number; contracts?: number; price?: number; fee?: number }[]
   }>()
 
   for (const tx of selectedTxs) {
@@ -5688,7 +6121,7 @@ importRouter.post('/coinbase/transactions/apply', async (req, res) => {
     } else if (tx.type === 'REBATE') {
       day.rebate += tx.amount
     } else if (tx.type === 'BUY' || tx.type === 'SELL') {
-      const tradeEntry: { type: string; amount: number; contracts?: number; price?: number } = {
+      const tradeEntry: { type: string; amount: number; contracts?: number; price?: number; fee?: number } = {
         type: tx.type,
         amount: tx.amount
       }
@@ -5697,6 +6130,9 @@ importRouter.post('/coinbase/transactions/apply', async (req, res) => {
       }
       if (tx.price !== undefined) {
         tradeEntry.price = tx.price
+      }
+      if (tx.fee !== undefined) {
+        tradeEntry.fee = tx.fee
       }
       day.trades.push(tradeEntry)
     }
@@ -5787,6 +6223,10 @@ importRouter.post('/coinbase/transactions/apply', async (req, res) => {
       if (trade.price !== undefined) {
         entry.price = trade.price
       }
+      // Add fee directly to the BUY/SELL entry
+      if (trade.fee !== undefined && trade.fee > 0) {
+        entry.fee = trade.fee
+      }
       newEntries.push(entry)
       applied++
     }
@@ -5795,8 +6235,8 @@ importRouter.post('/coinbase/transactions/apply', async (req, res) => {
   // Add new entries to fund
   fund.entries.push(...newEntries)
 
-  // Sort entries by date
-  fund.entries.sort((a, b) => a.date.localeCompare(b.date))
+  // Sort entries by date and action priority
+  fund.entries = sortFundEntries(fund.entries)
 
   // Save the fund
   await writeFund(fundPath, fund)

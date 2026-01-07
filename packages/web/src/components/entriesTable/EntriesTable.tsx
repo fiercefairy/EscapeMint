@@ -3,6 +3,8 @@ import { toast } from 'sonner'
 import { updateFundConfig, updateFundEntry, recalculateFund, interpolateColumn, type FundEntry, type FundType, type InterpolatableColumn } from '../../api/funds'
 import { getColumnsForFundType, getDefaultColumns, getDefaultColumnOrder, type ColumnId, type ComputedEntry } from './types'
 import { PasteColumnModal } from './PasteColumnModal'
+import { CoinbaseUpdateButton } from '../CoinbaseUpdateButton'
+import { CoinbaseImportButton } from '../CoinbaseImportButton'
 import { useSettings } from '../../contexts/SettingsContext'
 
 export interface EntriesTableProps {
@@ -15,6 +17,10 @@ export interface EntriesTableProps {
   onEdit: (index: number, entry: FundEntry, calculatedFundSize: number) => void
   onAddEntry: () => void
   onReload: () => void
+  // Optional: for derivatives funds with Coinbase update support
+  showCoinbaseUpdate?: boolean
+  lastEntryDate?: string | undefined
+  fundStartDate?: string | undefined
 }
 
 export function EntriesTable({
@@ -26,7 +32,10 @@ export function EntriesTable({
   fundType = 'stock',
   onEdit,
   onAddEntry,
-  onReload
+  onReload,
+  showCoinbaseUpdate = false,
+  lastEntryDate,
+  fundStartDate
 }: EntriesTableProps) {
   // Get columns available for this fund type
   const availableColumns = useMemo(() => getColumnsForFundType(fundType), [fundType])
@@ -370,6 +379,25 @@ export function EntriesTable({
                 {recalculating ? 'Recalculating...' : 'Recalculate'}
               </button>
             </>
+          )}
+          {showCoinbaseUpdate && fundStartDate && (
+            <div className="relative">
+              <CoinbaseImportButton
+                fundId={fundId}
+                fundStartDate={fundStartDate}
+                hasEntries={entries.length > 0}
+                onComplete={onReload}
+              />
+            </div>
+          )}
+          {showCoinbaseUpdate && (
+            <div className="relative">
+              <CoinbaseUpdateButton
+                fundId={fundId}
+                lastEntryDate={lastEntryDate}
+                onComplete={onReload}
+              />
+            </div>
           )}
           <button
             onClick={onAddEntry}
@@ -755,6 +783,18 @@ export function EntriesTable({
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-purple-400">
                           {entry.derivCumRebates !== undefined ? formatCurrency(entry.derivCumRebates) : '-'}
+                        </td>
+                      )
+                    case 'cumFees':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-red-400">
+                          {entry.derivCumFees !== undefined ? formatCurrency(entry.derivCumFees) : '-'}
+                        </td>
+                      )
+                    case 'fee':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-red-400">
+                          {entry.fee !== undefined && entry.fee > 0 ? formatCurrency(entry.fee) : '-'}
                         </td>
                       )
                     case 'edit':

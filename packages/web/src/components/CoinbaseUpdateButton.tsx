@@ -1,6 +1,9 @@
 /**
- * CoinbaseScrapeButton Component
- * Button that triggers Coinbase transactions page scraping with real-time progress.
+ * CoinbaseUpdateButton Component
+ * Button that scrapes new Coinbase transactions and automatically applies them to a derivatives fund.
+ * This is a streamlined "Update" flow that:
+ * 1. Scrapes new transactions (stopping at the last entry date)
+ * 2. Automatically applies all new perp-related transactions to the fund
  */
 
 import { useState, useRef, useCallback } from 'react'
@@ -12,13 +15,14 @@ import {
   type CoinbaseScrapeCompleteEvent
 } from '../api/import'
 
-interface ScrapeProgress {
+interface UpdateProgress {
   status: string
-  phase: 'connecting' | 'navigating' | 'loading' | 'scraping' | 'complete' | 'error'
+  phase: 'connecting' | 'navigating' | 'loading' | 'scraping' | 'applying' | 'complete' | 'error'
   current: number
   total: number
   newCount: number
-  perpRelatedCount?: number
+  applied?: number
+  skipped?: number
   lastTx: {
     date: string
     type: string
@@ -29,24 +33,22 @@ interface ScrapeProgress {
   } | null
 }
 
-interface CoinbaseScrapeButtonProps {
-  fundId?: string | undefined
-  stopDate?: string | undefined
-  onComplete?: (result: CoinbaseScrapeCompleteEvent) => void
+interface CoinbaseUpdateButtonProps {
+  fundId: string
+  lastEntryDate?: string | undefined  // ISO date of the last entry in the fund
+  onComplete?: () => void
   className?: string
-  variant?: 'primary' | 'secondary'
 }
 
-export function CoinbaseScrapeButton({
+export function CoinbaseUpdateButton({
   fundId,
-  stopDate,
+  lastEntryDate,
   onComplete,
-  className = '',
-  variant = 'primary'
-}: CoinbaseScrapeButtonProps) {
-  const [isScraping, setIsScraping] = useState(false)
+  className = ''
+}: CoinbaseUpdateButtonProps) {
+  const [isUpdating, setIsUpdating] = useState(false)
   const [showProgress, setShowProgress] = useState(false)
-  const [progress, setProgress] = useState<ScrapeProgress>({
+  const [progress, setProgress] = useState<UpdateProgress>({
     status: '',
     phase: 'connecting',
     current: 0,
@@ -57,8 +59,8 @@ export function CoinbaseScrapeButton({
 
   const scrapeStreamRef = useRef<{ close: () => void } | null>(null)
 
-  const handleScrape = useCallback(() => {
-    setIsScraping(true)
+  const handleUpdate = useCallback(async () => {
+    setIsUpdating(true)
     setShowProgress(true)
     setProgress({
       status: 'Connecting to browser...',
@@ -69,6 +71,9 @@ export function CoinbaseScrapeButton({
       lastTx: null
     })
 
+    // Use lastEntryDate as stopDate if provided
+    const stopDate = lastEntryDate
+
     scrapeStreamRef.current = scrapeCoinbaseTransactionsStream(
       { stopDate, fundId },
       {
@@ -76,7 +81,7 @@ export function CoinbaseScrapeButton({
           setProgress(prev => ({
             ...prev,
             status: data.message,
-            phase: data.phase as ScrapeProgress['phase']
+            phase: data.phase as UpdateProgress['phase']
           }))
         },
         onProgress: (data: CoinbaseScrapeProgressEvent) => {
@@ -90,15 +95,27 @@ export function CoinbaseScrapeButton({
           })
         },
         onComplete: (data: CoinbaseScrapeCompleteEvent) => {
+          // Streaming endpoint already applied entries when fundId was passed
+          const entriesApplied = data.entriesApplied ?? 0
+
           setProgress(prev => ({
             ...prev,
             phase: 'complete',
-            status: data.message,
-            perpRelatedCount: data.perpRelatedCount
+            status: `Update complete: ${entriesApplied} entries applied`,
+            applied: entriesApplied,
+            skipped: 0
           }))
-          toast.success(data.message)
-          setIsScraping(false)
-          onComplete?.(data)
+
+          if (entriesApplied > 0) {
+            toast.success(`Applied ${entriesApplied} entries`)
+          } else if (data.newCount > 0) {
+            toast.info(`${data.newCount} new transactions scraped`)
+          } else {
+            toast.info('No new transactions found')
+          }
+
+          setIsUpdating(false)
+          onComplete?.()
 
           // Hide progress after a delay
           setTimeout(() => {
@@ -112,37 +129,45 @@ export function CoinbaseScrapeButton({
             status: data.message
           }))
           toast.error(data.message)
-          setIsScraping(false)
+          setIsUpdating(false)
         }
       }
     )
-  }, [stopDate, fundId, onComplete])
+  }, [lastEntryDate, fundId, onComplete])
 
   const handleCancel = useCallback(() => {
     scrapeStreamRef.current?.close()
-    setIsScraping(false)
+    setIsUpdating(false)
     setShowProgress(false)
-    toast.info('Scraping cancelled')
+    toast.info('Update cancelled')
   }, [])
-
-  const buttonClasses = variant === 'primary'
-    ? 'bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-800'
-    : 'bg-slate-700 hover:bg-slate-600 text-white disabled:bg-slate-800'
 
   return (
     <div className={`flex flex-col gap-2 ${className}`}>
       <div className="flex items-center gap-2">
         <button
-          onClick={handleScrape}
-          disabled={isScraping}
-          className={`px-3 py-1.5 text-sm rounded-lg transition-colors disabled:opacity-50 ${buttonClasses}`}
+          onClick={handleUpdate}
+          disabled={isUpdating}
+          className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 flex items-center gap-1"
         >
-          {isScraping ? 'Scraping...' : 'Scrape Transactions'}
+          {isUpdating ? (
+            <>
+              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Updating...
+            </>
+          ) : (
+            <>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Update
+            </>
+          )}
         </button>
-        {isScraping && (
+        {isUpdating && (
           <button
             onClick={handleCancel}
-            className="px-2 py-1.5 text-xs bg-red-600/30 hover:bg-red-600/50 text-red-400 rounded transition-colors"
+            className="px-1.5 py-1 text-xs bg-red-600/30 hover:bg-red-600/50 text-red-400 rounded transition-colors"
           >
             Cancel
           </button>
@@ -151,10 +176,10 @@ export function CoinbaseScrapeButton({
 
       {/* Progress Display */}
       {showProgress && (
-        <div className="bg-slate-800/50 rounded-lg p-3 text-sm space-y-2 border border-slate-700">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 rounded-lg p-3 text-sm space-y-2 border border-slate-700 shadow-xl z-50 min-w-[300px]">
           {/* Status */}
           <div className="flex items-center gap-2">
-            {progress.phase === 'scraping' && (
+            {(progress.phase === 'scraping' || progress.phase === 'applying') && (
               <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
             )}
             {progress.phase === 'complete' && (
@@ -187,7 +212,7 @@ export function CoinbaseScrapeButton({
           )}
 
           {/* Last Transaction */}
-          {progress.lastTx && (
+          {progress.lastTx && progress.phase === 'scraping' && (
             <div className="text-xs text-slate-400 flex items-center gap-2">
               <span className={progress.lastTx.isPerpRelated ? 'text-blue-400' : 'text-slate-500'}>
                 {progress.lastTx.isPerpRelated ? 'PERP' : 'Other'}
@@ -203,9 +228,9 @@ export function CoinbaseScrapeButton({
           )}
 
           {/* Summary */}
-          {progress.phase === 'complete' && progress.perpRelatedCount !== undefined && (
+          {progress.phase === 'complete' && (
             <div className="text-xs text-slate-400">
-              {progress.perpRelatedCount} perp-related transactions found
+              {progress.applied} entries added, {progress.skipped} duplicates skipped
             </div>
           )}
         </div>

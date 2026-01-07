@@ -786,12 +786,14 @@ export interface CoinbaseScrapeStatusEvent {
   phase: 'connecting' | 'navigating' | 'loading' | 'scraping'
   existingCount?: number
   stopDate?: string
+  cleared?: number  // Number of entries cleared (when clearFundEntries is used)
 }
 
 export interface CoinbaseScrapeProgressEvent {
   current: number
   total: number
   newCount: number
+  entriesApplied?: number
   lastTransaction: {
     date: string
     type: CoinbaseTransactionType
@@ -808,6 +810,7 @@ export interface CoinbaseScrapeCompleteEvent {
   archiveTotal: number
   perpRelatedCount: number
   stoppedAtDate: boolean
+  entriesApplied?: number  // Number of entries applied after batch processing
   message: string
 }
 
@@ -838,25 +841,30 @@ export async function clearCoinbaseTransactionsArchive(): Promise<ApiResult<{ su
 
 /**
  * Scrape Coinbase transactions page with real-time progress via SSE.
+ * After scraping completes, all transactions are batch-applied to the fund.
  *
  * @param options.stopDate - ISO date to stop scraping at
- * @param options.fundId - Fund ID to get start date from (if stopDate not provided)
+ * @param options.fundId - Fund ID to apply transactions to after scraping
+ * @param options.clearFundEntries - If true, clear fund entries immediately before scraping
  */
 export function scrapeCoinbaseTransactionsStream(
   options: {
-    stopDate?: string
-    fundId?: string
+    stopDate?: string | undefined
+    fundId?: string | undefined
+    clearFundEntries?: boolean | undefined
   } = {},
   callbacks: {
     onStatus?: (data: CoinbaseScrapeStatusEvent) => void
     onProgress?: (data: CoinbaseScrapeProgressEvent) => void
     onComplete?: (data: CoinbaseScrapeCompleteEvent) => void
     onError?: (data: ScrapeErrorEvent) => void
+    onApplied?: (data: { entriesApplied: number; lastDate: string }) => void
   }
 ): { close: () => void } {
   const params = new URLSearchParams()
   if (options.stopDate) params.set('stopDate', options.stopDate)
   if (options.fundId) params.set('fundId', options.fundId)
+  if (options.clearFundEntries) params.set('clearFundEntries', 'true')
 
   const eventSource = new EventSource(
     `${API_BASE}/import/coinbase/transactions/scrape-stream?${params.toString()}`
@@ -870,6 +878,11 @@ export function scrapeCoinbaseTransactionsStream(
   eventSource.addEventListener('progress', (e: MessageEvent) => {
     const data = JSON.parse(e.data) as CoinbaseScrapeProgressEvent
     callbacks.onProgress?.(data)
+  })
+
+  eventSource.addEventListener('applied', (e: MessageEvent) => {
+    const data = JSON.parse(e.data) as { entriesApplied: number; lastDate: string }
+    callbacks.onApplied?.(data)
   })
 
   eventSource.addEventListener('complete', (e: MessageEvent) => {
