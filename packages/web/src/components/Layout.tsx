@@ -244,7 +244,7 @@ export function Layout() {
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-1 scrollbar-thin scrollbar-thumb-slate-700">
           {!collapsed && (
             <div className="px-3 py-1 text-[10px] text-slate-600 uppercase tracking-wider">
-              Sub-Funds
+              Active Funds
             </div>
           )}
           {renderFundNav(!collapsed, activeFunds)}
@@ -255,7 +255,7 @@ export function Layout() {
               <div className="mx-3 my-2 border-t border-slate-700" />
               {!collapsed && (
                 <div className="px-3 py-1 text-[10px] text-slate-600 uppercase tracking-wider">
-                  Closed
+                  Closed Funds
                 </div>
               )}
               {renderFundNav(!collapsed, closedFunds, 'closed:')}
@@ -267,7 +267,7 @@ export function Layout() {
         <div className={`flex-shrink-0 border-t border-slate-700 px-3 py-2 flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
           {version && (
             <span className="text-[10px] text-slate-600">
-              {collapsed ? `v${version}` : `EscapeMint v${version}`}
+              v{version}
             </span>
           )}
           <Link
@@ -353,7 +353,7 @@ export function Layout() {
         {/* Fund Navigation - Mobile */}
         <div className="flex-1 min-h-0 overflow-y-auto py-1">
           <div className="px-3 py-1 text-[10px] text-slate-600 uppercase tracking-wider">
-            Sub-Funds
+            Active Funds
           </div>
           {renderFundNav(true, activeFunds)}
 
@@ -362,7 +362,7 @@ export function Layout() {
             <>
               <div className="mx-3 my-2 border-t border-slate-700" />
               <div className="px-3 py-1 text-[10px] text-slate-600 uppercase tracking-wider">
-                Closed
+                Closed Funds
               </div>
               {renderFundNav(true, closedFunds, 'closed:')}
             </>
