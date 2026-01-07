@@ -63,3 +63,22 @@ export type {
   FundMetrics,
   AggregateMetrics
 } from './aggregate.js'
+export {
+  FUND_TYPE_DEFAULTS,
+  FUND_TYPE_FEATURES,
+  ALLOWED_ACTIONS,
+  isCashFund,
+  isDerivativesFund,
+  isTradingFund,
+  getFundTypeFeatures,
+  getFundTypeDefaults,
+  getAllowedActions,
+  isValidAction,
+  applyFundTypeDefaults
+} from './fund-type-config.js'
+export type {
+  FundTypeFeatures,
+  CashFundAction,
+  TradingFundAction,
+  DerivativesFundAction
+} from './fund-type-config.js'

@@ -10,6 +10,11 @@ import { FundCharts } from '../components/FundCharts'
 import { ChartSettings } from '../components/ChartSettings'
 import { EntriesTable, type ComputedEntry, type ColumnId } from '../components/entriesTable'
 import { formatCurrency, formatPercent } from '../utils/format'
+import {
+  isCashFund as checkIsCashFund,
+  isDerivativesFund as checkIsDerivativesFund,
+  getFundTypeFeatures
+} from '@escapemint/engine'
 
 // Chart data point for P&L and APY charts
 interface ChartDataPoint {
@@ -39,8 +44,10 @@ export function FundDetail() {
   const [pnlBounds, setPnlBounds] = useState<ChartBounds>({})
   const [chartsCollapsed, setChartsCollapsed] = useState(false)
 
-  // Derived state
-  const isDerivativesFund = fund?.config.fund_type === 'derivatives'
+  // Derived state using centralized fund type helpers
+  const isDerivativesFund = checkIsDerivativesFund(fund?.config.fund_type)
+  const isCashFund = checkIsCashFund(fund?.config.fund_type)
+  const features = fund ? getFundTypeFeatures(fund.config.fund_type ?? 'stock') : getFundTypeFeatures('stock')
 
   // Resize handler for charts
   useEffect(() => {
@@ -174,7 +181,7 @@ export function FundDetail() {
     )
 
     // For derivatives funds, use server-computed state if available
-    const isDerivativesFund = fund.config.fund_type === 'derivatives'
+    const isDerivativesFund = checkIsDerivativesFund(fund.config.fund_type)
     const derivativesState = state?.derivativesEntriesState
 
     let totalBuys = 0
@@ -201,7 +208,7 @@ export function FundDetail() {
       const entryDate = new Date(entry.date)
 
       // For cash fund TWAB: add previous balance * days since last entry
-      if (fund.config.fund_type === 'cash' && index > 0) {
+      if (checkIsCashFund(fund.config.fund_type) && index > 0) {
         const daysSinceLast = Math.max(0, (entryDate.getTime() - lastEntryDate.getTime()) / (1000 * 60 * 60 * 24))
         twabNumerator += lastCashBalance * daysSinceLast
       }
@@ -231,7 +238,7 @@ export function FundDetail() {
       // For cash funds, fund_size IS the cash balance (no separate investment pool)
       // For non-cash managing trading funds, fund_size = invested amount (calculated after buy/sell processing below)
       // For cash managing trading funds, fund_size = base + deposits - withdrawals + dividends + interest - expenses
-      const isCashFundType = fund.config.fund_type === 'cash'
+      const isCashFundType = checkIsCashFund(fund.config.fund_type)
       const expenseFromFund = fund.config.expense_from_fund !== false
       let calculatedFundSize: number
       if (isCashFundType) {
@@ -362,12 +369,12 @@ export function FundDetail() {
       const unrealized = postActionValue - costBasis
 
       // APY calculation depends on fund type
-      const isCashFund = fund.config.fund_type === 'cash'
+      const localIsCashFund = checkIsCashFund(fund.config.fund_type)
 
       // Realized gain calculation differs by fund type
       // For cash funds: only interest - expenses (no dividends or extractions apply)
       // For trading funds: interest + dividends + extracted profits - expenses
-      const realized = isCashFund
+      const realized = localIsCashFund
         ? cumCashInterest - cumExpenses
         : cumCashInterest + cumDividends + cumExtracted - cumExpenses
 
@@ -376,7 +383,7 @@ export function FundDetail() {
       let realizedApy = 0
       let liquidApy = 0
 
-      if (isCashFund) {
+      if (localIsCashFund) {
         // Cash fund APY: based on interest earned minus expenses
         // Use Time-Weighted Average Balance (TWAB) as denominator for accurate APY
         if (Math.abs(realized) < 0.01 || isFirstEntry) {
@@ -415,7 +422,7 @@ export function FundDetail() {
 
       // If value is 0 (closed fund), preserve the last valid APYs
       // But NOT for cash funds - a $0 pre-action value before DEPOSIT is normal
-      if (!isCashFund && entry.value === 0 && lastApy !== 0) {
+      if (!localIsCashFund && entry.value === 0 && lastApy !== 0) {
         realizedApy = lastApy // For closed funds, realized = liquid
         liquidApy = lastApy
       }
@@ -1084,7 +1091,7 @@ export function FundDetail() {
                   {fund.config.audited ? 'Audited' : 'Audit'}
                 </button>
                 {/* Recommendation Badge - not shown for cash funds */}
-                {state?.recommendation && fund.config.fund_type !== 'cash' && (
+                {state?.recommendation && features.allowsRecommendations && (
                   <span
                     className={`px-2 py-0.5 text-[10px] font-bold rounded ${
                       state.recommendation.action === 'BUY'
@@ -1117,11 +1124,11 @@ export function FundDetail() {
               </div>
               {/* Config Details Row - different for cash vs trading funds */}
               <div className="flex items-center gap-3 mt-2 text-xs text-slate-400 flex-wrap">
-                {fund.config.fund_type === 'cash' ? (
+                {isCashFund ? (
                   // Cash fund: simplified config
                   <>
                     <span title="Fund Type">
-                      <span className="text-slate-500">Type:</span> <span className="text-blue-300">Cash</span>
+                      <span className="text-slate-500">Type:</span> <span className={features.textColorClass}>{features.label}</span>
                     </span>
                     <span className="text-slate-600">|</span>
                     <span title="Cash Balance">
@@ -1136,15 +1143,7 @@ export function FundDetail() {
                   // Trading fund (stock/crypto): full trading config
                   <>
                     <span title="Fund Type">
-                      <span className="text-slate-500">Type:</span> <span className={
-                        fund.config.fund_type === 'crypto' ? 'text-yellow-300'
-                        : fund.config.fund_type === 'derivatives' ? 'text-orange-300'
-                        : 'text-green-300'
-                      }>{
-                        fund.config.fund_type === 'crypto' ? 'Crypto'
-                        : fund.config.fund_type === 'derivatives' ? 'Futures'
-                        : 'Stock'
-                      }</span>
+                      <span className="text-slate-500">Type:</span> <span className={features.textColorClass}>{features.label}</span>
                     </span>
                     <span className="text-slate-600">|</span>
                     <span title="Mode">
@@ -1295,7 +1294,7 @@ export function FundDetail() {
                         </p>
                       </div>
                     </div>
-                  ) : latestEntry && fund.config.fund_type === 'cash' ? (
+                  ) : latestEntry && isCashFund ? (
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div>
                         <p className="text-[10px] text-slate-400">Cash Balance</p>
@@ -1475,7 +1474,7 @@ export function FundDetail() {
           onEdit={(index, entry, calculatedFundSize) => setEditingEntry({ index, entry, calculatedFundSize })}
           onAddEntry={() => setShowAddEntry(true)}
           onReload={loadData}
-          showCoinbaseUpdate={fund.config.fund_type === 'derivatives'}
+          showCoinbaseUpdate={isDerivativesFund}
           lastEntryDate={fund.entries.length > 0 ? fund.entries[fund.entries.length - 1]?.date : undefined}
           fundStartDate={fund.config.start_date}
         />
@@ -1485,7 +1484,7 @@ export function FundDetail() {
           <AddEntryModal
             fundId={fund.id}
             fundTicker={fund.ticker}
-            currentRecommendation={fund.config.fund_type === 'cash' ? undefined : state?.recommendation}
+            currentRecommendation={features.allowsRecommendations ? state?.recommendation : undefined}
             existingEntries={fund.entries}
             targetApy={fund.config.target_apy}
             minProfitUsd={fund.config.min_profit_usd}

@@ -4,6 +4,11 @@ import type { FundEntry, FundConfig, ChartBounds } from '../api/funds'
 import { updateFundConfig } from '../api/funds'
 import { DerivativesCapturedProfitChart } from './DerivativesCapturedProfitChart'
 import type { ComputedEntry } from './entriesTable'
+import {
+  isCashFund as checkIsCashFund,
+  isDerivativesFund as checkIsDerivativesFund,
+  getFundTypeFeatures
+} from '@escapemint/engine'
 
 interface FundChartsProps {
   entries: FundEntry[]
@@ -48,7 +53,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
 
   const startDate = new Date(config.start_date)
   const result: TimeSeriesPoint[] = []
-  const isCashFund = config.fund_type === 'cash'
+  const isCashFund = checkIsCashFund(config.fund_type)
 
   let startInput = 0
   let costBasis = 0
@@ -1262,7 +1267,8 @@ interface ChartBoundsState {
 }
 
 export function FundCharts({ entries, config, fundId, computedEntries, resize: externalResize }: FundChartsProps) {
-  const isDerivativesFund = config.fund_type === 'derivatives'
+  const isDerivativesFund = checkIsDerivativesFund(config.fund_type)
+  const features = getFundTypeFeatures(config.fund_type ?? 'stock')
 
   // For derivatives, use computedEntries which has proper state; for others use raw entries
   const timeSeries = useMemo(() => {
@@ -1345,7 +1351,7 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
     return null
   }
 
-  const isCashFund = config.fund_type === 'cash'
+  const isCashFund = checkIsCashFund(config.fund_type)
   const hasMarginData = timeSeries.some(d => d.marginAvailable > 0 || d.marginBorrowed > 0)
 
   const manageCash = config.manage_cash !== false
@@ -1373,12 +1379,12 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
       )}
 
       {/* Captured Profit - different chart for derivatives vs stock/crypto */}
-      {!isCashFund && !isDerivativesFund && (
+      {features.allowsTrading && !isDerivativesFund && (
         <StackedAreaChart
           data={timeSeries}
           title="Captured Profit"
           series={[
-            { key: 'cumulativeDividends', label: 'Dividends', color: '#fbbf24' },
+            ...(features.supportsDividends ? [{ key: 'cumulativeDividends' as const, label: 'Dividends', color: '#fbbf24' }] : []),
             ...(manageCash ? [{ key: 'cashInterest' as const, label: 'Cash Int', color: '#86efac' }] : []),
             { key: 'realizedGains', label: 'Extracted', color: '#3b82f6' }
           ]}

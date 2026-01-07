@@ -1,5 +1,9 @@
 import type { FundData } from '@escapemint/storage'
-import { computeDerivativesEntriesState } from '@escapemint/engine'
+import {
+  computeDerivativesEntriesState,
+  isCashFund as checkIsCashFund,
+  isDerivativesFund as checkIsDerivativesFund
+} from '@escapemint/engine'
 
 /**
  * Computed metrics for the latest state of a fund.
@@ -47,8 +51,8 @@ export interface FundComputedMetrics {
 export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   const entries = fund.entries
   const config = fund.config
-  const isCashFund = config.fund_type === 'cash'
-  const isDerivativesFund = config.fund_type === 'derivatives'
+  const isCashFund = checkIsCashFund(config.fund_type)
+  const isDerivativesFund = checkIsDerivativesFund(config.fund_type)
   const isAccumulate = config.accumulate ?? false
   const manageCash = config.manage_cash !== false
 

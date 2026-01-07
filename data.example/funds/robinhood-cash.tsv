@@ -1,0 +1,15 @@
+date	value	cash	action	amount	shares	price	dividend	expense	cash_interest	fund_size	margin_available	margin_borrowed	notes
+2024-01-01	5000	5000	DEPOSIT	5000						5000			Initial deposit
+2024-01-15	5000	5000	HOLD							5000
+2024-01-31	5000	5016.44	HOLD						16.44	5016.44			Interest payment
+2024-02-01	5016.44	10016.44	DEPOSIT	5000						10016.44			Monthly deposit
+2024-02-15	10016.44	8016.44	WITHDRAW	2000						8016.44			Transfer to TQQQ fund
+2024-02-29	8016.44	8042.85	HOLD						26.41	8042.85			Interest payment
+2024-03-01	8042.85	13042.85	DEPOSIT	5000						13042.85			Monthly deposit
+2024-03-15	13042.85	11042.85	WITHDRAW	2000						11042.85			Transfer to BTC fund
+2024-03-31	11042.85	11079.24	HOLD						36.39	11079.24			Interest payment
+2024-04-01	11079.24	16079.24	DEPOSIT	5000						16079.24			Monthly deposit
+2024-04-30	16079.24	16132.24	HOLD						53.00	16132.24			Interest payment
+2024-05-01	16132.24	21132.24	DEPOSIT	5000						21132.24			Monthly deposit
+2024-05-15	21132.24	16132.24	WITHDRAW	5000						16132.24			Transfer to SPXL fund
+2024-05-31	16132.24	16185.40	HOLD						53.16	16185.40			Interest payment

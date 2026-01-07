@@ -1,6 +1,10 @@
 import { useMemo, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import type { FundEntry, FundType } from '../api/funds'
+import {
+  isCashFund as checkIsCashFund,
+  getFundTypeFeatures
+} from '@escapemint/engine'
 
 export type ActionType = '' | 'BUY' | 'SELL' | 'HOLD'
 
@@ -94,7 +98,8 @@ export const parseFormulaValue = (input: string): number => {
 }
 
 export function EntryForm({ formData, setFormData, existingEntries = [], baseFundSize = 0, showFundSizeAdjustment = false, cashAvailable, marginAvailable, currentFundSize, fundType = 'stock', manageCash = true }: EntryFormProps) {
-  const isCashFund = fundType === 'cash'
+  const isCashFund = checkIsCashFund(fundType)
+  const _features = getFundTypeFeatures(fundType)
   const isCryptoFund = fundType === 'crypto'
   // Get cumulative shares from entries BEFORE the current date
   const getCumulativeShares = useCallback((beforeDate: string) => {

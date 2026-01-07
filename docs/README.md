@@ -8,6 +8,8 @@ Welcome to the EscapeMint documentation. This guide explains how the rules-based
 2. [Fund Management](./fund-management.md) - How funds track positions and cash
 3. [Configuration Guide](./configuration.md) - All configuration options explained
 4. [Data Format](./data-format.md) - TSV file structure and entry types
+5. [System Architecture](./architecture.md) - Package structure and data flow
+6. [Derivatives](./derivatives.md) - Perpetual futures data model
 
 ## Quick Overview
 

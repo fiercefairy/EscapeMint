@@ -1,0 +1,11 @@
+date	value	cash	action	amount	shares	price	dividend	expense	cash_interest	fund_size	margin_available	margin_borrowed	notes
+2024-01-01	1000	1000	DEPOSIT	1000						1000			Initial USD deposit
+2024-01-31	1000	1003.29	HOLD						3.29	1003.29			Interest payment
+2024-02-15	1003.29	1503.29	DEPOSIT	500						1503.29			Bank transfer
+2024-02-29	1503.29	1508.24	HOLD						4.95	1508.24			Interest payment
+2024-03-15	1508.24	1008.24	WITHDRAW	500						1008.24			Transfer to CRO fund
+2024-03-31	1008.24	1011.56	HOLD						3.32	1011.56			Interest payment
+2024-04-15	1011.56	2011.56	DEPOSIT	1000						2011.56			Bank transfer
+2024-04-30	2011.56	2018.19	HOLD						6.63	2018.19			Interest payment
+2024-05-15	2018.19	1518.19	WITHDRAW	500						1518.19			Transfer to CRO fund
+2024-05-31	1518.19	1523.19	HOLD						5.00	1523.19			Interest payment

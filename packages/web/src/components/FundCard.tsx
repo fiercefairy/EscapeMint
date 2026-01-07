@@ -1,4 +1,9 @@
 import type { FundSummary } from '../api/funds'
+import {
+  isCashFund as checkIsCashFund,
+  isDerivativesFund as checkIsDerivativesFund,
+  getFundTypeFeatures
+} from '@escapemint/engine'
 
 export interface FundCardProps {
   fund: FundSummary
@@ -14,8 +19,9 @@ export function FundCard({ fund, impactPct, realizedAPY, liquidAPY, realizedGain
   const fundSize = fund.latestFundSize ?? fund.config.fund_size_usd
   // Use explicit status if set, otherwise fall back to legacy check (undefined status + zero fund size)
   const isClosed = fund.config.status === 'closed' || (fund.config.status === undefined && fundSize === 0)
-  const isCashFund = fund.config.fund_type === 'cash'
-  const isDerivativesFund = fund.config.fund_type === 'derivatives'
+  const isCashFund = checkIsCashFund(fund.config.fund_type)
+  const isDerivativesFund = checkIsDerivativesFund(fund.config.fund_type)
+  const features = getFundTypeFeatures(fund.config.fund_type ?? 'stock')
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -30,13 +36,9 @@ export function FundCard({ fund, impactPct, realizedAPY, liquidAPY, realizedGain
     return (value * 100).toFixed(1) + '%'
   }
 
-  // Different color schemes by fund type
-  const borderHoverClass = isCashFund ? 'hover:border-blue-500'
-    : isDerivativesFund ? 'hover:border-orange-500'
-    : 'hover:border-mint-600'
-  const valueColorClass = isCashFund ? 'text-blue-400 font-medium'
-    : isDerivativesFund ? 'text-orange-400 font-medium'
-    : 'text-mint-400 font-medium'
+  // Different color schemes by fund type (using config)
+  const borderHoverClass = features.borderHoverClass
+  const valueColorClass = `${features.textColorClass} font-medium`
 
   return (
     <div className={`bg-slate-800 rounded-lg p-1.5 xs:p-2 sm:p-3 border transition-all ${borderHoverClass} ${
@@ -61,22 +63,22 @@ export function FundCard({ fund, impactPct, realizedAPY, liquidAPY, realizedGain
             </span>
           )}
           {isCashFund && (
-            <span className="px-1 xs:px-1.5 py-0.5 text-[7px] xs:text-[8px] sm:text-[10px] bg-blue-900 text-blue-400 rounded whitespace-nowrap">Cash</span>
+            <span className="px-1 xs:px-1.5 py-0.5 text-[7px] xs:text-[8px] sm:text-[10px] bg-blue-900 text-blue-400 rounded whitespace-nowrap">{features.label}</span>
           )}
           {isDerivativesFund && (
-            <span className="px-1 xs:px-1.5 py-0.5 text-[7px] xs:text-[8px] sm:text-[10px] bg-orange-900 text-orange-400 rounded whitespace-nowrap">Futures</span>
+            <span className="px-1 xs:px-1.5 py-0.5 text-[7px] xs:text-[8px] sm:text-[10px] bg-orange-900 text-orange-400 rounded whitespace-nowrap">{features.label}</span>
           )}
           {isClosed && (
             <span className="px-1 xs:px-1.5 py-0.5 text-[7px] xs:text-[8px] sm:text-[10px] bg-slate-700 text-slate-400 rounded whitespace-nowrap">Closed</span>
           )}
-          {!isClosed && !isCashFund && !isDerivativesFund && fund.config.accumulate && (
+          {!isClosed && features.allowsTrading && fund.config.accumulate && (
             <span className="px-1 xs:px-1.5 py-0.5 text-[7px] xs:text-[8px] sm:text-[10px] bg-mint-900 text-mint-400 rounded whitespace-nowrap">Acc</span>
           )}
         </div>
       </div>
 
       <div className="space-y-0.5 xs:space-y-1 text-[8px] xs:text-[9px] sm:text-xs">
-        {isCashFund ? (
+        {!features.allowsTrading ? (
           // Cash fund display - show balance, P&L, and realized APY (interest earnings)
           <>
             <div className="flex justify-between gap-1 xs:gap-2">
@@ -104,7 +106,7 @@ export function FundCard({ fund, impactPct, realizedAPY, liquidAPY, realizedGain
           // Trading fund display
           <>
             <div className="flex justify-between gap-1 xs:gap-2">
-              <span className="text-slate-400 truncate">{isDerivativesFund ? 'Margin' : 'Size'}</span>
+              <span className="text-slate-400 truncate">{features.supportsContracts ? 'Margin' : 'Size'}</span>
               <span className="text-white font-medium truncate text-right">{formatCurrency(fundSize)}</span>
             </div>
 

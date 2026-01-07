@@ -4,6 +4,11 @@ import { toast } from 'sonner'
 import { updateFund, deleteFund, syncFromSubfunds, notifyFundsChanged, type FundConfig, type FundStatus, type FundType } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
 import { useSettings } from '../contexts/SettingsContext'
+import {
+  isCashFund as checkIsCashFund,
+  getFundTypeFeatures,
+  FUND_TYPE_DEFAULTS
+} from '@escapemint/engine'
 
 interface EditFundPanelProps {
   fundId: string
@@ -52,7 +57,9 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
     start_date: config.start_date
   })
 
-  const isCashFund = fundType === 'cash'
+  const isCashFund = checkIsCashFund(fundType)
+  const features = getFundTypeFeatures(fundType)
+  const defaults = FUND_TYPE_DEFAULTS[fundType]
 
   useEffect(() => {
     fetchPlatforms().then(result => {
@@ -70,23 +77,24 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
     e.preventDefault()
     setLoading(true)
 
+    // For non-trading funds, use defaults for trading-related fields
     const updatedConfig: Partial<FundConfig> = {
       status: formData.status,
       fund_type: fundType,
       fund_size_usd: formData.fund_size_usd,
-      target_apy: isCashFund ? 0 : round(formData.target_apy / 100, 4),
-      interval_days: isCashFund ? 1 : formData.interval_days,
-      input_min_usd: isCashFund ? 0 : formData.input_min_usd,
-      input_mid_usd: isCashFund ? 0 : formData.input_mid_usd,
-      input_max_usd: isCashFund ? 0 : formData.input_max_usd,
-      max_at_pct: isCashFund ? 0 : round(formData.max_at_pct / 100, 4),
-      min_profit_usd: isCashFund ? 0 : formData.min_profit_usd,
+      target_apy: features.allowsTrading ? round(formData.target_apy / 100, 4) : (defaults.target_apy ?? 0),
+      interval_days: features.allowsTrading ? formData.interval_days : (defaults.interval_days ?? 1),
+      input_min_usd: features.allowsTrading ? formData.input_min_usd : (defaults.input_min_usd ?? 0),
+      input_mid_usd: features.allowsTrading ? formData.input_mid_usd : (defaults.input_mid_usd ?? 0),
+      input_max_usd: features.allowsTrading ? formData.input_max_usd : (defaults.input_max_usd ?? 0),
+      max_at_pct: features.allowsTrading ? round(formData.max_at_pct / 100, 4) : (defaults.max_at_pct ?? 0),
+      min_profit_usd: features.allowsTrading ? formData.min_profit_usd : (defaults.min_profit_usd ?? 0),
       cash_apy: round(formData.cash_apy / 100, 4),
       margin_apr: round(formData.margin_apr / 100, 4),
       margin_access_usd: formData.margin_access_usd,
-      accumulate: isCashFund ? true : formData.accumulate,
-      manage_cash: isCashFund ? true : formData.manage_cash,
-      margin_enabled: isCashFund ? false : formData.margin_enabled,
+      accumulate: features.allowsTrading ? formData.accumulate : (defaults.accumulate ?? true),
+      manage_cash: features.allowsTrading ? formData.manage_cash : (defaults.manage_cash ?? true),
+      margin_enabled: features.allowsTrading ? formData.margin_enabled : (defaults.margin_enabled ?? false),
       dividend_reinvest: formData.dividend_reinvest,
       interest_reinvest: formData.interest_reinvest,
       expense_from_fund: formData.expense_from_fund,
@@ -186,26 +194,27 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
           <div>
             <label className="block text-xs text-slate-400 mb-2">Fund Type</label>
             <div className="flex gap-2">
-              {(['stock', 'crypto', 'cash', 'derivatives'] as FundType[]).map(type => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setFundType(type)}
-                  className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    fundType === type
-                      ? type === 'cash'
-                        ? 'bg-blue-600 text-white'
-                        : type === 'crypto'
-                        ? 'bg-yellow-600 text-white'
-                        : type === 'derivatives'
-                        ? 'bg-orange-600 text-white'
-                        : 'bg-green-600 text-white'
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                  }`}
-                >
-                  {type === 'stock' ? 'Stock' : type === 'crypto' ? 'Crypto' : type === 'derivatives' ? 'Futures' : 'Cash'}
-                </button>
-              ))}
+              {(['stock', 'crypto', 'cash', 'derivatives'] as FundType[]).map(type => {
+                const typeFeatures = getFundTypeFeatures(type)
+                const bgColorClass = fundType === type
+                  ? type === 'cash' ? 'bg-blue-600'
+                    : type === 'crypto' ? 'bg-yellow-600'
+                    : type === 'derivatives' ? 'bg-orange-600'
+                    : 'bg-green-600'
+                  : 'bg-slate-700 hover:bg-slate-600'
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setFundType(type)}
+                    className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${bgColorClass} ${
+                      fundType === type ? 'text-white' : 'text-slate-300'
+                    }`}
+                  >
+                    {typeFeatures.label}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
@@ -266,7 +275,7 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
           </div>
 
           {/* Trading Fund: Full configuration */}
-          {!isCashFund && (
+          {features.allowsTrading && (
             <>
               {/* Target APY and Interval */}
               <div className="grid grid-cols-2 gap-3">
@@ -445,7 +454,7 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
               <div className="border border-slate-600 rounded p-3 space-y-3">
                 <p className="text-sm text-white font-medium">Income & Expense Handling</p>
                 <div className="space-y-2 ml-2">
-                  {fundType === 'stock' && (
+                  {features.supportsDividends && (
                     <div className="flex items-center gap-3">
                       <input
                         type="checkbox"

@@ -1,4 +1,5 @@
 import type { SubFundConfig, Trade, CashFlow, FundState, FundType } from './types.js'
+import { isCashFund as checkIsCashFund } from './fund-type-config.js'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const DAYS_PER_YEAR = 365
@@ -219,7 +220,7 @@ export function computeFundMetrics(
   cashFlows?: CashFlow[]
 ): FundMetrics {
   const daysActive = daysBetween(config.start_date, asOfDate)
-  const isCashFund = config.fund_type === 'cash'
+  const isCashFund = checkIsCashFund(config.fund_type)
 
   // For cash funds, use cash flows for TWFS; for trading funds, use trades
   const timeWeightedFundSize = isCashFund && cashFlows

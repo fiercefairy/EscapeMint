@@ -6,6 +6,7 @@ import { AggregatePanel } from '../components/AggregatePanel'
 import { PortfolioCharts } from '../components/PortfolioCharts'
 import { CreateFundModal } from '../components/CreateFundModal'
 import { ImportWizard } from '../components/ImportWizard'
+import { WelcomePanel } from '../components/WelcomePanel'
 import {
   fetchFunds,
   fetchAggregateMetrics,
@@ -273,6 +274,11 @@ export function Dashboard() {
         <div className="flex items-center justify-center py-12 xs:py-16 sm:py-20">
           <div className="animate-spin rounded-full h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 border-b-2 border-mint-400"></div>
         </div>
+      ) : funds.length === 0 ? (
+        <WelcomePanel
+          onCreateFund={() => setShowCreateModal(true)}
+          onImport={() => setShowImportModal(true)}
+        />
       ) : (
         <>
           {/* Aggregate Metrics Panel */}
