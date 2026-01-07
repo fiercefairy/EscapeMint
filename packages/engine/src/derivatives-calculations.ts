@@ -766,10 +766,6 @@ export const computeDerivativesEntriesState = (
     // This equals costBasisTotal for the current position
     const notionalValue = costBasisTotal
 
-    // Equity = cost basis (what you have invested in positions)
-    // This is the "position value at entry price"
-    const equity = costBasisTotal
-
     // Margin calculations (futures don't spend cash, they lock margin)
     // Initial margin: typically 20% of notional value
     // Maintenance margin: typically 5% of notional value
@@ -788,6 +784,10 @@ export const computeDerivativesEntriesState = (
       const currentPositionValue = position * contractMultiplier * snapshotBtcPrice
       unrealizedPnl = currentPositionValue - costBasisTotal
     }
+
+    // Equity = total account value = marginBalance + unrealizedPnl
+    // This is what your account would be worth if you closed all positions
+    const equity = marginBalance + unrealizedPnl
 
     const entryState: DerivativesEntryState = {
       date: entry.date,
