@@ -257,6 +257,27 @@ export function FundsTable({
             {fund.audited ? '✓' : '○'}
           </button>
         )
+      // Derivatives-specific columns
+      case 'position':
+        return fund.position !== undefined
+          ? <span className="text-cyan-400">{formatNumber(fund.position)}</span>
+          : <span className="text-slate-600">-</span>
+      case 'avgEntry':
+        return fund.avgEntry !== undefined
+          ? <span className="text-white">{formatCurrency(fund.avgEntry)}</span>
+          : <span className="text-slate-600">-</span>
+      case 'marginBalance':
+        return fund.marginBalance !== undefined
+          ? <span className="text-blue-400">{formatCurrency(fund.marginBalance)}</span>
+          : <span className="text-slate-600">-</span>
+      case 'cumFunding':
+        return fund.cumFunding !== undefined
+          ? <span className={fund.cumFunding >= 0 ? 'text-green-400' : 'text-red-400'}>{formatCurrencyPrecise(fund.cumFunding)}</span>
+          : <span className="text-slate-600">-</span>
+      case 'cumFees':
+        return fund.cumFees !== undefined
+          ? <span className="text-orange-400">{formatCurrencyPrecise(fund.cumFees)}</span>
+          : <span className="text-slate-600">-</span>
       default:
         return null
     }

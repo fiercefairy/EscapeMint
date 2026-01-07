@@ -30,6 +30,14 @@ export interface FundComputedMetrics {
   // Tracking
   daysActive: number
   costBasis: number
+
+  // Derivatives-specific fields (only present for derivatives funds)
+  position?: number           // Net contracts held
+  avgEntry?: number          // Average entry price
+  marginBalance?: number     // Total margin balance
+  cumFunding?: number        // Cumulative funding payments
+  cumRebates?: number        // Cumulative rebates
+  cumFees?: number           // Cumulative trading fees
 }
 
 /**
@@ -76,7 +84,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
       return {
         fundSize: lastState.marginBalance,
         currentValue: lastState.equity,
-        cash: 0,  // Derivatives don't have separate cash
+        cash: lastState.availableFunds,  // Available funds = marginBalance - initialMargin
         totalInvested: lastState.costBasis,
         cumDividends: 0,
         cumExpenses: lastState.cumFees,
@@ -88,7 +96,14 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         realizedApy,
         liquidApy,
         daysActive,
-        costBasis: lastState.costBasis
+        costBasis: lastState.costBasis,
+        // Derivatives-specific fields
+        position: lastState.position,
+        avgEntry: lastState.avgEntry,
+        marginBalance: lastState.marginBalance,
+        cumFunding: lastState.cumFunding,
+        cumRebates: lastState.cumRebates,
+        cumFees: lastState.cumFees
       }
     }
   }

@@ -19,7 +19,13 @@ export const ALL_FUND_COLUMNS = [
   { id: 'realizedAPY', label: 'Real APY', defaultVisible: true },
   { id: 'liquidAPY', label: 'Liq APY', defaultVisible: true },
   { id: 'entries', label: 'Entries', defaultVisible: true },
-  { id: 'audited', label: 'Audited', defaultVisible: false }
+  { id: 'audited', label: 'Audited', defaultVisible: false },
+  // Derivatives-specific columns
+  { id: 'position', label: 'Contracts', defaultVisible: false },
+  { id: 'avgEntry', label: 'Avg Entry', defaultVisible: false },
+  { id: 'marginBalance', label: 'Margin Bal', defaultVisible: false },
+  { id: 'cumFunding', label: 'Funding', defaultVisible: false },
+  { id: 'cumFees', label: 'Fees', defaultVisible: false }
 ] as const
 
 export type FundColumnId = typeof ALL_FUND_COLUMNS[number]['id']

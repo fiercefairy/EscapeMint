@@ -289,6 +289,13 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
     liquidAPY: number
     entries: number
     audited?: string
+    // Derivatives-specific fields
+    position?: number
+    avgEntry?: number
+    marginBalance?: number
+    cumFunding?: number
+    cumRebates?: number
+    cumFees?: number
   }> = []
 
   for (const fund of platformFunds) {
@@ -345,7 +352,14 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
       realizedAPY: metrics.realizedApy,
       liquidAPY: metrics.liquidApy,
       entries: fund.entries.length,
-      ...(fund.config.audited && { audited: fund.config.audited })
+      ...(fund.config.audited && { audited: fund.config.audited }),
+      // Derivatives-specific fields
+      ...(metrics.position !== undefined && { position: metrics.position }),
+      ...(metrics.avgEntry !== undefined && { avgEntry: metrics.avgEntry }),
+      ...(metrics.marginBalance !== undefined && { marginBalance: metrics.marginBalance }),
+      ...(metrics.cumFunding !== undefined && { cumFunding: metrics.cumFunding }),
+      ...(metrics.cumRebates !== undefined && { cumRebates: metrics.cumRebates }),
+      ...(metrics.cumFees !== undefined && { cumFees: metrics.cumFees })
     })
   }
 

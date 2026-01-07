@@ -53,6 +53,13 @@ export interface PlatformFundMetrics {
   liquidAPY: number
   entries: number
   audited?: string
+  // Derivatives-specific fields
+  position?: number
+  avgEntry?: number
+  marginBalance?: number
+  cumFunding?: number
+  cumRebates?: number
+  cumFees?: number
 }
 
 export interface CashInterestHistory {
