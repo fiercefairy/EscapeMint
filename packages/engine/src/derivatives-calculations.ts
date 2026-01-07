@@ -591,13 +591,11 @@ interface DerivativesFundEntry {
  * Returns an array of entry states with running calculations.
  *
  * @param entries - Fund entries from TSV
- * @param currentPrice - Current BTC price for unrealized P&L
  * @param contractMultiplier - BTC per contract (default 0.01)
  * @returns Array of entry states with running calculations
  */
 export const computeDerivativesEntriesState = (
   entries: DerivativesFundEntry[],
-  currentPrice: number,
   contractMultiplier: number = DEFAULT_CONTRACT_MULTIPLIER
 ): DerivativesEntryState[] => {
   // Action priority order within the same date
@@ -634,6 +632,7 @@ export const computeDerivativesEntriesState = (
   let cumInterest = 0
   let cumRebates = 0
   let cumFees = 0
+  let snapshotBtcPrice = 0  // BTC price at each snapshot (derived from trade prices)
 
   // FIFO cost basis queue for realized P&L calculation
   const costBasisQueue: { contracts: number; price: number; cost: number }[] = []
@@ -699,6 +698,11 @@ export const computeDerivativesEntriesState = (
           cumFees += fee
           marginBalance -= fee  // Fees reduce margin
         }
+        // Update snapshot BTC price from trade price
+        // BTC price = contract price / contractMultiplier
+        if (price > 0) {
+          snapshotBtcPrice = price / contractMultiplier
+        }
         break
 
       case 'SELL': {
@@ -746,6 +750,11 @@ export const computeDerivativesEntriesState = (
           cumFees += fee
           marginBalance -= fee  // Fees reduce margin
         }
+        // Update snapshot BTC price from trade price
+        // BTC price = contract price / contractMultiplier
+        if (price > 0) {
+          snapshotBtcPrice = price / contractMultiplier
+        }
         break
       }
     }
@@ -772,9 +781,13 @@ export const computeDerivativesEntriesState = (
     // Lower is safer (Coinbase shows this as a percentage)
     const marginRatio = marginBalance > 0 ? maintenanceMargin / marginBalance : 0
 
-    // Unrealized P&L: Will be calculated at the end using current market price
-    // Unrealized P&L only makes sense relative to current market price, not historical prices
-    const unrealizedPnl = 0  // Placeholder, will be set after loop
+    // Unrealized P&L at this snapshot using the BTC price at this moment
+    // unrealizedPnl = (position * contractMultiplier * snapshotBtcPrice) - costBasis
+    let unrealizedPnl = 0
+    if (position > 0 && costBasisTotal > 0 && snapshotBtcPrice > 0) {
+      const currentPositionValue = position * contractMultiplier * snapshotBtcPrice
+      unrealizedPnl = currentPositionValue - costBasisTotal
+    }
 
     const entryState: DerivativesEntryState = {
       date: entry.date,
@@ -803,18 +816,6 @@ export const computeDerivativesEntriesState = (
       entryState.notes = entry.notes
     }
     results.push(entryState)
-  }
-
-  // Calculate unrealized P&L for ALL entries using current market price
-  // Unrealized P&L = (position * contractMultiplier * currentPrice) - costBasis
-  // This shows what the unrealized P&L would be TODAY for each historical position
-  if (currentPrice > 0) {
-    for (const entry of results) {
-      if (entry.position > 0 && entry.costBasis > 0) {
-        const currentPositionValue = entry.position * contractMultiplier * currentPrice
-        entry.unrealizedPnl = currentPositionValue - entry.costBasis
-      }
-    }
   }
 
   return results

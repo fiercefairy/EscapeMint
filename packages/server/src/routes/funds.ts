@@ -545,14 +545,12 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
   let derivativesEntriesState = null
 
   if (isDerivativesFund) {
-    // Get current BTC price - for now use a placeholder until we integrate live price
-    // The unrealized P&L will be calculated at the current price
-    const currentPrice = 100000  // TODO: Fetch from Coinbase API or price service
     const contractMultiplier = fund.config.contract_multiplier ?? 0.01
 
+    // Unrealized P&L is calculated at each entry using the BTC price at that snapshot
+    // (derived from the trade price: btcPrice = contractPrice / contractMultiplier)
     derivativesEntriesState = computeDerivativesEntriesState(
       fund.entries,
-      currentPrice,
       contractMultiplier
     )
   }
