@@ -69,12 +69,25 @@ fundsRouter.get('/', async (req, res, next) => {
 
   res.json(funds.map(f => {
     const latest = getLatestEquity(f.entries)
-    // For cash funds, use the cash field as the balance
     const isCashFund = f.config.fund_type === 'cash'
+    const isDerivativesFund = f.config.fund_type === 'derivatives'
     const latestEntry = f.entries[f.entries.length - 1]
-    const latestEquity = latest && isCashFund && latestEntry?.cash !== undefined
-      ? { date: latest.date, value: latestEntry.cash }
-      : latest
+
+    // Compute equity based on fund type
+    let latestEquity = latest
+    if (isCashFund && latest && latestEntry?.cash !== undefined) {
+      // For cash funds, use the cash field as the balance
+      latestEquity = { date: latest.date, value: latestEntry.cash }
+    } else if (isDerivativesFund && f.entries.length > 0) {
+      // For derivatives funds, compute the derivatives state to get equity
+      const contractMultiplier = f.config.contract_multiplier ?? 0.01
+      const derivStates = computeDerivativesEntriesState(f.entries, contractMultiplier)
+      const lastState = derivStates[derivStates.length - 1]
+      if (lastState) {
+        latestEquity = { date: lastState.date, value: lastState.equity }
+      }
+    }
+
     // Get latest fund size from entries (falls back to config if not in entries)
     const latestFundSize = latestEntry?.fund_size ?? f.config.fund_size_usd
     return {
@@ -112,28 +125,55 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
     const expenses = entriesToExpenses(fund.entries)
     const latest = getLatestEquity(fund.entries)
 
-    // For cash funds, use the cash field as the balance
     const isCashFund = fund.config.fund_type === 'cash'
+    const isDerivativesFund = fund.config.fund_type === 'derivatives'
     const latestEntry = fund.entries[fund.entries.length - 1]
-    const latestValue = latest && isCashFund && latestEntry?.cash !== undefined
-      ? latestEntry.cash
-      : latest?.value
 
     // Use actual fund_size from latest entry instead of config
     const actualFundSize = latestEntry?.fund_size ?? fund.config.fund_size_usd
     const configWithActualFundSize = { ...fund.config, fund_size_usd: actualFundSize }
 
     let state = null
-    if (latest && latestValue !== undefined) {
-      state = computeFundState(
-        configWithActualFundSize,
-        trades,
-        [],
-        dividends,
-        expenses,
-        latestValue,
-        latest.date
-      )
+    if (isDerivativesFund && fund.entries.length > 0) {
+      // For derivatives, compute derivatives state and map to FundState-compatible object
+      const contractMultiplier = fund.config.contract_multiplier ?? 0.01
+      const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier)
+      const lastState = derivStates[derivStates.length - 1]
+
+      if (lastState) {
+        // Map derivatives state to FundState for metrics calculation
+        // For derivatives: equity is the "value", costBasis is "start_input", realized + unrealized is gain
+        state = {
+          actual_value_usd: lastState.equity,
+          start_input_usd: lastState.costBasis,
+          realized_gains_usd: lastState.realizedPnl,
+          gain_usd: lastState.unrealizedPnl + lastState.realizedPnl,
+          gain_pct: lastState.costBasis > 0
+            ? (lastState.unrealizedPnl + lastState.realizedPnl) / lastState.costBasis
+            : 0,
+          expected_target_usd: lastState.equity,
+          target_diff_usd: 0,
+          cash_interest_usd: lastState.cumInterest,
+          cash_available_usd: lastState.marginBalance - lastState.costBasis
+        }
+      }
+    } else {
+      // For cash and stock/crypto funds, use the original logic
+      const latestValue = isCashFund && latestEntry?.cash !== undefined
+        ? latestEntry.cash
+        : latest?.value
+
+      if (latest && latestValue !== undefined) {
+        state = computeFundState(
+          configWithActualFundSize,
+          trades,
+          [],
+          dividends,
+          expenses,
+          latestValue,
+          latest.date
+        )
+      }
     }
 
     const metrics = computeFundMetrics(
@@ -166,6 +206,25 @@ fundsRouter.get('/history', async (req, res, next) => {
   const funds = includeTest
     ? allFunds.filter(f => f.platform === 'test')
     : allFunds.filter(f => f.platform !== 'test')
+
+  // Pre-compute derivatives state for each derivatives fund
+  // This gives us per-entry equity values
+  const derivativesStateByFund = new Map<string, Map<string, { equity: number, costBasis: number, marginBalance: number }>>()
+  for (const fund of funds) {
+    if (fund.config.fund_type === 'derivatives' && fund.entries.length > 0) {
+      const contractMultiplier = fund.config.contract_multiplier ?? 0.01
+      const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier)
+      const dateMap = new Map<string, { equity: number, costBasis: number, marginBalance: number }>()
+      for (const entry of derivStates) {
+        dateMap.set(entry.date, {
+          equity: entry.equity,
+          costBasis: entry.costBasis,
+          marginBalance: entry.marginBalance
+        })
+      }
+      derivativesStateByFund.set(fund.id, dateMap)
+    }
+  }
 
   // Collect all unique dates across all funds
   const allDates = new Set<string>()
@@ -211,25 +270,49 @@ fundsRouter.get('/history', async (req, res, next) => {
       const latestEntry = entriesUpToDate[entriesUpToDate.length - 1]
       if (!latestEntry) continue
 
+      const isDerivativesFund = fund.config.fund_type === 'derivatives'
+
       // Use fund_size from entry if present, otherwise from config
       const fundSize = latestEntry.fund_size ?? fund.config.fund_size_usd
       totalFundSize += fundSize
-      totalValue += latestEntry.value
 
-      // Calculate start_input from trades up to this date
-      let startInput = 0
-      for (const entry of entriesUpToDate) {
-        if (entry.action === 'BUY' && entry.amount) {
-          startInput += entry.amount
-        } else if (entry.action === 'SELL' && entry.amount) {
-          startInput -= entry.amount
+      // For derivatives, use computed equity; for others, use entry.value
+      if (isDerivativesFund) {
+        const derivDateMap = derivativesStateByFund.get(fund.id)
+        // Find the latest derivatives state on or before this date
+        let derivValue = 0
+        let derivCostBasis = 0
+        if (derivDateMap) {
+          for (const entry of entriesUpToDate) {
+            const state = derivDateMap.get(entry.date)
+            if (state) {
+              derivValue = state.equity
+              derivCostBasis = state.costBasis
+            }
+          }
         }
-      }
-      totalStartInput += startInput
+        totalValue += derivValue
+        totalStartInput += derivCostBasis
+        // Derivatives don't have traditional cash available in fund size
+        totalCash += 0
+      } else {
+        totalValue += latestEntry.value
 
-      // Cash available = fund_size - start_input
-      const cash = Math.max(0, fundSize - startInput)
-      totalCash += cash
+        // Calculate start_input from trades up to this date
+        let startInput = 0
+        for (const entry of entriesUpToDate) {
+          if (entry.action === 'BUY' && entry.amount) {
+            startInput += entry.amount
+          } else if (entry.action === 'SELL' && entry.amount) {
+            startInput -= entry.amount
+          }
+        }
+        totalStartInput += startInput
+
+        // Cash available = fund_size - start_input
+        const cash = Math.max(0, fundSize - startInput)
+        totalCash += cash
+      }
 
       // Margin borrowed
       if (latestEntry.margin_borrowed) {
@@ -300,32 +383,48 @@ fundsRouter.get('/history', async (req, res, next) => {
     const latest = fund.entries[fund.entries.length - 1]
     if (!latest) continue
 
+    const isDerivativesFund = fund.config.fund_type === 'derivatives'
     const fundSize = latest.fund_size ?? fund.config.fund_size_usd
 
-    // Calculate start_input
-    let startInput = 0
-    for (const entry of fund.entries) {
-      if (entry.action === 'BUY' && entry.amount) {
-        startInput += entry.amount
-      } else if (entry.action === 'SELL' && entry.amount) {
-        startInput -= entry.amount
-      }
-    }
+    let value = latest.value
+    let cash = 0
 
-    const cash = Math.max(0, fundSize - startInput)
+    if (isDerivativesFund) {
+      // Use computed derivatives equity
+      const derivDateMap = derivativesStateByFund.get(fund.id)
+      if (derivDateMap) {
+        const state = derivDateMap.get(latest.date)
+        if (state) {
+          value = state.equity
+        }
+      }
+      // Derivatives don't have traditional cash
+      cash = 0
+    } else {
+      // Calculate start_input for non-derivatives
+      let startInput = 0
+      for (const entry of fund.entries) {
+        if (entry.action === 'BUY' && entry.amount) {
+          startInput += entry.amount
+        } else if (entry.action === 'SELL' && entry.amount) {
+          startInput -= entry.amount
+        }
+      }
+      cash = Math.max(0, fundSize - startInput)
+    }
 
     currentAllocations.push({
       id: fund.id,
       ticker: fund.ticker,
       platform: fund.platform,
-      value: latest.value,
+      value,
       cash,
       fundSize,
       marginAccess: fund.config.margin_access_usd ?? 0,
       marginBorrowed: latest.margin_borrowed ?? 0
     })
 
-    totalCurrentValue += latest.value
+    totalCurrentValue += value
     totalCurrentCash += cash
 
     if (fund.config.margin_access_usd) {
