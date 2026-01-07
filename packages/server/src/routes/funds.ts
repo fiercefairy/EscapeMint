@@ -22,7 +22,8 @@ import {
   computeRecommendation,
   computeFundMetrics,
   computeAggregateMetrics,
-  computeClosedFundMetrics
+  computeClosedFundMetrics,
+  computeDerivativesEntriesState
 } from '@escapemint/engine'
 import { notFound, badRequest } from '../middleware/error-handler.js'
 
@@ -539,6 +540,23 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
   const marginAvailable = latestEntry.margin_available ?? 0
   const marginBorrowed = latestEntry.margin_borrowed ?? 0
 
+  // Compute derivatives state for derivatives funds
+  const isDerivativesFund = fund.config.fund_type === 'derivatives'
+  let derivativesEntriesState = null
+
+  if (isDerivativesFund) {
+    // Get current BTC price - for now use a placeholder until we integrate live price
+    // The unrealized P&L will be calculated at the current price
+    const currentPrice = 100000  // TODO: Fetch from Coinbase API or price service
+    const contractMultiplier = fund.config.contract_multiplier ?? 0.01
+
+    derivativesEntriesState = computeDerivativesEntriesState(
+      fund.entries,
+      currentPrice,
+      contractMultiplier
+    )
+  }
+
   res.json({
     fund: { id: fund.id, platform: fund.platform, ticker: fund.ticker, config: fund.config },
     state: correctedState,
@@ -548,7 +566,8 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
     margin_borrowed: marginBorrowed,
     cash_available: cashAvailable,
     cash_source: cashSource,  // null if from own fund, fund ID if from shared cash fund
-    fund_size: actualFundSize
+    fund_size: actualFundSize,
+    derivativesEntriesState  // Computed derivatives state (only for derivatives funds)
   })
 })
 

@@ -170,6 +170,10 @@ export function FundDetail() {
       new Date(a.date).getTime() - new Date(b.date).getTime()
     )
 
+    // For derivatives funds, use server-computed state if available
+    const isDerivativesFund = fund.config.fund_type === 'derivatives'
+    const derivativesState = state?.derivativesEntriesState
+
     let totalBuys = 0
     let totalSells = 0 // For invested calculation (accumulate mode: only liquidations)
     let cumSellProceeds = 0 // For APY calculation (all sell amounts)
@@ -413,7 +417,8 @@ export function FundDetail() {
         liquidApy = lastApy
       }
 
-      return {
+      // Base computed entry
+      const baseEntry = {
         ...entry,
         originalIndex: entry._originalIndex,
         fundSize,
@@ -433,8 +438,40 @@ export function FundDetail() {
         liquidApy,
         hasIntegrityIssue
       }
+
+      // For derivatives funds, merge server-computed state
+      if (isDerivativesFund && derivativesState && derivativesState[index]) {
+        const derivState = derivativesState[index]
+        return {
+          ...baseEntry,
+          // Override with derivatives-specific computed values
+          derivPosition: derivState.position,
+          derivAvgEntry: derivState.avgEntry,
+          derivMarginBalance: derivState.marginBalance,
+          derivCostBasis: derivState.costBasis,
+          derivUnrealized: derivState.unrealizedPnl,
+          derivRealized: derivState.realizedPnl,
+          derivEquity: derivState.equity,
+          derivCumFunding: derivState.cumFunding,
+          derivCumInterest: derivState.cumInterest,
+          derivCumRebates: derivState.cumRebates,
+          // Margin tracking
+          derivNotionalValue: derivState.notionalValue,
+          derivInitialMargin: derivState.initialMargin,
+          derivMaintenanceMargin: derivState.maintenanceMargin,
+          derivAvailableFunds: derivState.availableFunds,
+          derivMarginRatio: derivState.marginRatio,
+          // Also use derivatives values for fundSize and realized
+          fundSize: derivState.marginBalance + derivState.unrealizedPnl,  // Account value = cash + unrealized
+          realized: derivState.realizedPnl,
+          unrealized: derivState.unrealizedPnl,
+          liquidPnl: derivState.realizedPnl + derivState.unrealizedPnl
+        }
+      }
+
+      return baseEntry
     })
-  }, [fund])
+  }, [fund, state])
 
   // Get the latest entry for displaying current metrics
   const latestEntry = useMemo(() => {

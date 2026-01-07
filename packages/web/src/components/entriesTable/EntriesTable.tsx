@@ -36,7 +36,7 @@ export function EntriesTable({
   const [showPasteModal, setShowPasteModal] = useState(false)
   const [recalculating, setRecalculating] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnId>>(() =>
-    savedVisibleColumns ? new Set(savedVisibleColumns) : getDefaultColumns(fundType)
+    savedVisibleColumns && savedVisibleColumns.length > 0 ? new Set(savedVisibleColumns) : getDefaultColumns(fundType)
   )
   const [columnOrder, setColumnOrder] = useState<ColumnId[]>(() => {
     if (savedColumnOrder && savedColumnOrder.length > 0) {
@@ -163,13 +163,9 @@ export function EntriesTable({
 
   const sortedEntries = useMemo(() => {
     if (computedEntries.length === 0) return []
-    const sorted = [...computedEntries]
-    sorted.sort((a, b) => {
-      const dateA = new Date(a.date).getTime()
-      const dateB = new Date(b.date).getTime()
-      return sortOrder === 'asc' ? dateA - dateB : dateB - dateA
-    })
-    return sorted
+    // TSV is already in chronological order (oldest first)
+    // Just reverse for "newest first" display, or use as-is for "oldest first"
+    return sortOrder === 'asc' ? computedEntries : [...computedEntries].reverse()
   }, [computedEntries, sortOrder])
 
   const toggleSort = () => {
@@ -710,6 +706,55 @@ export function EntriesTable({
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-slate-400 max-w-[150px] truncate" title={entry.notes || ''}>
                           {entry.notes || '-'}
+                        </td>
+                      )
+                    // Derivatives-specific columns
+                    case 'contracts':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-white">
+                          {entry.contracts ? entry.contracts.toLocaleString() : '-'}
+                        </td>
+                      )
+                    case 'position':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-blue-400">
+                          {entry.derivPosition !== undefined ? entry.derivPosition.toLocaleString() : '-'}
+                        </td>
+                      )
+                    case 'avgEntry':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
+                          {entry.derivAvgEntry ? formatCurrency(entry.derivAvgEntry) : '-'}
+                        </td>
+                      )
+                    case 'marginBalance':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-cyan-400">
+                          {entry.derivMarginBalance !== undefined ? formatCurrency(entry.derivMarginBalance) : '-'}
+                        </td>
+                      )
+                    case 'derivEquity':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-mint-400">
+                          {entry.derivEquity !== undefined ? formatCurrency(entry.derivEquity) : '-'}
+                        </td>
+                      )
+                    case 'cumFunding':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${(entry.derivCumFunding ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {entry.derivCumFunding !== undefined ? formatCurrency(entry.derivCumFunding) : '-'}
+                        </td>
+                      )
+                    case 'cumInterest':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-yellow-400">
+                          {entry.derivCumInterest !== undefined ? formatCurrency(entry.derivCumInterest) : '-'}
+                        </td>
+                      )
+                    case 'cumRebates':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-purple-400">
+                          {entry.derivCumRebates !== undefined ? formatCurrency(entry.derivCumRebates) : '-'}
                         </td>
                       )
                     case 'edit':

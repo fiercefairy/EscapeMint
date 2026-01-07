@@ -4,6 +4,15 @@ import { dirname, join, basename } from 'node:path'
 import { v4 as uuidv4 } from 'uuid'
 import type { SubFundConfig, Trade, CashFlow, Dividend, Expense } from '@escapemint/engine'
 
+// Action types for regular funds (trading, cash, crypto)
+export type RegularFundAction = 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
+
+// Action types specific to derivatives funds
+export type DerivativesFundAction = 'FUNDING' | 'INTEREST' | 'REBATE' | 'FEE'
+
+// Combined action type for all funds
+export type FundAction = RegularFundAction | DerivativesFundAction
+
 /**
  * A single row in the fund time-series.
  */
@@ -11,7 +20,7 @@ export interface FundEntry {
   date: string
   value: number
   cash?: number  // Actual cash available in account (tracked, not calculated)
-  action?: 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
+  action?: FundAction
   amount?: number
   shares?: number
   price?: number
@@ -28,8 +37,8 @@ export interface FundEntry {
   entry_price?: number         // Average entry price at snapshot
   liquidation_price?: number   // Calculated liquidation price
   unrealized_pnl?: number      // Unrealized P&L at snapshot
-  funding_profit?: number      // Funding rate profit (positive)
-  funding_loss?: number        // Funding loss + fees (negative, stored as positive)
+  funding_profit?: number      // Funding rate profit (positive) - DEPRECATED, use FUNDING action
+  funding_loss?: number        // Funding loss + fees (negative) - DEPRECATED, use FUNDING action
   margin_locked?: number       // Total margin locked in positions
 }
 
@@ -104,7 +113,11 @@ function parseEntry(line: string, headers: string[]): FundEntry {
         if (val) entry.cash = parseFloat(val)
         break
       case 'action':
-        if (val === 'BUY' || val === 'SELL' || val === 'HOLD' || val === 'DEPOSIT' || val === 'WITHDRAW') entry.action = val
+        // Regular actions and derivatives-specific actions
+        if (val === 'BUY' || val === 'SELL' || val === 'HOLD' || val === 'DEPOSIT' || val === 'WITHDRAW' ||
+            val === 'FUNDING' || val === 'INTEREST' || val === 'REBATE' || val === 'FEE') {
+          entry.action = val as FundAction
+        }
         break
       case 'amount':
         if (val) entry.amount = parseFloat(val)

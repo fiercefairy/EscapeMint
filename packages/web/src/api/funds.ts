@@ -68,11 +68,20 @@ export interface FundSummary {
   latestFundSize?: number
 }
 
+// Action types for regular funds (trading, cash, crypto)
+export type RegularFundAction = 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
+
+// Action types specific to derivatives funds
+export type DerivativesFundAction = 'FUNDING' | 'INTEREST' | 'REBATE' | 'FEE'
+
+// Combined action type for all funds
+export type FundAction = RegularFundAction | DerivativesFundAction
+
 export interface FundEntry {
   date: string
   value: number
   cash?: number  // Actual cash available in account (tracked, not calculated)
-  action?: 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
+  action?: FundAction
   amount?: number
   shares?: number
   price?: number
@@ -83,6 +92,15 @@ export interface FundEntry {
   margin_available?: number
   margin_borrowed?: number
   notes?: string
+
+  // Derivatives-specific fields
+  contracts?: number           // Number of contracts (position size)
+  entry_price?: number         // Average entry price at snapshot
+  liquidation_price?: number   // Calculated liquidation price
+  unrealized_pnl?: number      // Unrealized P&L at snapshot
+  funding_profit?: number      // Funding rate profit (positive) - DEPRECATED
+  funding_loss?: number        // Funding loss + fees (negative) - DEPRECATED
+  margin_locked?: number       // Total margin locked in positions
 }
 
 export interface FundState {
@@ -136,6 +154,32 @@ export interface ClosedFundMetrics {
   duration_days: number
 }
 
+// Derivatives entry state from engine calculations
+export interface DerivativesEntryState {
+  date: string
+  action: string
+  amount: number
+  contracts: number
+  price: number
+  marginBalance: number      // Running cash/margin balance (funds for margin)
+  position: number           // Running net contracts
+  avgEntry: number           // Weighted average entry price (BTC price)
+  costBasis: number          // Total cost basis of open position
+  unrealizedPnl: number      // Unrealized P&L (0 for historical, calculated for current)
+  realizedPnl: number        // Running realized P&L from closed trades
+  cumFunding: number         // Cumulative funding payments
+  cumInterest: number        // Cumulative USDC interest
+  cumRebates: number         // Cumulative rebates
+  equity: number             // Position value at entry price (cost basis)
+  // Margin tracking
+  notionalValue: number      // Position value at avgEntry price
+  initialMargin: number      // Margin locked (typically 20% of notional)
+  maintenanceMargin: number  // Minimum margin required (typically 5% of notional)
+  availableFunds: number     // marginBalance - initialMargin
+  marginRatio: number        // maintenanceMargin / marginBalance (lower is safer)
+  notes?: string
+}
+
 export interface FundStateResponse {
   fund: {
     id: string
@@ -151,6 +195,7 @@ export interface FundStateResponse {
   cash_available?: number
   cash_source?: string | null  // null if from own fund, fund ID if from shared cash fund
   fund_size?: number
+  derivativesEntriesState?: DerivativesEntryState[]  // Computed state for each derivatives entry
 }
 
 export async function fetchFunds(includeTest = false): Promise<ApiResult<FundSummary[]>> {

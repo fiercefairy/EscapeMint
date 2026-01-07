@@ -544,6 +544,265 @@ export const computeDerivativesState = (
 }
 
 /**
+ * Derivatives entry state - calculated for each fund entry
+ */
+export interface DerivativesEntryState {
+  date: string
+  action: string
+  amount: number
+  contracts: number
+  price: number
+  // Running calculations
+  marginBalance: number      // Running cash/margin balance (funds for margin)
+  position: number           // Running net contracts
+  avgEntry: number           // Weighted average entry price (BTC price)
+  costBasis: number          // Total cost basis of open position
+  unrealizedPnl: number      // Unrealized P&L (0 for historical, calculated for current)
+  realizedPnl: number        // Running realized P&L from closed trades
+  cumFunding: number         // Cumulative funding payments
+  cumInterest: number        // Cumulative USDC interest
+  cumRebates: number         // Cumulative rebates
+  equity: number             // Position value at entry price (cost basis)
+  // Margin tracking
+  notionalValue: number      // Position value at avgEntry price
+  initialMargin: number      // Margin locked (typically 20% of notional)
+  maintenanceMargin: number  // Minimum margin required (typically 5% of notional)
+  availableFunds: number     // marginBalance - initialMargin
+  marginRatio: number        // maintenanceMargin / marginBalance (lower is safer)
+  notes?: string
+}
+
+/**
+ * Entry from fund TSV for derivatives calculations
+ */
+interface DerivativesFundEntry {
+  date: string
+  action?: string
+  amount?: number
+  contracts?: number
+  price?: number
+  notes?: string
+}
+
+/**
+ * Compute derivatives state for each fund entry.
+ * Returns an array of entry states with running calculations.
+ *
+ * @param entries - Fund entries from TSV
+ * @param currentPrice - Current BTC price for unrealized P&L
+ * @param contractMultiplier - BTC per contract (default 0.01)
+ * @returns Array of entry states with running calculations
+ */
+export const computeDerivativesEntriesState = (
+  entries: DerivativesFundEntry[],
+  currentPrice: number,
+  contractMultiplier: number = DEFAULT_CONTRACT_MULTIPLIER
+): DerivativesEntryState[] => {
+  // Action priority order within the same date
+  const actionOrder: Record<string, number> = {
+    'DEPOSIT': 1,
+    'WITHDRAW': 2,
+    'INTEREST': 3,
+    'REBATE': 4,
+    'FEE': 5,
+    'BUY': 6,
+    'SELL': 7,
+    'FUNDING': 8,
+    'HOLD': 9
+  }
+
+  // Sort entries by date, then by action priority within same date
+  const sortedEntries = [...entries].sort((a, b) => {
+    const dateCompare = a.date.localeCompare(b.date)
+    if (dateCompare !== 0) return dateCompare
+
+    const aAction = a.action ?? 'HOLD'
+    const bAction = b.action ?? 'HOLD'
+    const aPriority = actionOrder[aAction] ?? 99
+    const bPriority = actionOrder[bAction] ?? 99
+    return aPriority - bPriority
+  })
+
+  // Running state
+  let marginBalance = 0
+  let position = 0  // Net contracts
+  let avgEntry = 0
+  let realizedPnl = 0
+  let cumFunding = 0
+  let cumInterest = 0
+  let cumRebates = 0
+
+  // FIFO cost basis queue for realized P&L calculation
+  const costBasisQueue: { contracts: number; price: number; cost: number }[] = []
+
+  const results: DerivativesEntryState[] = []
+
+  for (const entry of sortedEntries) {
+    const action = entry.action ?? 'HOLD'
+    const amount = entry.amount ?? 0
+    const contracts = entry.contracts ?? 0
+    const price = entry.price ?? 0
+
+    // Process based on action type
+    switch (action) {
+      case 'DEPOSIT':
+        marginBalance += amount
+        break
+
+      case 'WITHDRAW':
+        marginBalance -= amount
+        break
+
+      case 'FUNDING':
+        cumFunding += amount
+        marginBalance += amount  // Funding affects margin balance
+        break
+
+      case 'INTEREST':
+        cumInterest += amount
+        marginBalance += amount  // Interest adds to margin
+        break
+
+      case 'REBATE':
+        cumRebates += amount
+        marginBalance += amount  // Rebates add to margin
+        break
+
+      case 'FEE':
+        marginBalance -= Math.abs(amount)  // Fees reduce margin
+        break
+
+      case 'BUY':
+        // Add to position
+        position += contracts
+        // Update average entry price (weighted average)
+        // Note: price is "cost per contract" (e.g., $1056 when BTC = $105,600)
+        // We want avgEntry to be BTC price = totalDollarCost / (position * contractMultiplier)
+        if (position > 0) {
+          const oldCost = avgEntry * (position - contracts) * contractMultiplier
+          const newCost = price * contracts  // Total dollar cost (price is already per contract)
+          avgEntry = (oldCost + newCost) / (position * contractMultiplier)
+        }
+        // Add to cost basis queue for FIFO
+        costBasisQueue.push({
+          contracts,
+          price,
+          cost: price * contracts  // Total dollar cost
+        })
+        break
+
+      case 'SELL': {
+        // Close position using FIFO
+        let contractsToClose = contracts
+        const saleProceeds = price * contracts  // Total dollar proceeds (price is cost per contract)
+        let costBasis = 0
+
+        while (contractsToClose > 0 && costBasisQueue.length > 0) {
+          const oldest = costBasisQueue[0]
+          if (!oldest) break
+
+          if (oldest.contracts <= contractsToClose) {
+            // Close entire lot
+            costBasis += oldest.cost
+            contractsToClose -= oldest.contracts
+            costBasisQueue.shift()
+          } else {
+            // Partial close
+            const ratio = contractsToClose / oldest.contracts
+            costBasis += oldest.cost * ratio
+            oldest.contracts -= contractsToClose
+            oldest.cost -= oldest.cost * ratio
+            contractsToClose = 0
+          }
+        }
+
+        // Realized P&L from this trade
+        const tradePnl = saleProceeds - costBasis
+        realizedPnl += tradePnl
+        marginBalance += tradePnl  // Add realized P&L to margin
+
+        // Update position
+        position -= contracts
+
+        // Recalculate average entry from remaining queue
+        if (position > 0 && costBasisQueue.length > 0) {
+          const totalCost = costBasisQueue.reduce((sum, lot) => sum + lot.cost, 0)
+          avgEntry = totalCost / (position * contractMultiplier)
+        } else if (position === 0) {
+          avgEntry = 0
+        }
+        break
+      }
+    }
+
+    // Calculate cost basis (what you paid for open positions)
+    const costBasisTotal = costBasisQueue.reduce((sum, lot) => sum + lot.cost, 0)
+
+    // Notional value at average entry price (position value at cost)
+    // This equals costBasisTotal for the current position
+    const notionalValue = costBasisTotal
+
+    // Equity = cost basis (what you have invested in positions)
+    // This is the "position value at entry price"
+    const equity = costBasisTotal
+
+    // Margin calculations (futures don't spend cash, they lock margin)
+    // Initial margin: typically 20% of notional value
+    // Maintenance margin: typically 5% of notional value
+    const initialMargin = notionalValue * DEFAULT_INITIAL_MARGIN_RATE
+    const maintenanceMargin = notionalValue * DEFAULT_MAINTENANCE_MARGIN_RATE
+    const availableFunds = marginBalance - initialMargin
+
+    // Margin ratio = maintenance margin / funds for margin
+    // Lower is safer (Coinbase shows this as a percentage)
+    const marginRatio = marginBalance > 0 ? maintenanceMargin / marginBalance : 0
+
+    // Unrealized P&L: For historical entries, show 0 (we don't have historical prices)
+    // The final entry's unrealized will be recalculated with current price
+    // For now, set to 0 - caller can update the last entry with current market price
+    const unrealizedPnl = 0
+
+    const entryState: DerivativesEntryState = {
+      date: entry.date,
+      action,
+      amount,
+      contracts: action === 'BUY' || action === 'SELL' ? contracts : 0,
+      price: action === 'BUY' || action === 'SELL' ? price : 0,
+      marginBalance,
+      position,
+      avgEntry,
+      costBasis: costBasisTotal,
+      unrealizedPnl,
+      realizedPnl,
+      cumFunding,
+      cumInterest,
+      cumRebates,
+      equity,
+      notionalValue,
+      initialMargin,
+      maintenanceMargin,
+      availableFunds,
+      marginRatio
+    }
+    if (entry.notes !== undefined) {
+      entryState.notes = entry.notes
+    }
+    results.push(entryState)
+  }
+
+  // Update the last entry with current market price for unrealized P&L
+  if (results.length > 0 && currentPrice > 0) {
+    const lastEntry = results[results.length - 1]
+    if (lastEntry && lastEntry.position > 0) {
+      const currentPositionValue = lastEntry.position * contractMultiplier * currentPrice
+      lastEntry.unrealizedPnl = currentPositionValue - lastEntry.costBasis
+    }
+  }
+
+  return results
+}
+
+/**
  * Format position summary for display.
  *
  * @param position - Derivatives position

@@ -4,7 +4,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { platform } from 'node:os'
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
 import { chromium, type Browser, type Page, type ElementHandle } from 'playwright'
-import { readAllFunds, appendEntry, type FundEntry, type FundData } from '@escapemint/storage'
+import { readAllFunds, appendEntry, readFund, writeFund, type FundEntry, type FundData } from '@escapemint/storage'
 import { badRequest, validationError } from '../middleware/error-handler.js'
 import { PDFParse } from 'pdf-parse'
 
@@ -4449,6 +4449,25 @@ const isPerpRelatedType = (type: CoinbaseTransactionType): boolean => {
 }
 
 /**
+ * Check if transaction is margin-related (USDC deposits/withdrawals for perp trading)
+ */
+const isMarginRelated = (type: CoinbaseTransactionType, title: string, symbol?: string): boolean => {
+  // USDC deposits to margin account
+  if (type === 'DEPOSIT' && (symbol === 'USDC' || title.toLowerCase().includes('usdc'))) {
+    return true
+  }
+  // USDC withdrawals from margin account
+  if (type === 'WITHDRAWAL' && (symbol === 'USDC' || title.toLowerCase().includes('usdc'))) {
+    return true
+  }
+  // "Deposited funds" is typically a margin deposit
+  if (type === 'OTHER' && title.toLowerCase().includes('deposited funds')) {
+    return true
+  }
+  return false
+}
+
+/**
  * Parse date from Coinbase format (e.g., "Jan 6, 2026") to ISO (YYYY-MM-DD)
  */
 const parseCoinbaseDateToISO = (dateText: string): string => {
@@ -4635,7 +4654,7 @@ const parseCoinbaseTransactionRow = async (
     type,
     title,
     amount,
-    isPerpRelated: isPerpRelatedType(type)
+    isPerpRelated: isPerpRelatedType(type) || isMarginRelated(type, title, symbol)
   }
 
   // Add optional properties only if they have values
@@ -4737,8 +4756,12 @@ const scrapeCoinbaseTransactionsWithProgress = async (
         await page.waitForTimeout(3000)
         const finalCheck = await page.$$(rowSelector)
         if (finalCheck.length === currentItemCount) {
+          console.log(`[Coinbase TX] End of list detected after ${totalScraped} transactions`)
           break
         }
+        // Aggressive scroll loaded more items - reset counter to continue normal scrolling
+        console.log(`[Coinbase TX] Aggressive scroll loaded ${finalCheck.length - currentItemCount} more items`)
+        noNewItemsCount = 0
       }
     } else {
       noNewItemsCount = 0
@@ -5571,5 +5594,219 @@ importRouter.delete('/coinbase/transactions/archive', async (_req, res) => {
   res.json({
     success: true,
     message: 'Coinbase transactions archive cleared'
+  })
+})
+
+/**
+ * POST /import/coinbase/transactions/apply
+ * Apply selected Coinbase transactions to a fund.
+ */
+importRouter.post('/coinbase/transactions/apply', async (req, res) => {
+  const { fundId, transactionIds, selectedTypes, clearBeforeImport } = req.body as {
+    fundId: string
+    transactionIds: string[]
+    selectedTypes: string[]
+    clearBeforeImport: boolean
+  }
+
+  if (!fundId) {
+    res.status(400).json({ error: 'Missing fundId' })
+    return
+  }
+
+  if (!transactionIds || transactionIds.length === 0) {
+    res.status(400).json({ error: 'No transactions to import' })
+    return
+  }
+
+  // Load the fund
+  const fundPath = join(FUNDS_DIR, `${fundId}.tsv`)
+  const fund = await readFund(fundPath).catch(() => null)
+  if (!fund) {
+    res.status(404).json({ error: `Fund not found: ${fundId}` })
+    return
+  }
+
+  // Load the archive
+  const archive = await loadCoinbaseTransactionsArchive()
+  if (archive.transactions.length === 0) {
+    res.status(400).json({ error: 'No transactions in archive' })
+    return
+  }
+
+  // Get selected transactions
+  const selectedTxIds = new Set(transactionIds)
+  const selectedTxTypes = new Set(selectedTypes)
+  const selectedTxs = archive.transactions.filter(tx =>
+    selectedTxIds.has(tx.id) &&
+    selectedTxTypes.has(tx.type) &&
+    tx.isPerpRelated
+  )
+
+  if (selectedTxs.length === 0) {
+    res.status(400).json({ error: 'No matching transactions found' })
+    return
+  }
+
+  // Clear existing entries if requested
+  if (clearBeforeImport) {
+    fund.entries = []
+  }
+
+  // Get existing entry dates to check for duplicates
+  const existingDates = new Set(fund.entries.map(e => e.date))
+
+  // Group transactions by date and aggregate by type
+  const txByDate = new Map<string, {
+    deposits: number     // Margin deposits (USDC)
+    withdrawals: number  // Margin withdrawals (USDC)
+    funding: number      // Net funding (profit - loss)
+    interest: number     // USDC interest
+    rebate: number       // Trading rebates
+    trades: { type: string; amount: number; contracts?: number; price?: number }[]
+  }>()
+
+  for (const tx of selectedTxs) {
+    if (!txByDate.has(tx.date)) {
+      txByDate.set(tx.date, { deposits: 0, withdrawals: 0, funding: 0, interest: 0, rebate: 0, trades: [] })
+    }
+    const day = txByDate.get(tx.date)!
+
+    if (tx.type === 'DEPOSIT') {
+      day.deposits += tx.amount
+    } else if (tx.type === 'WITHDRAWAL') {
+      day.withdrawals += Math.abs(tx.amount)  // Store as positive
+    } else if (tx.type === 'OTHER' && tx.title.toLowerCase().includes('deposited funds')) {
+      // "Deposited funds" is a margin deposit
+      day.deposits += tx.amount
+    } else if (tx.type === 'FUNDING_PROFIT') {
+      day.funding += tx.amount
+    } else if (tx.type === 'FUNDING_LOSS') {
+      day.funding += tx.amount // Already negative
+    } else if (tx.type === 'USDC_INTEREST') {
+      day.interest += tx.amount
+    } else if (tx.type === 'REBATE') {
+      day.rebate += tx.amount
+    } else if (tx.type === 'BUY' || tx.type === 'SELL') {
+      const tradeEntry: { type: string; amount: number; contracts?: number; price?: number } = {
+        type: tx.type,
+        amount: tx.amount
+      }
+      if (tx.contracts !== undefined) {
+        tradeEntry.contracts = tx.contracts
+      }
+      if (tx.price !== undefined) {
+        tradeEntry.price = tx.price
+      }
+      day.trades.push(tradeEntry)
+    }
+  }
+
+  // Convert to fund entries - use derivatives-specific action types
+  let applied = 0
+  let skipped = 0
+  const newEntries: FundEntry[] = []
+
+  for (const [date, day] of txByDate) {
+    // Skip dates that already have entries (unless cleared)
+    if (!clearBeforeImport && existingDates.has(date)) {
+      skipped++
+      continue
+    }
+
+    // Create separate entries for each type of transaction using derivatives actions
+
+    // DEPOSIT entry (margin deposits)
+    if (day.deposits > 0) {
+      newEntries.push({
+        date,
+        value: 0,
+        action: 'DEPOSIT',
+        amount: day.deposits
+      })
+      applied++
+    }
+
+    // WITHDRAW entry (margin withdrawals)
+    if (day.withdrawals > 0) {
+      newEntries.push({
+        date,
+        value: 0,
+        action: 'WITHDRAW',
+        amount: day.withdrawals
+      })
+      applied++
+    }
+
+    // FUNDING entry (combines profit and loss for the day)
+    if (day.funding !== 0) {
+      newEntries.push({
+        date,
+        value: 0,
+        action: 'FUNDING',
+        amount: day.funding  // Can be positive or negative
+      })
+      applied++
+    }
+
+    // INTEREST entry (USDC rewards)
+    if (day.interest !== 0) {
+      newEntries.push({
+        date,
+        value: 0,
+        action: 'INTEREST',
+        amount: day.interest
+      })
+      applied++
+    }
+
+    // REBATE entry (trading rebates)
+    if (day.rebate !== 0) {
+      newEntries.push({
+        date,
+        value: 0,
+        action: 'REBATE',
+        amount: day.rebate
+      })
+      applied++
+    }
+
+    // Trade entries (BUY/SELL)
+    for (const trade of day.trades) {
+      const entry: FundEntry = {
+        date,
+        value: 0,
+        action: trade.type as 'BUY' | 'SELL',
+        amount: Math.abs(trade.amount)
+      }
+      // Use contracts field for derivatives (not shares)
+      if (trade.contracts !== undefined) {
+        entry.contracts = trade.contracts
+      }
+      // Store entry price
+      if (trade.price !== undefined) {
+        entry.price = trade.price
+      }
+      newEntries.push(entry)
+      applied++
+    }
+  }
+
+  // Add new entries to fund
+  fund.entries.push(...newEntries)
+
+  // Sort entries by date
+  fund.entries.sort((a, b) => a.date.localeCompare(b.date))
+
+  // Save the fund
+  await writeFund(fundPath, fund)
+
+  console.log(`[Coinbase Import] Applied ${applied} entries to ${fundId}, skipped ${skipped} duplicates`)
+
+  res.json({
+    success: true,
+    applied,
+    skipped,
+    message: `Imported ${applied} entries to ${fundId}`
   })
 })
