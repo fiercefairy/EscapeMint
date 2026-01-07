@@ -67,6 +67,7 @@ export interface FundSummary {
     value: number
   } | null
   latestFundSize?: number
+  firstEntryDate?: string
 }
 
 // Action types for regular funds (trading, cash, crypto)

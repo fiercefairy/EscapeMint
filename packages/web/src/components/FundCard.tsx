@@ -3,9 +3,12 @@ import type { FundSummary } from '../api/funds'
 export interface FundCardProps {
   fund: FundSummary
   impactPct?: number | undefined
+  realizedAPY?: number
+  liquidAPY?: number
+  realizedGains?: number
 }
 
-export function FundCard({ fund, impactPct }: FundCardProps) {
+export function FundCard({ fund, impactPct, realizedAPY, liquidAPY, realizedGains }: FundCardProps) {
   const hasValue = fund.latestEquity && fund.latestEquity.value > 0
   // Use latestFundSize from entries, fall back to config
   const fundSize = fund.latestFundSize ?? fund.config.fund_size_usd
@@ -41,7 +44,7 @@ export function FundCard({ fund, impactPct }: FundCardProps) {
     } active:bg-slate-700/30`}>
       <div className="flex items-start justify-between gap-1 xs:gap-1.5 mb-1 xs:mb-1.5 sm:mb-2">
         <div className="min-w-0 flex-1">
-          <h3 className="text-[10px] xs:text-xs sm:text-base font-bold text-white uppercase truncate leading-tight">{fund.ticker}</h3>
+          <h3 className="text-[10px] xs:text-xs sm:text-base font-bold text-white uppercase truncate leading-tight" title={fund.ticker}>{fund.ticker}</h3>
           <p className="text-[8px] xs:text-[9px] sm:text-xs text-slate-400 capitalize truncate leading-tight">{fund.platform}</p>
         </div>
         <div className="flex items-center flex-wrap justify-end gap-0.5 flex-shrink-0 max-w-[50%] xs:max-w-[55%]">
@@ -74,18 +77,34 @@ export function FundCard({ fund, impactPct }: FundCardProps) {
 
       <div className="space-y-0.5 xs:space-y-1 text-[8px] xs:text-[9px] sm:text-xs">
         {isCashFund ? (
-          // Cash fund display - show balance only (interest tracked via entries)
-          <div className="flex justify-between gap-1 xs:gap-2">
-            <span className="text-slate-400 truncate">Balance</span>
-            <span className={`${hasValue ? valueColorClass : 'text-slate-500'} truncate text-right font-medium`}>
-              {hasValue ? formatCurrency(fund.latestEquity!.value) : '-'}
-            </span>
-          </div>
+          // Cash fund display - show balance, P&L, and realized APY (interest earnings)
+          <>
+            <div className="flex justify-between gap-1 xs:gap-2">
+              <span className="text-slate-400 truncate">Balance</span>
+              <span className={`${hasValue ? valueColorClass : 'text-slate-500'} truncate text-right font-medium`}>
+                {hasValue ? formatCurrency(fund.latestEquity!.value) : '-'}
+              </span>
+            </div>
+            {realizedGains !== undefined && (
+              <div className="flex justify-between gap-1 xs:gap-2">
+                <span className="text-slate-400 truncate">Interest</span>
+                <span className={`truncate text-right ${realizedGains >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {realizedGains >= 0 ? '+' : ''}{formatCurrency(realizedGains)}
+                </span>
+              </div>
+            )}
+            {realizedAPY !== undefined && (
+              <div className="flex justify-between gap-1 xs:gap-2">
+                <span className="text-slate-400 truncate">APY</span>
+                <span className="text-slate-300 truncate text-right">{formatPercent(realizedAPY)}</span>
+              </div>
+            )}
+          </>
         ) : (
           // Trading fund display
           <>
             <div className="flex justify-between gap-1 xs:gap-2">
-              <span className="text-slate-400 truncate">Size</span>
+              <span className="text-slate-400 truncate">{isDerivativesFund ? 'Margin' : 'Size'}</span>
               <span className="text-white font-medium truncate text-right">{formatCurrency(fundSize)}</span>
             </div>
 
@@ -96,10 +115,23 @@ export function FundCard({ fund, impactPct }: FundCardProps) {
               </span>
             </div>
 
-            <div className="flex justify-between gap-1 xs:gap-2">
-              <span className="text-slate-400 truncate">APY</span>
-              <span className="text-slate-300 truncate text-right">{formatPercent(fund.config.target_apy)} / {fund.config.interval_days}d</span>
-            </div>
+            {realizedAPY !== undefined && liquidAPY !== undefined ? (
+              <>
+                <div className="flex justify-between gap-1 xs:gap-2">
+                  <span className="text-slate-400 truncate">Realized</span>
+                  <span className="text-slate-300 truncate text-right">{formatPercent(realizedAPY)}</span>
+                </div>
+                <div className="flex justify-between gap-1 xs:gap-2">
+                  <span className="text-slate-400 truncate">Liquid</span>
+                  <span className="text-slate-300 truncate text-right">{formatPercent(liquidAPY)}</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between gap-1 xs:gap-2">
+                <span className="text-slate-400 truncate">APY</span>
+                <span className="text-slate-300 truncate text-right">{formatPercent(fund.config.target_apy)} / {fund.config.interval_days}d</span>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -108,7 +140,11 @@ export function FundCard({ fund, impactPct }: FundCardProps) {
         <div className="flex justify-between text-[7px] xs:text-[8px] sm:text-[10px]">
           <span className="text-slate-500">{fund.entryCount} entries</span>
           {fund.latestEquity && (
-            <span className="text-slate-500 truncate ml-1">{fund.latestEquity.date}</span>
+            <span className="text-slate-500 truncate ml-1">
+              {isClosed && fund.firstEntryDate && fund.firstEntryDate !== fund.latestEquity.date
+                ? `${fund.firstEntryDate} → ${fund.latestEquity.date}`
+                : fund.latestEquity.date}
+            </span>
           )}
         </div>
       </div>

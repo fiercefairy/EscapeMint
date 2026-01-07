@@ -354,7 +354,13 @@ export function Dashboard() {
                         : `/fund/${fund.id}`
                       return (
                         <Link key={fund.id} to={fundPath} className="touch-manipulation">
-                          <FundCard fund={fund} impactPct={fundMetrics?.fundSharesPct} />
+                          <FundCard
+                            fund={fund}
+                            impactPct={fundMetrics?.fundSharesPct}
+                            realizedAPY={fundMetrics?.realizedAPY}
+                            liquidAPY={fundMetrics?.liquidAPY}
+                            realizedGains={fundMetrics?.realizedGains}
+                          />
                         </Link>
                       )
                     })}

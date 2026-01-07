@@ -26,6 +26,7 @@ import {
   computeDerivativesEntriesState
 } from '@escapemint/engine'
 import { notFound, badRequest } from '../middleware/error-handler.js'
+import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
 
 export const fundsRouter: ReturnType<typeof Router> = Router()
 
@@ -72,24 +73,36 @@ fundsRouter.get('/', async (req, res, next) => {
     const isCashFund = f.config.fund_type === 'cash'
     const isDerivativesFund = f.config.fund_type === 'derivatives'
     const latestEntry = f.entries[f.entries.length - 1]
+    const firstEntry = f.entries[0]
 
-    // Compute equity based on fund type
+    // Check if fund is closed (explicit status or legacy zero fund size)
+    const isClosed = f.config.status === 'closed' ||
+      (f.config.status === undefined && f.config.fund_size_usd === 0)
+
+    // Compute equity and size based on fund type
     let latestEquity = latest
+    let derivativesMarginBalance: number | undefined
     if (isCashFund && latest && latestEntry?.cash !== undefined) {
       // For cash funds, use the cash field as the balance
       latestEquity = { date: latest.date, value: latestEntry.cash }
     } else if (isDerivativesFund && f.entries.length > 0) {
-      // For derivatives funds, compute the derivatives state to get equity
+      // For derivatives funds, compute the derivatives state to get equity and margin
       const contractMultiplier = f.config.contract_multiplier ?? 0.01
       const derivStates = computeDerivativesEntriesState(f.entries, contractMultiplier)
       const lastState = derivStates[derivStates.length - 1]
       if (lastState) {
         latestEquity = { date: lastState.date, value: lastState.equity }
+        derivativesMarginBalance = lastState.marginBalance
       }
     }
 
     // Get latest fund size from entries (falls back to config if not in entries)
-    const latestFundSize = latestEntry?.fund_size ?? f.config.fund_size_usd
+    // Closed funds always have size = 0
+    // Derivatives funds use marginBalance as their "size"
+    const latestFundSize = isClosed ? 0
+      : isDerivativesFund ? (derivativesMarginBalance ?? 0)
+      : (latestEntry?.fund_size ?? f.config.fund_size_usd)
+
     return {
       id: f.id,
       platform: f.platform,
@@ -97,7 +110,8 @@ fundsRouter.get('/', async (req, res, next) => {
       config: f.config,
       entryCount: f.entries.length,
       latestEquity,
-      latestFundSize
+      latestFundSize,
+      firstEntryDate: firstEntry?.date
     }
   }))
 })
@@ -185,6 +199,13 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
       state,
       today
     )
+
+    // Override APY with values from computeFundFinalMetrics which uses
+    // compound interest formula matching the fund detail page
+    const finalMetrics = computeFundFinalMetrics(fund)
+    metrics.realizedAPY = finalMetrics.realizedApy
+    metrics.liquidAPY = finalMetrics.liquidApy
+
     fundMetrics.push(metrics)
   }
 
