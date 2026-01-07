@@ -1,4 +1,5 @@
 import type { FundData } from '@escapemint/storage'
+import { computeDerivativesEntriesState } from '@escapemint/engine'
 
 /**
  * Computed metrics for the latest state of a fund.
@@ -39,8 +40,58 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   const entries = fund.entries
   const config = fund.config
   const isCashFund = config.fund_type === 'cash'
+  const isDerivativesFund = config.fund_type === 'derivatives'
   const isAccumulate = config.accumulate ?? false
   const manageCash = config.manage_cash !== false
+
+  // Handle derivatives funds separately
+  if (isDerivativesFund && entries.length > 0) {
+    const contractMultiplier = config.contract_multiplier ?? 0.01
+    const derivStates = computeDerivativesEntriesState(entries, contractMultiplier)
+    const lastState = derivStates[derivStates.length - 1]
+
+    if (lastState) {
+      const startDate = config.start_date ?? entries[0]?.date ?? new Date().toISOString().split('T')[0]
+      const endDate = lastState.date
+      const daysActive = Math.max(1, Math.floor(
+        (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
+      ))
+
+      const liquidPnl = lastState.unrealizedPnl + lastState.realizedPnl
+      const denominator = lastState.costBasis > 0 ? lastState.costBasis : 1
+
+      // Calculate APY
+      let realizedApy = 0
+      let liquidApy = 0
+      if (daysActive > 0 && denominator > 0) {
+        const realizedReturnPct = lastState.realizedPnl / denominator
+        const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
+        realizedApy = Math.pow(1 + clampedRealizedPct, 365 / daysActive) - 1
+
+        const liquidReturnPct = liquidPnl / denominator
+        const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
+        liquidApy = Math.pow(1 + clampedLiquidPct, 365 / daysActive) - 1
+      }
+
+      return {
+        fundSize: lastState.marginBalance,
+        currentValue: lastState.equity,
+        cash: 0,  // Derivatives don't have separate cash
+        totalInvested: lastState.costBasis,
+        cumDividends: 0,
+        cumExpenses: lastState.cumFees,
+        cumCashInterest: lastState.cumInterest,
+        cumExtracted: lastState.realizedPnl,
+        unrealized: lastState.unrealizedPnl,
+        realized: lastState.realizedPnl,
+        liquidPnl,
+        realizedApy,
+        liquidApy,
+        daysActive,
+        costBasis: lastState.costBasis
+      }
+    }
+  }
 
   // Initialize tracking variables
   let totalBuys = 0
