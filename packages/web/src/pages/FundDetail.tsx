@@ -439,7 +439,24 @@ export function FundDetail() {
         liquidPnl,
         realizedApy,
         liquidApy,
-        hasIntegrityIssue
+        hasIntegrityIssue,
+        // Derivatives fields (populated when isDerivativesFund)
+        derivPosition: undefined as number | undefined,
+        derivAvgEntry: undefined as number | undefined,
+        derivMarginBalance: undefined as number | undefined,
+        derivCostBasis: undefined as number | undefined,
+        derivUnrealized: undefined as number | undefined,
+        derivRealized: undefined as number | undefined,
+        derivEquity: undefined as number | undefined,
+        derivCumFunding: undefined as number | undefined,
+        derivCumInterest: undefined as number | undefined,
+        derivCumRebates: undefined as number | undefined,
+        derivCumFees: undefined as number | undefined,
+        derivNotionalValue: undefined as number | undefined,
+        derivInitialMargin: undefined as number | undefined,
+        derivMaintenanceMargin: undefined as number | undefined,
+        derivAvailableFunds: undefined as number | undefined,
+        derivMarginRatio: undefined as number | undefined
       }
 
       // For derivatives funds, merge server-computed state
@@ -1237,6 +1254,47 @@ export function FundDetail() {
                     </div>
                   ) : (fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)) ? (
                     <p className="text-slate-400 text-sm">This fund is closed. Historical data preserved below.</p>
+                  ) : latestEntry && isDerivativesFund ? (
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-[10px] text-slate-400">Position</p>
+                        <p className="font-medium text-white">{latestEntry.derivPosition ?? 0} contracts</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Avg Entry</p>
+                        <p className="font-medium text-white">{formatCurrency(latestEntry.derivAvgEntry ?? 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Margin Balance</p>
+                        <p className="font-medium text-blue-400">{formatCurrency(latestEntry.derivMarginBalance ?? 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Cost Basis</p>
+                        <p className="font-medium text-white">{formatCurrency(latestEntry.derivCostBasis ?? 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Equity</p>
+                        <p className="font-medium text-mint-400">{formatCurrency(latestEntry.derivEquity ?? 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Unrealized</p>
+                        <p className={`font-medium ${(latestEntry.derivUnrealized ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatCurrency(latestEntry.derivUnrealized ?? 0)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Realized</p>
+                        <p className={`font-medium ${(latestEntry.derivRealized ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatCurrency(latestEntry.derivRealized ?? 0)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Liquid P&L</p>
+                        <p className={`font-medium ${latestEntry.liquidPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatCurrency(latestEntry.liquidPnl)}
+                        </p>
+                      </div>
+                    </div>
                   ) : latestEntry && fund.config.fund_type === 'cash' ? (
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div>
