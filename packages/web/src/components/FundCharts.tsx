@@ -822,30 +822,30 @@ function ValueAndFundSizeChart({
 
     // Stacked areas for fund allocation
     if (manageCash) {
-      // Cash (bottom) + invested (top)
-      const cashArea = d3.area<TimeSeriesPoint>()
-        .x(d => x(d.date))
-        .y0(height)
-        .y1(d => y(d.cashAvailable))
-        .curve(d3.curveMonotoneX)
-
+      // Invested (bottom) + Cash (top)
       const investedArea = d3.area<TimeSeriesPoint>()
         .x(d => x(d.date))
-        .y0(d => y(d.cashAvailable))
-        .y1(d => y(d.cashAvailable + d.startInput))
+        .y0(height)
+        .y1(d => y(d.startInput))
         .curve(d3.curveMonotoneX)
 
-      // Draw cash area (bottom - green)
-      g.append('path')
-        .datum(data)
-        .attr('fill', '#22c55e33')
-        .attr('d', cashArea)
+      const cashArea = d3.area<TimeSeriesPoint>()
+        .x(d => x(d.date))
+        .y0(d => y(d.startInput))
+        .y1(d => y(d.startInput + d.cashAvailable))
+        .curve(d3.curveMonotoneX)
 
-      // Draw invested area (top - purple)
+      // Draw invested area (bottom - purple)
       g.append('path')
         .datum(data)
         .attr('fill', '#8b5cf633')
         .attr('d', investedArea)
+
+      // Draw cash area (top - green)
+      g.append('path')
+        .datum(data)
+        .attr('fill', '#22c55e33')
+        .attr('d', cashArea)
     } else {
       // No cash management - just show invested area from baseline
       const investedArea = d3.area<TimeSeriesPoint>()
