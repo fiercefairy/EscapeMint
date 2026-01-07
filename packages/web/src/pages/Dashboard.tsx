@@ -195,65 +195,73 @@ export function Dashboard() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-white">
-            Portfolio Dashboard
-            {showTestData && <span className="ml-2 text-amber-400 text-sm font-normal">(Test Mode)</span>}
-          </h1>
-          <p className="text-sm text-slate-400">
-            {filteredMetrics?.activeFunds ?? 0} active funds • {filteredMetrics?.closedFunds ?? 0} closed
-            {filterPlatform !== 'all' && <span className="ml-1 text-mint-400">({filterPlatform})</span>}
-          </p>
+      <div className="flex flex-col gap-2 xs:gap-2.5 sm:gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg xs:text-xl sm:text-2xl font-bold text-white leading-tight">
+              Dashboard
+              {showTestData && <span className="ml-1.5 xs:ml-2 text-amber-400 text-[10px] xs:text-xs sm:text-sm font-normal">(Test)</span>}
+            </h1>
+            <p className="text-[10px] xs:text-[11px] sm:text-sm text-slate-400 mt-0.5 leading-tight">
+              {filteredMetrics?.activeFunds ?? 0} active • {filteredMetrics?.closedFunds ?? 0} closed
+              {filterPlatform !== 'all' && <span className="ml-1 text-mint-400 capitalize">({filterPlatform})</span>}
+            </p>
+          </div>
+          {/* Primary Actions - Always visible */}
+          <div className="flex items-center gap-1.5 xs:gap-2 flex-shrink-0">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-2.5 xs:px-3 sm:px-4 py-1.5 xs:py-2 text-[11px] xs:text-xs sm:text-sm bg-mint-600 text-white rounded-lg hover:bg-mint-700 active:bg-mint-800 transition-colors font-medium whitespace-nowrap touch-manipulation min-h-[36px] xs:min-h-[40px] sm:min-h-[44px]"
+            >
+              + Add
+            </button>
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="px-2.5 xs:px-3 sm:px-4 py-1.5 xs:py-2 text-[11px] xs:text-xs sm:text-sm bg-slate-700 text-white rounded-lg hover:bg-slate-600 active:bg-slate-500 transition-colors font-medium touch-manipulation min-h-[36px] xs:min-h-[40px] sm:min-h-[44px]"
+            >
+              Import
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-2 py-1 text-sm bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors font-medium"
-          >
-            + Add Fund
-          </button>
-          <button
-            onClick={() => setShowImportModal(true)}
-            className="px-2 py-1 text-sm bg-slate-700 text-white rounded hover:bg-slate-600 transition-colors font-medium"
-          >
-            Import
-          </button>
-          <button
-            onClick={() => setShowTestData(!showTestData)}
-            className={`px-2 py-1 text-sm rounded ${showTestData ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400'}`}
-            title={showTestData ? 'Showing test funds only' : 'Click to show test funds'}
-          >
-            Test Data
-          </button>
-          <button
-            onClick={() => setShowCharts(!showCharts)}
-            className={`px-2 py-1 text-sm rounded ${showCharts ? 'bg-mint-600 text-white' : 'bg-slate-800 text-slate-400'}`}
-          >
-            Charts
-          </button>
-          <select
-            value={filterPlatform}
-            onChange={e => setFilterPlatform(e.target.value)}
-            className="px-2 py-1.5 text-sm bg-slate-800 border border-slate-700 rounded text-white"
-          >
-            <option value="all">All Platforms</option>
-            {platforms.map(p => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-          <div className="flex bg-slate-800 rounded p-0.5">
+        {/* Secondary Controls - Improved mobile responsive layout */}
+        <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 overflow-x-auto scrollbar-hide -mx-2 px-2 sm:mx-0 sm:px-0 sm:overflow-visible pb-1 sm:pb-0">
+          <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 flex-shrink-0">
+            <button
+              onClick={() => setShowTestData(!showTestData)}
+              className={`px-2 xs:px-2.5 sm:px-3 py-1.5 text-[10px] xs:text-[11px] sm:text-sm rounded-lg touch-manipulation min-h-[32px] xs:min-h-[36px] sm:min-h-[40px] whitespace-nowrap ${showTestData ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 active:bg-slate-600'}`}
+              title={showTestData ? 'Showing test funds only' : 'Click to show test funds'}
+            >
+              Test
+            </button>
+            <button
+              onClick={() => setShowCharts(!showCharts)}
+              className={`px-2 xs:px-2.5 sm:px-3 py-1.5 text-[10px] xs:text-[11px] sm:text-sm rounded-lg touch-manipulation min-h-[32px] xs:min-h-[36px] sm:min-h-[40px] whitespace-nowrap ${showCharts ? 'bg-mint-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 active:bg-slate-600'}`}
+            >
+              Charts
+            </button>
+            <select
+              value={filterPlatform}
+              onChange={e => setFilterPlatform(e.target.value)}
+              className="px-2 xs:px-2.5 sm:px-3 py-1.5 text-[10px] xs:text-[11px] sm:text-sm bg-slate-800 border border-slate-700 rounded-lg text-white min-w-[80px] xs:min-w-[100px] sm:min-w-[140px] touch-manipulation min-h-[32px] xs:min-h-[36px] sm:min-h-[40px]"
+            >
+              <option value="all">All Platforms</option>
+              {platforms.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex bg-slate-800 rounded-lg p-0.5 ml-auto flex-shrink-0">
             <button
               onClick={() => setViewMode('grid')}
-              className={`px-2 py-1 text-sm rounded ${viewMode === 'grid' ? 'bg-mint-600 text-white' : 'text-slate-400'}`}
+              className={`px-2 xs:px-2.5 sm:px-3 py-1.5 text-[10px] xs:text-[11px] sm:text-sm rounded-md touch-manipulation min-h-[28px] xs:min-h-[32px] sm:min-h-[36px] ${viewMode === 'grid' ? 'bg-mint-600 text-white' : 'text-slate-400 hover:text-slate-300 active:text-slate-200'}`}
             >
               Grid
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`px-2 py-1 text-sm rounded ${viewMode === 'table' ? 'bg-mint-600 text-white' : 'text-slate-400'}`}
+              className={`px-2 xs:px-2.5 sm:px-3 py-1.5 text-[10px] xs:text-[11px] sm:text-sm rounded-md touch-manipulation min-h-[28px] xs:min-h-[32px] sm:min-h-[36px] ${viewMode === 'table' ? 'bg-mint-600 text-white' : 'text-slate-400 hover:text-slate-300 active:text-slate-200'}`}
             >
               Table
             </button>
@@ -262,8 +270,8 @@ export function Dashboard() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-mint-400"></div>
+        <div className="flex items-center justify-center py-12 xs:py-16 sm:py-20">
+          <div className="animate-spin rounded-full h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 border-b-2 border-mint-400"></div>
         </div>
       ) : (
         <>
@@ -281,46 +289,46 @@ export function Dashboard() {
 
           {/* Funds List/Grid */}
           {viewMode === 'table' ? (
-            <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-x-auto">
-              <table className="w-full text-left text-sm">
+            <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0 scrollbar-thin scroll-fade-right">
+              <table className="w-full text-left text-[10px] xs:text-xs sm:text-sm min-w-[260px]">
                 <thead>
                   <tr className="border-b border-slate-700 text-slate-400">
-                    <th className="px-3 py-2">Fund</th>
-                    <th className="px-3 py-2 hidden sm:table-cell">Platform</th>
-                    <th className="px-3 py-2 text-right hidden md:table-cell">Fund Size</th>
-                    <th className="px-3 py-2 text-right">Value</th>
-                    <th className="px-3 py-2 text-right hidden lg:table-cell">Target APY</th>
-                    <th className="px-3 py-2 text-right hidden lg:table-cell">Interval</th>
-                    <th className="px-3 py-2 text-right hidden sm:table-cell">Entries</th>
+                    <th className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3 font-medium">Fund</th>
+                    <th className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3 font-medium hidden sm:table-cell">Platform</th>
+                    <th className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3 font-medium text-right hidden md:table-cell">Fund Size</th>
+                    <th className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3 font-medium text-right">Value</th>
+                    <th className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3 font-medium text-right hidden lg:table-cell">Target APY</th>
+                    <th className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3 font-medium text-right hidden lg:table-cell">Interval</th>
+                    <th className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3 font-medium text-right hidden xs:table-cell">Entries</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredFunds.map(fund => (
                     <tr
                       key={fund.id}
-                      className="border-b border-slate-700/50 hover:bg-slate-700/30 cursor-pointer"
+                      className="border-b border-slate-700/50 hover:bg-slate-700/30 active:bg-slate-700/50 cursor-pointer touch-manipulation"
                       onClick={() => window.location.href = `/fund/${fund.id}`}
                     >
-                      <td className="px-3 py-2">
-                        <span className="font-medium text-white uppercase">{fund.ticker}</span>
-                        <span className="sm:hidden text-slate-500 text-xs ml-1 capitalize">({fund.platform})</span>
+                      <td className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3">
+                        <span className="font-medium text-white uppercase text-[10px] xs:text-xs sm:text-sm">{fund.ticker}</span>
+                        <span className="sm:hidden text-slate-500 text-[9px] xs:text-[10px] capitalize block mt-0.5">{fund.platform}</span>
                       </td>
-                      <td className="px-3 py-2 text-slate-400 capitalize hidden sm:table-cell">{fund.platform}</td>
-                      <td className="px-3 py-2 text-right text-white hidden md:table-cell">
+                      <td className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3 text-slate-400 capitalize hidden sm:table-cell">{fund.platform}</td>
+                      <td className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3 text-right text-white hidden md:table-cell">
                         {formatCurrency(fund.config.fund_size_usd)}
                       </td>
-                      <td className="px-3 py-2 text-right">
-                        <span className={fund.latestEquity?.value ? 'text-mint-400' : 'text-slate-500'}>
+                      <td className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3 text-right">
+                        <span className={fund.latestEquity?.value ? 'text-mint-400 font-medium' : 'text-slate-500'}>
                           {fund.latestEquity?.value ? formatCurrency(fund.latestEquity.value) : '-'}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-right text-slate-300 hidden lg:table-cell">
+                      <td className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3 text-right text-slate-300 hidden lg:table-cell">
                         {formatPercent(fund.config.target_apy)}
                       </td>
-                      <td className="px-3 py-2 text-right text-slate-400 hidden lg:table-cell">
+                      <td className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3 text-right text-slate-400 hidden lg:table-cell">
                         {fund.config.interval_days}d
                       </td>
-                      <td className="px-3 py-2 text-right text-slate-400 hidden sm:table-cell">
+                      <td className="px-2 xs:px-2.5 sm:px-3 py-2 xs:py-2.5 sm:py-3 text-right text-slate-400 hidden xs:table-cell">
                         {fund.entryCount}
                       </td>
                     </tr>
@@ -329,23 +337,23 @@ export function Dashboard() {
               </table>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3 xs:space-y-4 sm:space-y-5">
               {Object.entries(fundsByPlatform).map(([platform, platformFunds]) => (
                 <div key={platform}>
                   <Link
                     to={`/platform/${platform}`}
-                    className="text-base font-semibold text-white mb-2 capitalize hover:text-mint-400 transition-colors inline-block"
+                    className="text-xs xs:text-sm sm:text-base font-semibold text-white mb-1.5 xs:mb-2 sm:mb-3 capitalize hover:text-mint-400 active:text-mint-500 transition-colors inline-block touch-manipulation"
                   >
                     {platform} →
                   </Link>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1.5 xs:gap-2 sm:gap-3">
                     {platformFunds.map(fund => {
                       const fundMetrics = filteredMetrics?.funds.find(f => f.id === fund.id)
                       const fundPath = fund.config.fund_type === 'derivatives'
                         ? `/derivatives/${fund.id}`
                         : `/fund/${fund.id}`
                       return (
-                        <Link key={fund.id} to={fundPath}>
+                        <Link key={fund.id} to={fundPath} className="touch-manipulation">
                           <FundCard fund={fund} impactPct={fundMetrics?.fundSharesPct} />
                         </Link>
                       )

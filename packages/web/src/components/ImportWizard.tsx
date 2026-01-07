@@ -22,6 +22,8 @@ import {
   applyM1StatementTransactions,
   downloadM1StatementsStream,
   scrapeCoinbaseTransactionsStream,
+  getCoinbaseTransactionsArchive,
+  type CoinbaseTransactionArchive,
   type ImportPreview,
   type ScrapeProgressEvent,
   type ScrapeStatusEvent,
@@ -32,21 +34,26 @@ import {
   type M1StatementsListResponse,
   type M1StatementsParseAllResponse,
   type CoinbaseScrapeStatusEvent,
-  type CoinbaseScrapeProgressEvent,
-  type CoinbaseScrapeCompleteEvent
+  type CoinbaseScrapeProgressEvent
 } from '../api/import'
-import { notifyFundsChanged } from '../api/funds'
+import { notifyFundsChanged, fetchFunds, type FundSummary } from '../api/funds'
 
 /**
  * Coinbase Scrape Step Component
  * Inline component for handling Coinbase transactions scraping within the ImportWizard
  */
-function CoinbaseScrapeStep({ onClose }: { onClose: () => void }) {
-  const [phase, setPhase] = useState<'idle' | 'scraping' | 'complete' | 'error'>('idle')
+function CoinbaseScrapeStep({
+  onDataReady,
+  onClose
+}: {
+  onDataReady: (archive: CoinbaseTransactionArchive) => void
+  onClose: () => void
+}) {
+  const [phase, setPhase] = useState<'loading' | 'idle' | 'scraping' | 'complete' | 'error'>('loading')
   const [status, setStatus] = useState('')
   const [current, setCurrent] = useState(0)
   const [total, setTotal] = useState(0)
-  const [perpRelatedCount, setPerpRelatedCount] = useState(0)
+  const [existingArchive, setExistingArchive] = useState<CoinbaseTransactionArchive | null>(null)
   const [lastTx, setLastTx] = useState<{
     date: string
     type: string
@@ -57,6 +64,16 @@ function CoinbaseScrapeStep({ onClose }: { onClose: () => void }) {
   } | null>(null)
 
   const scrapeStreamRef = useRef<{ close: () => void } | null>(null)
+
+  // Check for existing archive on mount
+  useEffect(() => {
+    getCoinbaseTransactionsArchive().then(result => {
+      if (result.data && result.data.transactions.length > 0) {
+        setExistingArchive(result.data)
+      }
+      setPhase('idle')
+    })
+  }, [])
 
   const handleStartScrape = useCallback(() => {
     setPhase('scraping')
@@ -76,11 +93,16 @@ function CoinbaseScrapeStep({ onClose }: { onClose: () => void }) {
           setLastTx(data.lastTransaction)
           setStatus(`Scraped ${data.current} transactions (${data.newCount} new)`)
         },
-        onComplete: (data: CoinbaseScrapeCompleteEvent) => {
-          setPhase('complete')
-          setStatus(data.message)
-          setPerpRelatedCount(data.perpRelatedCount)
-          toast.success(data.message)
+        onComplete: () => {
+          // Re-fetch archive to get updated data with summary
+          getCoinbaseTransactionsArchive().then(result => {
+            if (result.data) {
+              setPhase('complete')
+              setStatus(`Scraped ${result.data.transactions.length} transactions`)
+              setExistingArchive(result.data)
+              toast.success(`Scraped ${result.data.transactions.length} transactions`)
+            }
+          })
         },
         onError: (data) => {
           setPhase('error')
@@ -98,11 +120,31 @@ function CoinbaseScrapeStep({ onClose }: { onClose: () => void }) {
     toast.info('Scraping cancelled')
   }, [])
 
+  const handleUseSavedData = useCallback(() => {
+    if (existingArchive) {
+      onDataReady(existingArchive)
+    }
+  }, [existingArchive, onDataReady])
+
+  const handleContinueAfterScrape = useCallback(() => {
+    if (existingArchive) {
+      onDataReady(existingArchive)
+    }
+  }, [existingArchive, onDataReady])
+
   useEffect(() => {
     return () => {
       scrapeStreamRef.current?.close()
     }
   }, [])
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -114,7 +156,60 @@ function CoinbaseScrapeStep({ onClose }: { onClose: () => void }) {
         </p>
       </div>
 
-      {phase === 'idle' && (
+      {phase === 'loading' && (
+        <div className="text-center py-8">
+          <div className="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-slate-400 text-sm">Checking for saved data...</p>
+        </div>
+      )}
+
+      {phase === 'idle' && existingArchive && (
+        <div className="space-y-4">
+          <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+            <div className="flex items-start gap-3">
+              <div className="text-2xl">📁</div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-white font-medium">Saved Data Available</h4>
+                <p className="text-slate-400 text-sm mt-1">
+                  {existingArchive.transactions.length.toLocaleString()} transactions saved
+                  <span className="text-slate-500"> • </span>
+                  {existingArchive.summary.perpRelatedCount.toLocaleString()} perp-related
+                </p>
+                <p className="text-slate-500 text-xs mt-1">
+                  Last updated: {formatDate(existingArchive.updatedAt)}
+                </p>
+                {existingArchive.summary && (
+                  <div className="mt-2 text-xs text-slate-400 space-y-1">
+                    <div className="flex gap-4">
+                      <span>Net Funding: <span className={existingArchive.summary.netFunding >= 0 ? 'text-green-400' : 'text-red-400'}>
+                        ${existingArchive.summary.netFunding.toFixed(2)}
+                      </span></span>
+                      <span>USDC Interest: <span className="text-green-400">${existingArchive.summary.usdcInterest.toFixed(2)}</span></span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={handleUseSavedData}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              Use Saved Data
+            </button>
+            <button
+              onClick={handleStartScrape}
+              className="px-6 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors"
+            >
+              Re-scrape for Updates
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'idle' && !existingArchive && (
         <div className="text-center">
           <p className="text-sm text-slate-400 mb-6">
             Make sure you have the Coinbase transactions page open in your browser and are logged in.
@@ -170,18 +265,18 @@ function CoinbaseScrapeStep({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {phase === 'complete' && (
+      {phase === 'complete' && existingArchive && (
         <div className="text-center space-y-4">
           <div className="text-6xl mb-2">✅</div>
           <p className="text-green-400 font-medium">{status}</p>
           <p className="text-slate-400 text-sm">
-            {perpRelatedCount} perp-related transactions found
+            {existingArchive.summary.perpRelatedCount} perp-related transactions found
           </p>
           <button
-            onClick={onClose}
+            onClick={handleContinueAfterScrape}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
           >
-            Done
+            Continue to Import
           </button>
         </div>
       )}
@@ -217,7 +312,7 @@ export interface ImportWizardProps {
 }
 
 type ImportMethod = 'csv' | 'scrape' | 'archive' | 'crypto-pdf' | 'm1-cash' | 'm1-statements' | 'coinbase-scrape'
-type WizardStep = 'method' | 'archive' | 'browser' | 'url' | 'upload' | 'preview' | 'scraping' | 'importing' | 'done' | 'crypto-pdf' | 'crypto-download' | 'crypto-preview' | 'm1-cash-url' | 'm1-statements' | 'm1-statements-download' | 'm1-statements-preview' | 'checking-login' | 'coinbase-scrape'
+type WizardStep = 'method' | 'archive' | 'browser' | 'url' | 'upload' | 'preview' | 'scraping' | 'importing' | 'done' | 'crypto-pdf' | 'crypto-download' | 'crypto-preview' | 'm1-cash-url' | 'm1-statements' | 'm1-statements-download' | 'm1-statements-preview' | 'checking-login' | 'coinbase-scrape' | 'coinbase-summary' | 'coinbase-fund-select' | 'coinbase-preview' | 'coinbase-importing'
 type BrowserState = 'idle' | 'launching' | 'launched' | 'connecting' | 'connected'
 
 // Define which import methods are available for each platform
@@ -293,6 +388,17 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
     downloaded: number
     message: string
   }>({ phase: 'idle', current: 0, total: 0, downloaded: 0, message: '' })
+  // Coinbase import state
+  const [coinbaseArchive, setCoinbaseArchive] = useState<CoinbaseTransactionArchive | null>(null)
+  const [availableFunds, setAvailableFunds] = useState<FundSummary[]>([])
+  const [selectedCoinbaseFund, setSelectedCoinbaseFund] = useState<string | null>(null)
+  const [selectedCoinbaseTypes, setSelectedCoinbaseTypes] = useState<Set<string>>(new Set(['DEPOSIT', 'OTHER', 'FUNDING_PROFIT', 'FUNDING_LOSS', 'BUY', 'SELL', 'USDC_INTEREST', 'REBATE']))
+  const [coinbaseImportProgress, setCoinbaseImportProgress] = useState<{
+    phase: 'idle' | 'importing' | 'complete' | 'error'
+    applied: number
+    skipped: number
+    message: string
+  }>({ phase: 'idle', applied: 0, skipped: 0, message: '' })
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const scrapeStreamRef = useRef<{ close: () => void } | null>(null)
   const cryptoStreamRef = useRef<{ close: () => void } | null>(null)
@@ -464,6 +570,51 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
       setStep('url')
     }
   }, [method])
+
+  // Coinbase data ready handler - fetch funds and go to summary
+  const handleCoinbaseDataReady = useCallback(async (archive: CoinbaseTransactionArchive) => {
+    setCoinbaseArchive(archive)
+    // Load available funds (filter to derivatives/crypto funds)
+    const fundsResult = await fetchFunds()
+    if (fundsResult.data) {
+      // Filter to funds that can receive Coinbase transactions
+      const eligibleFunds = fundsResult.data.filter(f =>
+        f.config.fund_type === 'derivatives' ||
+        f.config.fund_type === 'crypto' ||
+        f.platform === 'coinbase'
+      )
+      setAvailableFunds(eligibleFunds)
+      // Auto-select first derivatives fund if available
+      const derivativesFund = eligibleFunds.find(f => f.config.fund_type === 'derivatives')
+      if (derivativesFund) {
+        setSelectedCoinbaseFund(derivativesFund.id)
+      }
+    }
+    setStep('coinbase-summary')
+  }, [])
+
+  // Go to fund selection
+  const handleCoinbaseProceedToFundSelect = useCallback(() => {
+    setStep('coinbase-fund-select')
+  }, [])
+
+  // Go to preview
+  const handleCoinbaseProceedToPreview = useCallback(() => {
+    setStep('coinbase-preview')
+  }, [])
+
+  // Toggle Coinbase transaction type selection
+  const handleToggleCoinbaseType = useCallback((type: string) => {
+    setSelectedCoinbaseTypes(prev => {
+      const next = new Set(prev)
+      if (next.has(type)) {
+        next.delete(type)
+      } else {
+        next.add(type)
+      }
+      return next
+    })
+  }, [])
 
   const handleScrapeUrl = useCallback(async () => {
     if (!scrapeUrl.trim()) {
@@ -822,10 +973,11 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
   // Step indicator
   const getStepNumber = () => {
     if (step === 'method') return 1
-    if (step === 'upload' || step === 'browser' || step === 'archive' || step === 'crypto-pdf' || step === 'm1-statements') return 2
-    if (step === 'url' || step === 'crypto-download' || step === 'm1-cash-url' || step === 'm1-statements-download' || step === 'checking-login') return 3
-    if (step === 'scraping') return 4
-    if (step === 'crypto-preview' || step === 'm1-statements-preview') return 3
+    if (step === 'upload' || step === 'browser' || step === 'archive' || step === 'crypto-pdf' || step === 'm1-statements' || step === 'coinbase-scrape') return 2
+    if (step === 'url' || step === 'crypto-download' || step === 'm1-cash-url' || step === 'm1-statements-download' || step === 'checking-login' || step === 'coinbase-summary') return 3
+    if (step === 'scraping' || step === 'coinbase-fund-select') return 4
+    if (step === 'crypto-preview' || step === 'm1-statements-preview' || step === 'coinbase-preview') return method === 'coinbase-scrape' ? 5 : 3
+    if (step === 'coinbase-importing') return 6
     if (step === 'preview' || step === 'importing') return method === 'csv' ? 3 : method === 'archive' ? 3 : method === 'crypto-pdf' ? 3 : method === 'm1-statements' ? 3 : method === 'm1-cash' ? 4 : 5
     return 1
   }
@@ -836,6 +988,7 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
     if (method === 'crypto-pdf') return 3
     if (method === 'm1-statements') return 3
     if (method === 'm1-cash') return 4
+    if (method === 'coinbase-scrape') return 6
     return 5
   }
 
@@ -1954,7 +2107,372 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
 
           {/* Coinbase Transactions Scrape Step */}
           {step === 'coinbase-scrape' && (
-            <CoinbaseScrapeStep onClose={onClose} />
+            <CoinbaseScrapeStep
+              onDataReady={handleCoinbaseDataReady}
+              onClose={onClose}
+            />
+          )}
+
+          {/* Coinbase Summary Step */}
+          {step === 'coinbase-summary' && coinbaseArchive && (
+            <div className="space-y-6">
+              <div className="text-center py-4">
+                <div className="text-5xl mb-4">📊</div>
+                <h3 className="text-xl font-medium text-white mb-2">Transaction Summary</h3>
+                <p className="text-slate-400">
+                  Review your Coinbase transaction data before importing.
+                </p>
+              </div>
+
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                  <div className="text-sm text-slate-400 mb-1">Total Transactions</div>
+                  <div className="text-2xl font-bold text-white">{coinbaseArchive.transactions.length.toLocaleString()}</div>
+                </div>
+                <div className="bg-slate-800/50 rounded-lg p-4 border border-blue-500/30">
+                  <div className="text-sm text-blue-400 mb-1">Perp-Related</div>
+                  <div className="text-2xl font-bold text-blue-400">{coinbaseArchive.summary.perpRelatedCount.toLocaleString()}</div>
+                </div>
+              </div>
+
+              {/* Perp Breakdown */}
+              <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                <h4 className="text-white font-medium mb-3">Perp Trading Summary</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <div className="text-slate-400">Trades</div>
+                    <div className="text-white font-medium">{coinbaseArchive.summary.perpTradeCount}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Net Funding</div>
+                    <div className={`font-medium ${coinbaseArchive.summary.netFunding >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      ${coinbaseArchive.summary.netFunding.toFixed(2)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">USDC Interest</div>
+                    <div className="text-green-400 font-medium">${coinbaseArchive.summary.usdcInterest.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Rebates</div>
+                    <div className="text-green-400 font-medium">${coinbaseArchive.summary.rebates.toFixed(2)}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Transaction Type Breakdown */}
+              <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                <h4 className="text-white font-medium mb-3">Select Transaction Types to Import</h4>
+                <div className="space-y-2">
+                  {[
+                    // Margin deposits/withdrawals
+                    { type: 'DEPOSIT', label: 'Margin Deposits (USDC)', count: coinbaseArchive.transactions.filter(t => t.type === 'DEPOSIT' && t.isPerpRelated).length, amount: coinbaseArchive.transactions.filter(t => t.type === 'DEPOSIT' && t.isPerpRelated).reduce((sum, t) => sum + t.amount, 0) },
+                    { type: 'OTHER', label: 'Other Deposits', count: coinbaseArchive.transactions.filter(t => t.type === 'OTHER' && t.isPerpRelated).length, amount: coinbaseArchive.transactions.filter(t => t.type === 'OTHER' && t.isPerpRelated).reduce((sum, t) => sum + t.amount, 0) },
+                    // Funding
+                    { type: 'FUNDING_PROFIT', label: 'Funding Profit', count: coinbaseArchive.transactions.filter(t => t.type === 'FUNDING_PROFIT').length, amount: coinbaseArchive.summary.fundingProfit },
+                    { type: 'FUNDING_LOSS', label: 'Funding Loss', count: coinbaseArchive.transactions.filter(t => t.type === 'FUNDING_LOSS').length, amount: -coinbaseArchive.summary.fundingLoss },
+                    // Trades
+                    { type: 'BUY', label: 'Perp Buys', count: coinbaseArchive.transactions.filter(t => t.type === 'BUY' && t.isPerpRelated).length },
+                    { type: 'SELL', label: 'Perp Sells', count: coinbaseArchive.transactions.filter(t => t.type === 'SELL' && t.isPerpRelated).length },
+                    // Income
+                    { type: 'USDC_INTEREST', label: 'USDC Interest', count: coinbaseArchive.transactions.filter(t => t.type === 'USDC_INTEREST').length, amount: coinbaseArchive.summary.usdcInterest },
+                    { type: 'REBATE', label: 'Rebates', count: coinbaseArchive.transactions.filter(t => t.type === 'REBATE').length, amount: coinbaseArchive.summary.rebates },
+                  ].map(({ type, label, count, amount }) => (
+                    <label key={type} className="flex items-center gap-3 p-2 rounded hover:bg-slate-700/50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedCoinbaseTypes.has(type)}
+                        onChange={() => handleToggleCoinbaseType(type)}
+                        className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500"
+                      />
+                      <span className="flex-1 text-slate-300">{label}</span>
+                      <span className="text-slate-500 text-sm">{count}</span>
+                      {amount !== undefined && (
+                        <span className={`text-sm ${amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          ${Math.abs(amount).toFixed(2)}
+                        </span>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-center">
+                <button
+                  onClick={handleCoinbaseProceedToFundSelect}
+                  disabled={selectedCoinbaseTypes.size === 0}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Continue to Fund Selection
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Coinbase Fund Selection Step */}
+          {step === 'coinbase-fund-select' && coinbaseArchive && (
+            <div className="space-y-6">
+              <div className="text-center py-4">
+                <div className="text-5xl mb-4">🎯</div>
+                <h3 className="text-xl font-medium text-white mb-2">Select Target Fund</h3>
+                <p className="text-slate-400">
+                  Choose which fund to import the Coinbase transactions into.
+                </p>
+              </div>
+
+              {availableFunds.length === 0 ? (
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 text-center">
+                  <p className="text-yellow-400">
+                    No eligible funds found. Please create a derivatives or crypto fund first.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {availableFunds.map(fund => (
+                    <label
+                      key={fund.id}
+                      className={`flex items-center gap-3 p-4 rounded-lg border cursor-pointer transition-colors ${
+                        selectedCoinbaseFund === fund.id
+                          ? 'bg-blue-500/10 border-blue-500'
+                          : 'bg-slate-800/50 border-slate-700 hover:border-slate-600'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="coinbase-fund"
+                        checked={selectedCoinbaseFund === fund.id}
+                        onChange={() => setSelectedCoinbaseFund(fund.id)}
+                        className="w-4 h-4 text-blue-500 focus:ring-blue-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white font-medium">{fund.id}</div>
+                        <div className="text-sm text-slate-400">
+                          {fund.platform} • {fund.config.fund_type || 'standard'} fund
+                          {fund.entryCount > 0 && ` • ${fund.entryCount} entries`}
+                        </div>
+                      </div>
+                      {fund.latestEquity && (
+                        <div className="text-right">
+                          <div className="text-white font-medium">
+                            ${fund.latestEquity.value.toLocaleString()}
+                          </div>
+                          <div className="text-xs text-slate-500">{fund.latestEquity.date}</div>
+                        </div>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Option to clear existing data */}
+              {selectedCoinbaseFund && (
+                <label className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={clearBeforeImport}
+                    onChange={(e) => setClearBeforeImport(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-red-500 focus:ring-red-500"
+                  />
+                  <div>
+                    <span className="text-slate-300">Clear existing entries before import</span>
+                    <p className="text-xs text-slate-500">Warning: This will delete all existing entries in the fund</p>
+                  </div>
+                </label>
+              )}
+
+              <div className="flex gap-4 justify-center">
+                <button
+                  onClick={() => setStep('coinbase-summary')}
+                  className="px-6 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleCoinbaseProceedToPreview}
+                  disabled={!selectedCoinbaseFund}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Preview Import
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Coinbase Preview Step */}
+          {step === 'coinbase-preview' && coinbaseArchive && selectedCoinbaseFund && (
+            <div className="space-y-6">
+              <div className="text-center py-4">
+                <div className="text-5xl mb-4">👁️</div>
+                <h3 className="text-xl font-medium text-white mb-2">Preview Import</h3>
+                <p className="text-slate-400">
+                  Review the transactions that will be imported.
+                </p>
+              </div>
+
+              {/* Summary */}
+              <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-white font-medium">Import Summary</h4>
+                  <span className="text-sm text-slate-400">
+                    Target: <span className="text-blue-400">{selectedCoinbaseFund}</span>
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <div className="text-slate-400">Selected Types</div>
+                    <div className="text-white font-medium">{selectedCoinbaseTypes.size}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Transactions</div>
+                    <div className="text-white font-medium">
+                      {coinbaseArchive.transactions.filter(t =>
+                        selectedCoinbaseTypes.has(t.type) && t.isPerpRelated
+                      ).length}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Clear First</div>
+                    <div className={`font-medium ${clearBeforeImport ? 'text-red-400' : 'text-slate-500'}`}>
+                      {clearBeforeImport ? 'Yes' : 'No'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Transaction Preview */}
+              <div className="bg-slate-800/50 rounded-lg border border-slate-700 max-h-64 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-800">
+                    <tr className="text-left text-slate-400 border-b border-slate-700">
+                      <th className="p-2">Date</th>
+                      <th className="p-2">Type</th>
+                      <th className="p-2">Title</th>
+                      <th className="p-2 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {coinbaseArchive.transactions
+                      .filter(t => selectedCoinbaseTypes.has(t.type) && t.isPerpRelated)
+                      .slice(0, 50)
+                      .map((tx, i) => (
+                        <tr key={tx.id} className={i % 2 === 0 ? 'bg-slate-800/30' : ''}>
+                          <td className="p-2 text-slate-300">{tx.date}</td>
+                          <td className="p-2 text-slate-400">{tx.type}</td>
+                          <td className="p-2 text-slate-300 truncate max-w-[200px]">{tx.title}</td>
+                          <td className={`p-2 text-right ${tx.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            ${tx.amount.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+                {coinbaseArchive.transactions.filter(t => selectedCoinbaseTypes.has(t.type) && t.isPerpRelated).length > 50 && (
+                  <div className="text-center text-slate-500 text-sm py-2 border-t border-slate-700">
+                    ... and {coinbaseArchive.transactions.filter(t => selectedCoinbaseTypes.has(t.type) && t.isPerpRelated).length - 50} more
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-4 justify-center">
+                <button
+                  onClick={() => setStep('coinbase-fund-select')}
+                  className="px-6 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={async () => {
+                    setStep('coinbase-importing')
+                    setCoinbaseImportProgress({ phase: 'importing', applied: 0, skipped: 0, message: 'Importing transactions...' })
+
+                    // Get transactions to import
+                    const toImport = coinbaseArchive.transactions.filter(t =>
+                      selectedCoinbaseTypes.has(t.type) && t.isPerpRelated
+                    )
+
+                    // Call import API
+                    const response = await fetch(`/api/v1/import/coinbase/transactions/apply`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({
+                        fundId: selectedCoinbaseFund,
+                        transactionIds: toImport.map(t => t.id),
+                        selectedTypes: Array.from(selectedCoinbaseTypes),
+                        clearBeforeImport
+                      })
+                    })
+
+                    if (!response.ok) {
+                      const error = await response.text()
+                      setCoinbaseImportProgress({ phase: 'error', applied: 0, skipped: 0, message: error || 'Import failed' })
+                      toast.error('Import failed')
+                      return
+                    }
+
+                    const result = await response.json()
+                    toast.success(`Imported ${result.applied} transactions (${result.skipped} skipped)`)
+                    notifyFundsChanged()
+                    onImported?.()
+                    onClose()
+                  }}
+                  disabled={coinbaseArchive.transactions.filter(t => selectedCoinbaseTypes.has(t.type) && t.isPerpRelated).length === 0}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Import Transactions
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Coinbase Importing Step */}
+          {step === 'coinbase-importing' && (
+            <div className="space-y-6">
+              <div className="text-center py-8">
+                {coinbaseImportProgress.phase === 'importing' && (
+                  <>
+                    <div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                    <h3 className="text-xl font-medium text-white mb-2">Importing Transactions</h3>
+                    <p className="text-slate-400">{coinbaseImportProgress.message}</p>
+                  </>
+                )}
+                {coinbaseImportProgress.phase === 'complete' && (
+                  <>
+                    <div className="text-6xl mb-4">✅</div>
+                    <h3 className="text-xl font-medium text-white mb-2">Import Complete</h3>
+                    <p className="text-green-400 font-medium mb-2">{coinbaseImportProgress.message}</p>
+                    <button
+                      onClick={onClose}
+                      className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                    >
+                      Done
+                    </button>
+                  </>
+                )}
+                {coinbaseImportProgress.phase === 'error' && (
+                  <>
+                    <div className="text-6xl mb-4">❌</div>
+                    <h3 className="text-xl font-medium text-white mb-2">Import Failed</h3>
+                    <p className="text-red-400 font-medium mb-4">{coinbaseImportProgress.message}</p>
+                    <div className="flex gap-4 justify-center">
+                      <button
+                        onClick={() => setStep('coinbase-preview')}
+                        className="px-6 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors"
+                      >
+                        Back
+                      </button>
+                      <button
+                        onClick={onClose}
+                        className="px-6 py-3 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           )}
 
           {/* Step 2 (Scrape): Browser Launch/Login */}

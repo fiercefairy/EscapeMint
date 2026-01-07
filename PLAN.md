@@ -1206,3 +1206,219 @@ export function formatPercent(value: number): string
 - TypeScript: ✅ Passing (0 errors)
 - Engine Tests: ✅ 135 tests passing
 - Storage Tests: ✅ 9 tests passing
+
+---
+
+## 10. DERIVATIVES DATA MODEL RESTRUCTURE (2026-01-06)
+
+### 10.1 Problem Statement
+
+The current fund model was designed for cash/stock/crypto trading accounts and doesn't work properly for perpetual futures:
+
+**Current Issues:**
+1. **Cash balance starts arbitrarily** - No deposit/withdrawal history imported, so margin balance appears from nowhere
+2. **Liquid P&L calculation is wrong** - Uses `equity = cash + (shares × price)` which doesn't apply to derivatives
+3. **Funding payments lumped incorrectly** - Being stored as `cash_interest` which is meant for idle cash interest
+4. **Shares vs Contracts confusion** - Using `shares` field for contract count
+5. **No tracking of realized vs unrealized P&L** - Essential for derivatives accounting
+
+### 10.2 Derivatives-Specific Data Model
+
+#### 10.2.1 Entry Actions (for derivatives funds)
+
+| Action | Description | Fields Used |
+|--------|-------------|-------------|
+| `DEPOSIT` | Add margin/collateral | `amount` (USD deposited) |
+| `WITHDRAW` | Remove margin/collateral | `amount` (USD withdrawn) |
+| `BUY` | Buy contracts (go long / close short) | `contracts`, `price`, `amount` (margin used) |
+| `SELL` | Sell contracts (go short / close long) | `contracts`, `price`, `amount` (margin released) |
+| `FUNDING` | Funding payment (+ or -) | `amount` (funding received/paid) |
+| `INTEREST` | USDC interest earned | `amount` (interest credited) |
+| `REBATE` | Trading rebate | `amount` (rebate credited) |
+| `FEE` | Trading fee (if separate) | `amount` (fee paid) |
+
+#### 10.2.2 Entry Fields (derivatives-specific columns)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `date` | string | Entry date (YYYY-MM-DD) |
+| `action` | string | One of the actions above |
+| `contracts` | number | Contract count for trades (+ = long, - = short) |
+| `price` | number | Price per contract for trades |
+| `amount` | number | USD amount for deposits/withdrawals/funding/interest/rebates/fees |
+| `notes` | string | Optional notes |
+
+#### 10.2.3 Calculated/Running Fields (computed, not stored)
+
+| Field | Calculation | Description |
+|-------|-------------|-------------|
+| `margin_balance` | Running: deposits - withdrawals + funding + interest + rebates - fees + realized_pnl | Available margin/cash |
+| `position` | Running sum of contracts | Net contract position |
+| `avg_entry` | FIFO or weighted average | Average entry price for open position |
+| `unrealized_pnl` | `(mark_price - avg_entry) × position × multiplier` | Open P&L |
+| `realized_pnl` | Running sum of closed trade P&L | Closed P&L |
+| `cum_funding` | Running sum of FUNDING amounts | Total funding payments |
+| `cum_interest` | Running sum of INTEREST amounts | Total interest earned |
+| `cum_rebates` | Running sum of REBATE amounts | Total rebates received |
+| `equity` | `margin_balance + unrealized_pnl` | Total account value |
+
+#### 10.2.4 TSV Column Structure (Derivatives)
+
+```
+date	action	amount	contracts	price	notes
+2025-09-14	DEPOSIT	100000			Initial margin deposit
+2025-09-14	BUY	1158.25	1	115825	First contract
+2025-09-15	FUNDING	-0.03			Daily funding
+2025-09-18	INTEREST	87.76			USDC interest
+2025-09-19	BUY	11593	10	115930	Add to position
+```
+
+### 10.3 Import Changes
+
+#### 10.3.1 Transaction Type Mapping
+
+| Scraped Type | Fund Action | `isPerpRelated` | Notes |
+|--------------|-------------|-----------------|-------|
+| `BUY` (perp) | `BUY` | true | Use `contracts` and `price` fields |
+| `SELL` (perp) | `SELL` | true | Use `contracts` and `price` fields |
+| `FUNDING_PROFIT` | `FUNDING` | true | Positive amount |
+| `FUNDING_LOSS` | `FUNDING` | true | Negative amount |
+| `USDC_INTEREST` | `INTEREST` | true | Interest on margin |
+| `REBATE` | `REBATE` | true | Trading rebates |
+| `DEPOSIT` (USD/USDC) | `DEPOSIT` | false* | Need to mark margin deposits as perp-related |
+| `WITHDRAWAL` (USD/USDC) | `WITHDRAW` | false* | Need to mark margin withdrawals as perp-related |
+| `OTHER` (Deposited funds) | `DEPOSIT` | false* | "Deposited funds" title = margin deposit |
+
+*Need to update `isPerpRelated` detection for USD/USDC deposits to margin account
+
+#### 10.3.2 Import Flow Updates
+
+1. **Include margin deposits** - Detect "Deposited funds", "Received USDC" as margin deposits
+2. **Proper action mapping** - Use FUNDING not HOLD with cash_interest
+3. **Preserve contracts/price** - Store contract details on trades
+4. **Track fees separately** - If fee data available, store as FEE action
+
+### 10.4 Calculation Engine Changes
+
+#### 10.4.1 New Functions Needed
+
+```typescript
+// packages/engine/src/derivatives-calculations.ts
+
+interface DerivativesState {
+  marginBalance: number      // Available margin
+  position: number           // Net contracts (+ long, - short)
+  avgEntry: number           // Average entry price
+  unrealizedPnl: number      // Open P&L
+  realizedPnl: number        // Closed P&L
+  cumFunding: number         // Total funding
+  cumInterest: number        // Total interest
+  cumRebates: number         // Total rebates
+  equity: number             // margin + unrealized
+}
+
+// Calculate derivatives state from entries
+export function computeDerivativesState(
+  entries: FundEntry[],
+  currentPrice: number,
+  contractMultiplier: number
+): DerivativesState
+
+// Calculate liquidation price
+export function computeLiquidationPrice(
+  marginBalance: number,
+  position: number,
+  avgEntry: number,
+  maintenanceMargin: number,
+  contractMultiplier: number
+): number
+
+// FIFO cost basis for realized P&L
+export function computeFIFORealizedPnl(
+  trades: TradeEntry[]
+): number
+```
+
+#### 10.4.2 P&L Calculation Logic
+
+**Unrealized P&L:**
+```
+unrealized_pnl = (mark_price - avg_entry) × position × contract_multiplier
+
+For BTC perpetuals (0.01 BTC multiplier):
+- Long 100 contracts at $95,000, mark price $100,000
+- unrealized_pnl = ($100,000 - $95,000) × 100 × 0.01 = $5,000
+```
+
+**Realized P&L (FIFO):**
+```
+When closing position:
+realized_pnl = (exit_price - entry_price) × contracts_closed × contract_multiplier
+
+For partial closes, use FIFO to determine which lots are closed
+```
+
+**Equity:**
+```
+equity = margin_balance + unrealized_pnl
+       = (deposits - withdrawals + funding + interest + rebates + realized_pnl) + unrealized_pnl
+```
+
+### 10.5 UI Changes
+
+#### 10.5.1 Derivatives Fund Detail Columns
+
+| Column | Description |
+|--------|-------------|
+| Date | Entry date |
+| Action | DEPOSIT/WITHDRAW/BUY/SELL/FUNDING/INTEREST/REBATE |
+| Amount | USD amount |
+| Contracts | Contract count (for trades) |
+| Price | Entry/exit price (for trades) |
+| Position | Running net contracts |
+| Avg Entry | Running average entry price |
+| Margin | Running margin balance |
+| Unrealized | Unrealized P&L at entry date |
+| Realized | Running realized P&L |
+| Equity | Margin + Unrealized |
+| Funding | Running cumulative funding |
+| Interest | Running cumulative interest |
+| Notes | Entry notes |
+
+#### 10.5.2 Derivatives Summary Cards
+
+- **Position**: Net contracts, avg entry price
+- **Margin**: Available margin, margin used
+- **P&L**: Unrealized, Realized, Total
+- **Funding**: Cumulative funding (profit - loss)
+- **Interest**: Cumulative USDC interest
+- **Liquidation**: Estimated liquidation price
+
+### 10.6 Implementation Plan
+
+#### Phase 1: Data Model
+- [ ] Update `FundEntry` type with derivatives-specific fields
+- [ ] Add `isDerivativesFund()` helper function
+- [ ] Create `derivatives-state.ts` with state calculation functions
+
+#### Phase 2: Import
+- [ ] Update scraper to mark USD/USDC deposits as perp-related
+- [ ] Update apply endpoint to use correct action types
+- [ ] Store contracts/price properly on trade entries
+- [ ] Group funding/interest/rebates properly
+
+#### Phase 3: Calculations
+- [ ] Implement `computeDerivativesState()` function
+- [ ] Implement FIFO realized P&L calculation
+- [ ] Update fund state endpoint to use derivatives logic for `fund_type: 'derivatives'`
+
+#### Phase 4: UI
+- [ ] Create derivatives-specific columns configuration
+- [ ] Update entries table to show derivatives columns
+- [ ] Create derivatives summary component
+- [ ] Update fund detail page for derivatives display
+
+#### Phase 5: Re-import
+- [ ] Clear existing coinbase-bip-20dec30-cde entries
+- [ ] Re-import with new data model
+- [ ] Verify calculations match expected values
