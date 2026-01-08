@@ -78,14 +78,18 @@ async function writePlatformsData(data: Record<string, PlatformConfig>): Promise
  * Query params:
  *   - include_test: 'true' to include test platform funds (default: false)
  */
+// Test platforms: 'test' or any platform ending in '-test'
+const isTestPlatform = (platform: string) =>
+  platform === 'test' || platform.endsWith('-test')
+
 fundsRouter.get('/', async (req, res, next) => {
   const allFunds = await readAllFunds(FUNDS_DIR).catch(next)
   if (!allFunds) return
 
   const includeTest = req.query.include_test === 'true'
   const funds = includeTest
-    ? allFunds.filter(f => f.platform === 'test')
-    : allFunds.filter(f => f.platform !== 'test')
+    ? allFunds.filter(f => isTestPlatform(f.platform))
+    : allFunds.filter(f => !isTestPlatform(f.platform))
 
   res.json(funds.map(f => {
     const latest = getLatestEquity(f.entries)
@@ -146,8 +150,8 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
 
   const includeTest = req.query.include_test === 'true'
   const funds = includeTest
-    ? allFunds.filter(f => f.platform === 'test')
-    : allFunds.filter(f => f.platform !== 'test')
+    ? allFunds.filter(f => isTestPlatform(f.platform))
+    : allFunds.filter(f => !isTestPlatform(f.platform))
 
   const today = new Date().toISOString().split('T')[0] as string
   const fundMetrics = []
@@ -244,23 +248,25 @@ fundsRouter.get('/history', async (req, res, next) => {
 
   const includeTest = req.query.include_test === 'true'
   const funds = includeTest
-    ? allFunds.filter(f => f.platform === 'test')
-    : allFunds.filter(f => f.platform !== 'test')
+    ? allFunds.filter(f => isTestPlatform(f.platform))
+    : allFunds.filter(f => !isTestPlatform(f.platform))
 
   // Pre-compute derivatives state for each derivatives fund
   // This gives us per-entry equity values
-  const derivativesStateByFund = new Map<string, Map<string, { equity: number, costBasis: number, marginBalance: number, availableFunds: number }>>()
+  const derivativesStateByFund = new Map<string, Map<string, { equity: number, costBasis: number, marginBalance: number, availableFunds: number, realizedPnl: number, cumInterest: number }>>()
   for (const fund of funds) {
     if (fund.config.fund_type === 'derivatives' && fund.entries.length > 0) {
       const contractMultiplier = fund.config.contract_multiplier ?? 0.01
       const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier)
-      const dateMap = new Map<string, { equity: number, costBasis: number, marginBalance: number, availableFunds: number }>()
+      const dateMap = new Map<string, { equity: number, costBasis: number, marginBalance: number, availableFunds: number, realizedPnl: number, cumInterest: number }>()
       for (const entry of derivStates) {
         dateMap.set(entry.date, {
           equity: entry.equity,
           costBasis: entry.costBasis,
           marginBalance: entry.marginBalance,
-          availableFunds: entry.availableFunds
+          availableFunds: entry.availableFunds,
+          realizedPnl: entry.realizedPnl,
+          cumInterest: entry.cumInterest
         })
       }
       derivativesStateByFund.set(fund.id, dateMap)
@@ -283,9 +289,12 @@ fundsRouter.get('/history', async (req, res, next) => {
     totalValue: number
     totalCash: number
     totalMarginBorrowed: number
+    totalMarginAccess: number
     totalStartInput: number
     totalDividends: number
     totalExpenses: number
+    totalCashInterest: number
+    totalRealizedGain: number
     realizedAPY: number
     totalGainUsd: number
     totalGainPct: number
@@ -298,10 +307,12 @@ fundsRouter.get('/history', async (req, res, next) => {
     let totalValue = 0
     let totalCash = 0
     let totalMarginBorrowed = 0
+    let totalMarginAccess = 0
     let totalStartInput = 0
     let totalDividends = 0
     let totalExpenses = 0
-    let _totalMarginAccess = 0
+    let totalCashInterest = 0
+    let totalRealizedGain = 0
 
     for (const fund of funds) {
       // Find the latest entry on or before this date
@@ -312,14 +323,18 @@ fundsRouter.get('/history', async (req, res, next) => {
       if (!latestEntry) continue
 
       const isDerivativesFund = fund.config.fund_type === 'derivatives'
+      const isCashFund = fund.config.fund_type === 'cash'
 
-      // For derivatives, use computed equity; for others, use entry.value
+      // Use engine functions to compute fund state at this historical date
+      // This ensures DRY - same calculations as aggregate endpoint
       if (isDerivativesFund) {
         const derivDateMap = derivativesStateByFund.get(fund.id)
         // Find the latest derivatives state on or before this date
         let derivValue = 0
         let derivCostBasis = 0
         let derivAvailableFunds = 0
+        let derivRealizedPnl = 0
+        let derivCumInterest = 0
         if (derivDateMap) {
           for (const entry of entriesUpToDate) {
             const state = derivDateMap.get(entry.date)
@@ -327,34 +342,56 @@ fundsRouter.get('/history', async (req, res, next) => {
               derivValue = state.equity
               derivCostBasis = state.costBasis
               derivAvailableFunds = state.availableFunds
+              derivRealizedPnl = state.realizedPnl
+              derivCumInterest = state.cumInterest
             }
           }
         }
         totalValue += derivValue
-        totalFundSize += derivValue  // Use equity as fund size for derivatives
+        totalFundSize += derivValue
         totalStartInput += derivCostBasis
-        // Derivatives cash = available funds (margin not locked for positions)
+        totalRealizedGain += derivRealizedPnl + derivCumInterest
+        totalCashInterest += derivCumInterest
         totalCash += Math.max(0, derivAvailableFunds)
       } else {
-        // Use fund_size from entry if present, otherwise from config
-        const fundSize = latestEntry.fund_size ?? fund.config.fund_size_usd
-        totalFundSize += fundSize
-        totalValue += latestEntry.value
+        // For cash and trading funds, use engine's computeFundState
+        const trades = entriesToTrades(entriesUpToDate)
+        const dividends = entriesToDividends(entriesUpToDate)
+        const expenses = entriesToExpenses(entriesUpToDate)
 
-        // Calculate start_input from trades up to this date
-        let startInput = 0
+        // Get the equity value at this date
+        const equityValue = isCashFund && latestEntry.cash !== undefined
+          ? latestEntry.cash
+          : latestEntry.value
+
+        // Compute state using engine (same as aggregate endpoint)
+        const actualFundSize = latestEntry.fund_size ?? fund.config.fund_size_usd
+        const configWithActualFundSize = { ...fund.config, fund_size_usd: actualFundSize }
+        const state = computeFundState(
+          configWithActualFundSize,
+          trades,
+          [],
+          dividends,
+          expenses,
+          equityValue,
+          date
+        )
+
+        // Use actual_value_usd and start_input_usd from state (same as aggregate endpoint)
+        // The aggregate computes totalGainUsd = totalValue - totalStartInput at the end
+        totalValue += state.actual_value_usd
+        totalStartInput += state.start_input_usd
+        totalRealizedGain += state.realized_gains_usd
+        totalCashInterest += state.cash_interest_usd
+        totalFundSize += actualFundSize
+
+        // Track dividends and expenses for display
         for (const entry of entriesUpToDate) {
-          if (entry.action === 'BUY' && entry.amount) {
-            startInput += entry.amount
-          } else if (entry.action === 'SELL' && entry.amount) {
-            startInput -= entry.amount
-          }
+          if (entry.dividend) totalDividends += Math.abs(entry.dividend)
+          if (entry.expense) totalExpenses += Math.abs(entry.expense)
         }
-        totalStartInput += startInput
 
         // Cash: use entry's cash field directly
-        // For cash funds, cash field = balance; for others, only count if explicitly set
-        const isCashFund = fund.config.fund_type === 'cash'
         const cash = isCashFund
           ? (latestEntry.cash ?? latestEntry.value)
           : (latestEntry.cash ?? 0)
@@ -368,27 +405,18 @@ fundsRouter.get('/history', async (req, res, next) => {
 
       // Margin access
       if (fund.config.margin_access_usd) {
-        _totalMarginAccess += fund.config.margin_access_usd
-      }
-
-      // Cumulative dividends and expenses up to date (all positive in data)
-      for (const entry of entriesUpToDate) {
-        if (entry.dividend) totalDividends += Math.abs(entry.dividend)
-        if (entry.expense) totalExpenses += Math.abs(entry.expense)
+        totalMarginAccess += fund.config.margin_access_usd
       }
     }
 
-    // Calculate gain metrics
-    // Liquid value = assets + cash - margin borrowed
-    const liquidValue = totalValue + totalCash - totalMarginBorrowed
-    const totalGainUsd = liquidValue - totalStartInput
+    // Compute totalGainUsd the same way as aggregate endpoint:
+    // totalGainUsd = totalValue - totalStartInput
+    const totalGainUsd = totalValue - totalStartInput
     const totalGainPct = totalStartInput > 0 ? totalGainUsd / totalStartInput : 0
 
-    // Simple realized APY approximation for the time series
-    // This is a simplified version - actual realized APY uses time-weighted calculations
-    const extracted = totalDividends - totalExpenses
+    // Realized APY based on actual realized gains vs invested
     const realizedAPY = totalStartInput > 0
-      ? (totalValue - totalStartInput + extracted) / totalStartInput
+      ? totalRealizedGain / totalStartInput
       : 0
 
     timeSeries.push({
@@ -397,9 +425,12 @@ fundsRouter.get('/history', async (req, res, next) => {
       totalValue,
       totalCash,
       totalMarginBorrowed,
+      totalMarginAccess,
       totalStartInput,
       totalDividends,
       totalExpenses,
+      totalCashInterest,
+      totalRealizedGain,
       realizedAPY,
       totalGainUsd,
       totalGainPct
@@ -476,6 +507,77 @@ fundsRouter.get('/history', async (req, res, next) => {
     }
   }
 
+  // Compute aggregate metrics using the same engine functions as /aggregate endpoint
+  // This ensures consistent values for current gains
+  const today = new Date().toISOString().split('T')[0] as string
+  const fundMetricsForAggregate = []
+
+  for (const fund of funds) {
+    const trades = entriesToTrades(fund.entries)
+    const dividends = entriesToDividends(fund.entries)
+    const expenses = entriesToExpenses(fund.entries)
+    const latest = getLatestEquity(fund.entries)
+
+    const isCashFund = fund.config.fund_type === 'cash'
+    const isDerivativesFund = fund.config.fund_type === 'derivatives'
+    const latestEntry = fund.entries[fund.entries.length - 1]
+
+    const actualFundSize = latestEntry?.fund_size ?? fund.config.fund_size_usd
+    const configWithActualFundSize = { ...fund.config, fund_size_usd: actualFundSize }
+
+    let state = null
+    if (isDerivativesFund && fund.entries.length > 0) {
+      const derivDateMap = derivativesStateByFund.get(fund.id)
+      if (derivDateMap && latestEntry) {
+        const lastState = derivDateMap.get(latestEntry.date)
+        if (lastState) {
+          state = {
+            actual_value_usd: lastState.equity,
+            start_input_usd: lastState.costBasis,
+            realized_gains_usd: lastState.realizedPnl,
+            gain_usd: (lastState.equity - lastState.costBasis) + lastState.realizedPnl,
+            gain_pct: lastState.costBasis > 0
+              ? ((lastState.equity - lastState.costBasis) + lastState.realizedPnl) / lastState.costBasis
+              : 0,
+            expected_target_usd: lastState.equity,
+            target_diff_usd: 0,
+            cash_interest_usd: lastState.cumInterest,
+            cash_available_usd: lastState.marginBalance - lastState.costBasis
+          }
+        }
+      }
+    } else {
+      const latestValue = isCashFund && latestEntry?.cash !== undefined
+        ? latestEntry.cash
+        : latest?.value
+
+      if (latest && latestValue !== undefined) {
+        state = computeFundState(
+          configWithActualFundSize,
+          trades,
+          [],
+          dividends,
+          expenses,
+          latestValue,
+          latest.date
+        )
+      }
+    }
+
+    const metrics = computeFundMetrics(
+      fund.id,
+      fund.platform,
+      fund.ticker,
+      configWithActualFundSize,
+      trades,
+      state,
+      today
+    )
+    fundMetricsForAggregate.push(metrics)
+  }
+
+  const aggregate = computeAggregateMetrics(fundMetricsForAggregate)
+
   res.json({
     timeSeries,
     currentAllocations,
@@ -484,6 +586,12 @@ fundsRouter.get('/history', async (req, res, next) => {
       totalCurrentCash,
       totalCurrentMarginAccess,
       totalCurrentMarginBorrowed
+    },
+    aggregateTotals: {
+      totalGainUsd: aggregate.totalGainUsd,
+      totalRealizedGains: aggregate.totalRealizedGains,
+      totalValue: aggregate.totalValue,
+      totalStartInput: aggregate.totalStartInput
     }
   })
 })
@@ -1336,6 +1444,12 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
   const entry = req.body as FundEntry
   if (!entry.date) return next(badRequest('date is required'))
   if (entry.value === undefined) return next(badRequest('value is required'))
+
+  // For cash funds, ensure cash field matches value (Cash Balance in UI maps to value)
+  const isCashFund = fund.config.fund_type === 'cash'
+  if (isCashFund) {
+    entry.cash = entry.value
+  }
 
   // Calculate fund_size change to propagate to subsequent entries
   const oldEntry = fund.entries[entryIndex]

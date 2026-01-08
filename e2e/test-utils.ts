@@ -1,7 +1,8 @@
 import { type Page, expect } from '@playwright/test'
+import { createRequire } from 'module'
 
 // Import ports from ecosystem config (single source of truth)
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+const require = createRequire(import.meta.url)
 const { PORTS } = require('../ecosystem.config.cjs')
 
 // API base URL

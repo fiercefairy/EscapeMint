@@ -6,15 +6,15 @@ import {
   getFundStateViaAPI,
   getFundViaAPI,
   generateTestConfig,
-  generateRandomTicker,
   addDays,
   daysBetween,
   computeStartInput,
   computeExpectedTarget,
   type FundEntry
 } from './test-utils'
+import { TEST_PLATFORMS, TEST_TICKERS } from './test-fixtures'
 
-const TEST_PLATFORM = 'test'
+const TEST_PLATFORM = TEST_PLATFORMS.COINBASE
 
 // Market simulation helpers
 interface MarketScenario {
@@ -89,7 +89,7 @@ function generateCrashAndRecovery(): number[] {
 test.describe('Yearly Fund Simulations', () => {
   test.describe('Bull Market Scenario', () => {
     test('fund grows correctly over 52 weeks with DCA', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.BULL_MARKET
       const config = generateTestConfig({
         fund_size_usd: 50000,
         target_apy: 0.25,
@@ -173,7 +173,7 @@ test.describe('Yearly Fund Simulations', () => {
 
   test.describe('Bear Market Scenario', () => {
     test('fund uses increasing DCA amounts during losses', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.BEAR_MARKET
       const config = generateTestConfig({
         fund_size_usd: 100000,
         target_apy: 0.20,
@@ -241,7 +241,7 @@ test.describe('Yearly Fund Simulations', () => {
 
   test.describe('Volatile Market Scenario', () => {
     test('fund handles frequent buy/sell switches', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.VOLATILE
       const config = generateTestConfig({
         fund_size_usd: 50000,
         target_apy: 0.15,
@@ -321,7 +321,7 @@ test.describe('Yearly Fund Simulations', () => {
 
   test.describe('Crash and Recovery Scenario', () => {
     test('fund increases DCA during crash and captures recovery', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.CRASH_RECOVERY
       const config = generateTestConfig({
         fund_size_usd: 100000,
         target_apy: 0.20,
@@ -412,7 +412,7 @@ test.describe('Yearly Fund Simulations', () => {
 
   test.describe('Fund with Dividends and Interest', () => {
     test('quarterly dividends and monthly interest accumulate correctly', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.DIVIDENDS_INTEREST
       const config = generateTestConfig({
         fund_size_usd: 50000,
         target_apy: 0.20,
@@ -506,7 +506,7 @@ test.describe('Yearly Fund Simulations', () => {
 
   test.describe('Full Fund Lifecycle', () => {
     test('create, grow, partially liquidate, and track correctly', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.LIFECYCLE
       const config = generateTestConfig({
         fund_size_usd: 25000,
         target_apy: 0.25,
@@ -627,7 +627,7 @@ test.describe('Yearly Fund Simulations', () => {
 
   test.describe('Mathematical Invariants', () => {
     test('cash + invested equals fund_size (with manage_cash=true)', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.INVARIANT_CASH
       const fundSize = 20000
       const config = generateTestConfig({
         fund_size_usd: fundSize,
@@ -679,7 +679,7 @@ test.describe('Yearly Fund Simulations', () => {
     })
 
     test('gain_pct equals (actual - invested) / invested', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.INVARIANT_GAIN
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -716,7 +716,7 @@ test.describe('Yearly Fund Simulations', () => {
     })
 
     test('start_input never goes negative', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.INVARIANT_POSITIVE
       const config = generateTestConfig({
         fund_size_usd: 10000,
         min_profit_usd: 10,

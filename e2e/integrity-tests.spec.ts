@@ -8,17 +8,17 @@ import {
   getFundStateViaAPI,
   getFundViaAPI,
   generateTestConfig,
-  generateRandomTicker,
   addDays,
   type FundEntry
 } from './test-utils'
+import { TEST_PLATFORMS, TEST_TICKERS } from './test-fixtures'
 
-const TEST_PLATFORM = 'test'
+const TEST_PLATFORM = TEST_PLATFORMS.FIDELITY
 
 test.describe('Fund Data Integrity Tests', () => {
   test.describe('Historical Entry Editing', () => {
     test('editing historical buy amount recalculates subsequent entries', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.EDIT_BUY
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -67,7 +67,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('editing historical deposit propagates fund_size changes', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.EDIT_DEPOSIT
       const config = generateTestConfig({
         fund_size_usd: 5000,
         manage_cash: true,
@@ -129,7 +129,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('editing entry value does not affect buy/sell amounts', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.EDIT_VALUE
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -166,7 +166,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('changing action type from BUY to SELL affects calculations', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.CHANGE_ACTION
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -210,7 +210,7 @@ test.describe('Fund Data Integrity Tests', () => {
 
   test.describe('Entry Deletion', () => {
     test('deleting middle entry recalculates correctly', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.DELETE_MIDDLE
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -258,7 +258,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('deleting first entry updates all calculations', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.DELETE_FIRST
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -291,7 +291,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('deleting last entry correctly updates state', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.DELETE_LAST
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -326,7 +326,7 @@ test.describe('Fund Data Integrity Tests', () => {
 
   test.describe('Date Consistency', () => {
     test('entries maintain chronological order after edits', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.DATE_ORDER
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -365,7 +365,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('editing date does not break calculations', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.DATE_EDIT
       const config = generateTestConfig({
         fund_size_usd: 10000,
         target_apy: 0.25,
@@ -408,7 +408,7 @@ test.describe('Fund Data Integrity Tests', () => {
 
   test.describe('Dividend and Expense Editing', () => {
     test('editing dividend amount updates realized gains', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.DIVIDEND_EDIT
       const config = generateTestConfig({
         fund_size_usd: 10000,
         dividend_reinvest: true,
@@ -451,7 +451,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('adding expense to historical entry reduces cash', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.EXPENSE_EDIT
       const config = generateTestConfig({
         fund_size_usd: 10000,
         expense_from_fund: true,
@@ -495,7 +495,7 @@ test.describe('Fund Data Integrity Tests', () => {
 
   test.describe('Fund Size Integrity', () => {
     test('fund_size changes propagate to subsequent entries', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.FUND_SIZE_PROP
       const config = generateTestConfig({
         fund_size_usd: 5000,
         start_date: '2024-01-01'
@@ -551,7 +551,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('concurrent deposits and withdrawals net correctly', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.FUND_SIZE_NET
       const config = generateTestConfig({
         fund_size_usd: 10000,
         cash_apy: 0, // Disable interest to test pure deposit/withdrawal netting
@@ -607,7 +607,7 @@ test.describe('Fund Data Integrity Tests', () => {
 
   test.describe('Edge Cases', () => {
     test('handles zero-value entries correctly', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.ZERO_VALUE
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -640,7 +640,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('handles very small amounts correctly', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.SMALL_AMOUNTS
       const config = generateTestConfig({
         fund_size_usd: 100,
         input_min_usd: 0.01,
@@ -674,7 +674,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('handles very large amounts correctly', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.LARGE_AMOUNTS
       const config = generateTestConfig({
         fund_size_usd: 10000000, // $10M
         input_min_usd: 50000,
@@ -708,7 +708,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('handles negative values in calculations', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.NEGATIVE_VALUES
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -743,7 +743,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('full liquidation and restart handles correctly', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.FULL_LIQUIDATION
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -796,7 +796,7 @@ test.describe('Fund Data Integrity Tests', () => {
 
   test.describe('Shares and Price Tracking', () => {
     test('shares accumulate correctly across buys', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.SHARES_ACCUM
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -834,7 +834,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('editing shares updates tracking correctly', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.SHARES_EDIT
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -873,7 +873,7 @@ test.describe('Fund Data Integrity Tests', () => {
 
   test.describe('Notes and Metadata', () => {
     test('notes are preserved through edits', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.NOTES
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -905,7 +905,7 @@ test.describe('Fund Data Integrity Tests', () => {
     })
 
     test('deposit/withdrawal notes are handled correctly', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.INTEGRITY.DEPOSIT_NOTES
       const config = generateTestConfig({
         fund_size_usd: 5000,
         start_date: '2024-01-01'

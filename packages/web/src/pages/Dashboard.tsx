@@ -290,6 +290,7 @@ export function Dashboard() {
               timeSeries={filteredHistory.timeSeries}
               allocations={filteredHistory.currentAllocations}
               totals={filteredHistory.totals}
+              aggregateTotals={filteredHistory.aggregateTotals}
             />
           )}
 

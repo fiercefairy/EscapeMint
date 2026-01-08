@@ -392,9 +392,12 @@ export interface TimeSeriesPoint {
   totalValue: number
   totalCash: number
   totalMarginBorrowed: number
+  totalMarginAccess: number
   totalStartInput: number
   totalDividends: number
   totalExpenses: number
+  totalCashInterest: number
+  totalRealizedGain: number
   realizedAPY: number
   totalGainUsd: number
   totalGainPct: number
@@ -419,6 +422,12 @@ export interface HistoryResponse {
     totalCurrentCash: number
     totalCurrentMarginAccess: number
     totalCurrentMarginBorrowed: number
+  }
+  aggregateTotals: {
+    totalGainUsd: number
+    totalRealizedGains: number
+    totalValue: number
+    totalStartInput: number
   }
 }
 
