@@ -158,8 +158,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
 
   // Calculate fund size adjustment from deposit/withdrawal/dividend/expense/interest
   const fundSizeAdjustment = useMemo(() => {
-    const deposit = parseFloat(formData.deposit) || 0
-    const withdrawal = parseFloat(formData.withdrawal) || 0
+    const deposit = parseFormulaValue(formData.deposit)
+    const withdrawal = parseFormulaValue(formData.withdrawal)
     const dividend = parseFormulaValue(formData.dividend)
     const expense = parseFloat(formData.expense) || 0
     const cashInterest = parseFloat(formData.cash_interest) || 0
@@ -177,15 +177,15 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
   // Auto-update fund size when deposit/withdrawal changes in add mode (using currentFundSize from preview)
   useEffect(() => {
     if (!showFundSizeAdjustment && currentFundSize !== undefined && currentFundSize > 0) {
-      const deposit = parseFloat(formData.deposit) || 0
-      const withdrawal = parseFloat(formData.withdrawal) || 0
+      const deposit = parseFormulaValue(formData.deposit)
+      const withdrawal = parseFormulaValue(formData.withdrawal)
       const adjustment = deposit - withdrawal
       if (adjustment !== 0) {
         const newFundSize = currentFundSize + adjustment
         setFormData(prev => {
           // Only update if fund_size is empty or was auto-set (avoid overwriting manual entry)
           const currentVal = parseFloat(prev.fund_size) || 0
-          const expectedPrev = currentFundSize + (parseFloat(prev.deposit) || 0) - (parseFloat(prev.withdrawal) || 0)
+          const expectedPrev = currentFundSize + parseFormulaValue(prev.deposit) - parseFormulaValue(prev.withdrawal)
           if (prev.fund_size === '' || Math.abs(currentVal - expectedPrev) < 0.01) {
             return { ...prev, fund_size: newFundSize.toFixed(2) }
           }
@@ -231,25 +231,21 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
             <div>
               <label className="block text-sm text-slate-400 mb-1">Deposit ($)</label>
               <input
-                type="number"
+                type="text"
                 value={formData.deposit}
                 onChange={e => setFormData(prev => ({ ...prev, deposit: e.target.value }))}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
+                placeholder="0 or =100+50"
               />
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Withdrawal ($)</label>
               <input
-                type="number"
+                type="text"
                 value={formData.withdrawal}
                 onChange={e => setFormData(prev => ({ ...prev, withdrawal: e.target.value }))}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
+                placeholder="0 or =100+50"
               />
             </div>
           </div>
@@ -586,8 +582,8 @@ export function buildEntryFromForm(formData: EntryFormData): Partial<FundEntry> 
     value: parseFloat(formData.value) || 0
   }
 
-  const depositVal = parseFloat(formData.deposit) || 0
-  const withdrawalVal = parseFloat(formData.withdrawal) || 0
+  const depositVal = parseFormulaValue(formData.deposit)
+  const withdrawalVal = parseFormulaValue(formData.withdrawal)
   let notes = formData.notes
 
   // Handle action - DEPOSIT/WITHDRAW are tracked cumulatively for fund_size calculation
