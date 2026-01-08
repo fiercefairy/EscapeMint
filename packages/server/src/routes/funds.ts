@@ -282,6 +282,12 @@ fundsRouter.get('/history', async (req, res, next) => {
   }
   const sortedDates = Array.from(allDates).sort()
 
+  // Find the earliest fund start date for APY calculations
+  const earliestStartDate = funds.reduce((earliest, fund) => {
+    const startDate = fund.config.start_date
+    return !earliest || startDate < earliest ? startDate : earliest
+  }, '' as string)
+
   // Build time series data
   interface TimeSeriesPoint {
     date: string
@@ -296,6 +302,7 @@ fundsRouter.get('/history', async (req, res, next) => {
     totalCashInterest: number
     totalRealizedGain: number
     realizedAPY: number
+    liquidAPY: number
     totalGainUsd: number
     totalGainPct: number
   }
@@ -414,9 +421,23 @@ fundsRouter.get('/history', async (req, res, next) => {
     const totalGainUsd = totalValue - totalStartInput
     const totalGainPct = totalStartInput > 0 ? totalGainUsd / totalStartInput : 0
 
-    // Realized APY based on actual realized gains vs invested
-    const realizedAPY = totalStartInput > 0
-      ? totalRealizedGain / totalStartInput
+    // Calculate days active from earliest fund start date for proper annualization
+    const daysActive = earliestStartDate
+      ? Math.max(1, Math.floor((new Date(date).getTime() - new Date(earliestStartDate).getTime()) / (24 * 60 * 60 * 1000)))
+      : 1
+
+    // Use totalFundSize as approximation for time-weighted fund size
+    // APY = (Gain / FundSize) * (365 / daysActive)
+    const timeWeightedBase = totalFundSize > 0 ? totalFundSize : totalStartInput
+
+    // Realized APY: annualized return based on realized gains
+    const realizedAPY = timeWeightedBase > 0 && daysActive > 0
+      ? (totalRealizedGain / timeWeightedBase) * (365 / daysActive)
+      : 0
+
+    // Liquid APY: annualized return based on total gain (realized + unrealized)
+    const liquidAPY = timeWeightedBase > 0 && daysActive > 0
+      ? (totalGainUsd / timeWeightedBase) * (365 / daysActive)
       : 0
 
     timeSeries.push({
@@ -432,6 +453,7 @@ fundsRouter.get('/history', async (req, res, next) => {
       totalCashInterest,
       totalRealizedGain,
       realizedAPY,
+      liquidAPY,
       totalGainUsd,
       totalGainPct
     })

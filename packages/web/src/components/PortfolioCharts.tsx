@@ -702,6 +702,194 @@ function GainsChart({ data, currentRealized, currentLiquid }: {
   )
 }
 
+// Combined Realized + Liquid APY Chart
+function APYChart({ data, currentRealizedAPY, currentLiquidAPY }: {
+  data: TimeSeriesPoint[]
+  currentRealizedAPY: number
+  currentLiquidAPY: number
+}) {
+  const ref = useRef<SVGSVGElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!ref.current || data.length === 0) return
+
+    const svg = d3.select(ref.current)
+    svg.selectAll('*').remove()
+
+    const margin = { top: 10, right: 10, bottom: 20, left: 45 }
+    const width = ref.current.clientWidth - margin.left - margin.right
+    const height = 120 - margin.top - margin.bottom
+
+    const g = svg
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`)
+
+    const values = data.map(d => ({
+      date: new Date(d.date),
+      realized: d.realizedAPY,
+      liquid: d.liquidAPY
+    }))
+
+    const x = d3.scaleTime()
+      .domain(d3.extent(values, d => d.date) as [Date, Date])
+      .range([0, width])
+
+    const yMin = Math.min(
+      d3.min(values, d => Math.min(d.realized, d.liquid)) ?? 0,
+      0
+    )
+    const yMax = Math.max(
+      d3.max(values, d => Math.max(d.realized, d.liquid)) ?? 0,
+      0
+    )
+
+    const y = d3.scaleLinear()
+      .domain([yMin * 1.1, yMax * 1.1])
+      .nice()
+      .range([height, 0])
+
+    const tooltip = d3.select(tooltipRef.current)
+
+    // Zero line if APY crosses zero
+    if (yMin < 0 && yMax > 0) {
+      g.append('line')
+        .attr('x1', 0)
+        .attr('x2', width)
+        .attr('y1', y(0))
+        .attr('y2', y(0))
+        .attr('stroke', '#475569')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', '4,4')
+    }
+
+    // Area fill for liquid APY (light blue)
+    const liquidArea = d3.area<typeof values[0]>()
+      .x(d => x(d.date))
+      .y0(y(Math.max(0, yMin)))
+      .y1(d => y(d.liquid))
+      .curve(d3.curveMonotoneX)
+
+    g.append('path')
+      .datum(values)
+      .attr('fill', '#3b82f633')
+      .attr('d', liquidArea)
+
+    // Line for realized APY (green)
+    const realizedLine = d3.line<typeof values[0]>()
+      .x(d => x(d.date))
+      .y(d => y(d.realized))
+      .curve(d3.curveMonotoneX)
+
+    g.append('path')
+      .datum(values)
+      .attr('fill', 'none')
+      .attr('stroke', '#10b981')
+      .attr('stroke-width', 2)
+      .attr('d', realizedLine)
+
+    // Line for liquid APY (blue)
+    const liquidLine = d3.line<typeof values[0]>()
+      .x(d => x(d.date))
+      .y(d => y(d.liquid))
+      .curve(d3.curveMonotoneX)
+
+    g.append('path')
+      .datum(values)
+      .attr('fill', 'none')
+      .attr('stroke', '#3b82f6')
+      .attr('stroke-width', 2)
+      .attr('d', liquidLine)
+
+    // Add current value dots at the end
+    const lastDataPoint = values[values.length - 1]
+    if (lastDataPoint) {
+      g.append('circle')
+        .attr('cx', x(lastDataPoint.date))
+        .attr('cy', y(lastDataPoint.realized))
+        .attr('r', 4)
+        .attr('fill', '#10b981')
+        .attr('stroke', 'white')
+        .attr('stroke-width', 1.5)
+
+      g.append('circle')
+        .attr('cx', x(lastDataPoint.date))
+        .attr('cy', y(lastDataPoint.liquid))
+        .attr('r', 4)
+        .attr('fill', '#3b82f6')
+        .attr('stroke', 'white')
+        .attr('stroke-width', 1.5)
+    }
+
+    // Invisible overlay for mouse tracking
+    const bisect = d3.bisector<typeof values[0], Date>(d => d.date).left
+
+    g.append('rect')
+      .attr('width', width)
+      .attr('height', height)
+      .attr('fill', 'transparent')
+      .attr('cursor', 'crosshair')
+      .on('mouseover', () => tooltip.style('opacity', 1))
+      .on('mousemove', function(event) {
+        const [mx] = d3.pointer(event)
+        const date = x.invert(mx)
+        const i = bisect(values, date, 1)
+        const d0 = values[i - 1]
+        const d1 = values[i]
+        if (!d0 || !d1) return
+        const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
+        tooltip
+          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/><span style="color:#10b981">Realized: ${formatPercentSimple(d.realized)}</span><br/><span style="color:#3b82f6">Liquid: ${formatPercentSimple(d.liquid)}</span>`)
+          .style('left', (event.pageX + 10) + 'px')
+          .style('top', (event.pageY - 10) + 'px')
+      })
+      .on('mouseout', () => tooltip.style('opacity', 0))
+
+    // X axis
+    g.append('g')
+      .attr('transform', `translate(0,${height})`)
+      .call(d3.axisBottom(x).ticks(3).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
+      .selectAll('text')
+      .attr('fill', '#64748b')
+      .attr('font-size', '8px')
+
+    // Y axis
+    g.append('g')
+      .call(d3.axisLeft(y).ticks(3).tickFormat(d => formatPercentSimple(d as number)))
+      .selectAll('text')
+      .attr('fill', '#64748b')
+      .attr('font-size', '8px')
+
+    svg.selectAll('.domain').attr('stroke', '#334155')
+    svg.selectAll('.tick line').attr('stroke', '#334155')
+
+  }, [data])
+
+  return (
+    <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
+      <div className="flex items-center justify-between mb-0.5">
+        <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white">APY</h3>
+        <div className="flex gap-1 xs:gap-1.5 sm:gap-2 text-[6px] xs:text-[7px] sm:text-[8px] md:text-[9px]">
+          <span className="flex items-center gap-0.5 text-emerald-400">
+            <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500" />
+            {formatPercentSimple(currentRealizedAPY)}
+          </span>
+          <span className="flex items-center gap-0.5 text-blue-400">
+            <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-blue-500" />
+            {formatPercentSimple(currentLiquidAPY)}
+          </span>
+        </div>
+      </div>
+      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+      <div
+        ref={tooltipRef}
+        className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[200px]"
+        style={{ opacity: 0 }}
+      />
+    </div>
+  )
+}
+
 // Combined Margin Access + Borrowed Chart
 function MarginChart({ data, currentAccess, currentBorrowed }: {
   data: TimeSeriesPoint[]
@@ -874,7 +1062,7 @@ function MarginChart({ data, currentAccess, currentBorrowed }: {
           </span>
           <span className="flex items-center gap-0.5 text-red-400">
             <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-red-500" />
-            -{formatCurrencyCompact(currentBorrowed)}
+            {currentBorrowed > 0 ? '-' : ''}{formatCurrencyCompact(currentBorrowed)}
           </span>
         </div>
       </div>
@@ -894,6 +1082,11 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
   // Use aggregate totals for current gain values (consistent with header metrics)
   const currentLiquidGain = aggregateTotals?.totalGainUsd ?? timeSeries[timeSeries.length - 1]?.totalGainUsd ?? 0
   const currentRealizedGains = aggregateTotals?.totalRealizedGains ?? timeSeries[timeSeries.length - 1]?.totalRealizedGain ?? 0
+
+  // Get current APY values from time series
+  const lastTimeSeriesPoint = timeSeries[timeSeries.length - 1]
+  const currentRealizedAPY = lastTimeSeriesPoint?.realizedAPY ?? 0
+  const currentLiquidAPY = lastTimeSeriesPoint?.liquidAPY ?? 0
 
   // Aggregate allocations by platform for Platform Allocation chart
   const platformAllocations: AllocationData[] = Object.values(
@@ -936,12 +1129,10 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
 
       {/* Time Series Charts - Row 1: Key metrics */}
       <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 gap-1 xs:gap-1.5 sm:gap-2">
-        <AreaChart
+        <APYChart
           data={timeSeries}
-          title="All-time Fund APY"
-          valueKey="realizedAPY"
-          color="#10b981"
-          formatValue={formatPercentSimple}
+          currentRealizedAPY={currentRealizedAPY}
+          currentLiquidAPY={currentLiquidAPY}
         />
         <GainsChart
           data={timeSeries}
