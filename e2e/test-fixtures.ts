@@ -2,16 +2,11 @@
  * Static test fund fixtures
  *
  * These define predictable fund names used in E2E tests.
- * All test funds use fake platforms (ending in -test) to isolate from real data.
+ * All test funds use the "test" platform to isolate from real data.
  */
 
-// Test platforms - fake platforms that won't conflict with real data
-export const TEST_PLATFORMS = {
-  ROBINHOOD: 'robinhood-test',
-  COINBASE: 'coinbase-test',
-  FIDELITY: 'fidelity-test',
-  GENERIC: 'test'
-} as const
+// Single test platform for all test funds - won't conflict with real data
+export const TEST_PLATFORM = 'test'
 
 // Static test fund tickers organized by test category
 export const TEST_TICKERS = {
@@ -103,12 +98,8 @@ export function getFundId(platform: string, ticker: string): string {
 }
 
 /**
- * Get all test fund IDs that should be cleaned up
+ * Get the test platform pattern for cleanup
  */
-export function getAllTestFundPatterns(): string[] {
-  const patterns: string[] = []
-  for (const platform of Object.values(TEST_PLATFORMS)) {
-    patterns.push(`${platform}-`)
-  }
-  return patterns
+export function getTestPlatformPattern(): string {
+  return `${TEST_PLATFORM}-`
 }

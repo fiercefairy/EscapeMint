@@ -10,9 +10,7 @@ import {
   type FundConfig,
   type FundEntry
 } from './test-utils'
-import { TEST_PLATFORMS, TEST_TICKERS } from './test-fixtures'
-
-const TEST_PLATFORM = TEST_PLATFORMS.ROBINHOOD
+import { TEST_PLATFORM, TEST_TICKERS } from './test-fixtures'
 
 test.describe('Fund Configurations', () => {
   test.describe('Cash Management Mode', () => {

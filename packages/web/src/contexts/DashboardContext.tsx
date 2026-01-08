@@ -24,8 +24,6 @@ interface DashboardState {
 
 interface DashboardContextValue extends DashboardState {
   refresh: () => void
-  setShowTestData: (show: boolean) => void
-  showTestData: boolean
 }
 
 const DashboardContext = createContext<DashboardContextValue | null>(null)
@@ -43,7 +41,6 @@ interface DashboardProviderProps {
 }
 
 export function DashboardProvider({ children }: DashboardProviderProps) {
-  const [showTestData, setShowTestData] = useState(false)
   const [state, setState] = useState<DashboardState>({
     funds: null,
     metrics: null,
@@ -57,13 +54,7 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
 
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
-  const showTestDataRef = useRef(showTestData)
   const isUnmountingRef = useRef(false)
-
-  // Keep ref in sync
-  useEffect(() => {
-    showTestDataRef.current = showTestData
-  }, [showTestData])
 
   const connect = useCallback(() => {
     // Don't connect if unmounting
@@ -91,11 +82,11 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
       }
       setState(prev => ({ ...prev, connected: true, error: null }))
 
-      // Subscribe to dashboard channel
+      // Subscribe to dashboard channel (always include all funds)
       ws.send(JSON.stringify({
         type: 'subscribe',
         channel: 'dashboard',
-        includeTest: showTestDataRef.current
+        includeTest: true
       }))
     }
 
@@ -196,31 +187,9 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
     }
   }, [connect])
 
-  // Resubscribe when showTestData changes
-  useEffect(() => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      // Reset loading states
-      setState(prev => ({
-        ...prev,
-        fundsLoading: true,
-        metricsLoading: true,
-        historyLoading: true
-      }))
-
-      // Resubscribe with new settings
-      wsRef.current.send(JSON.stringify({
-        type: 'subscribe',
-        channel: 'dashboard',
-        includeTest: showTestData
-      }))
-    }
-  }, [showTestData])
-
   const value: DashboardContextValue = {
     ...state,
-    refresh,
-    setShowTestData,
-    showTestData
+    refresh
   }
 
   return (

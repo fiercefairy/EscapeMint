@@ -53,8 +53,6 @@ export function Dashboard() {
     fundsLoading,
     metricsLoading,
     historyLoading,
-    showTestData,
-    setShowTestData,
     refresh,
     connected
   } = useDashboard()
@@ -214,7 +212,6 @@ export function Dashboard() {
           <div className="min-w-0 flex-1">
             <h1 className="text-lg xs:text-xl sm:text-2xl font-bold text-white leading-tight">
               Dashboard
-              {showTestData && <span className="ml-1.5 xs:ml-2 text-amber-400 text-[10px] xs:text-xs sm:text-sm font-normal">(Test)</span>}
               {!connected && <span className="ml-1.5 xs:ml-2 text-red-400 text-[10px] xs:text-xs sm:text-sm font-normal">(Offline)</span>}
             </h1>
             <p className="text-[10px] xs:text-[11px] sm:text-sm text-slate-400 mt-0.5 leading-tight">
@@ -241,13 +238,6 @@ export function Dashboard() {
         {/* Secondary Controls */}
         <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 overflow-x-auto scrollbar-hide -mx-2 px-2 sm:mx-0 sm:px-0 sm:overflow-visible pb-1 sm:pb-0">
           <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 flex-shrink-0">
-            <button
-              onClick={() => setShowTestData(!showTestData)}
-              className={`px-2 xs:px-2.5 sm:px-3 py-1.5 text-[10px] xs:text-[11px] sm:text-sm rounded-lg touch-manipulation min-h-[32px] xs:min-h-[36px] sm:min-h-[40px] whitespace-nowrap ${showTestData ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 active:bg-slate-600'}`}
-              title={showTestData ? 'Showing test funds only' : 'Click to show test funds'}
-            >
-              Test
-            </button>
             <button
               onClick={() => setShowCharts(!showCharts)}
               className={`px-2 xs:px-2.5 sm:px-3 py-1.5 text-[10px] xs:text-[11px] sm:text-sm rounded-lg touch-manipulation min-h-[32px] xs:min-h-[36px] sm:min-h-[40px] whitespace-nowrap ${showCharts ? 'bg-mint-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 active:bg-slate-600'}`}

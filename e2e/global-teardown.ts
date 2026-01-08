@@ -9,17 +9,17 @@ const API_BASE = `http://localhost:${PORTS.API}/api/v1`
 // Single test platform used for all test funds
 const TEST_PLATFORM = 'test'
 
-async function globalSetup(config: FullConfig) {
+async function globalTeardown(config: FullConfig) {
   const browser = await chromium.launch()
   const context = await browser.newContext()
   const page = await context.newPage()
 
-  console.log('Cleaning up test funds before test run...')
+  console.log('Cleaning up test funds after test run...')
 
   // Get all funds
   const response = await page.request.get(`${API_BASE}/funds?include_test=true`)
   if (!response.ok()) {
-    console.log('Could not fetch funds - server may not be running yet')
+    console.log('Could not fetch funds - server may not be running')
     await browser.close()
     return
   }
@@ -47,4 +47,4 @@ async function globalSetup(config: FullConfig) {
   await browser.close()
 }
 
-export default globalSetup
+export default globalTeardown

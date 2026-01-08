@@ -12,9 +12,7 @@ import {
   computeExpectedTarget,
   type FundEntry
 } from './test-utils'
-import { TEST_PLATFORMS, TEST_TICKERS } from './test-fixtures'
-
-const TEST_PLATFORM = TEST_PLATFORMS.COINBASE
+import { TEST_PLATFORM, TEST_TICKERS } from './test-fixtures'
 
 // Market simulation helpers
 interface MarketScenario {

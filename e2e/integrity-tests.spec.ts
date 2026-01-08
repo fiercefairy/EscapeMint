@@ -11,9 +11,7 @@ import {
   addDays,
   type FundEntry
 } from './test-utils'
-import { TEST_PLATFORMS, TEST_TICKERS } from './test-fixtures'
-
-const TEST_PLATFORM = TEST_PLATFORMS.FIDELITY
+import { TEST_PLATFORM, TEST_TICKERS } from './test-fixtures'
 
 test.describe('Fund Data Integrity Tests', () => {
   test.describe('Historical Entry Editing', () => {
