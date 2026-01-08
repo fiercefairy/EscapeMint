@@ -26,29 +26,32 @@ const COLORS = [
   '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'
 ]
 
-// Pie Chart Component
+// Pie Chart Component with side-by-side legend
 function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: string; valueKey: 'value' | 'cash' | 'fundSize' }) {
   const ref = useRef<SVGSVGElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const chartContainerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
 
-  // Sort data by value descending for legend
+  // Sort data by value descending, take top 5 for legend
   const sortedData = [...data]
     .filter(d => d[valueKey] > 0)
     .sort((a, b) => b[valueKey] - a[valueKey])
 
+  const legendData = sortedData.slice(0, 5)
+  const total = sortedData.reduce((sum, d) => sum + d[valueKey], 0)
+  const maxValue = legendData[0]?.[valueKey] ?? 1
+
   useEffect(() => {
-    if (!ref.current || !containerRef.current || sortedData.length === 0) return
+    if (!ref.current || !chartContainerRef.current || sortedData.length === 0) return
 
     const svg = d3.select(ref.current)
     svg.selectAll('*').remove()
 
-    // Responsive sizing based on container width
-    const containerWidth = containerRef.current.clientWidth
-    const size = Math.min(containerWidth - 16, 160)
+    // Fixed size for pie chart in two-column layout
+    const size = 100
     const width = size
     const height = size
-    const radius = Math.min(width, height) / 2 - 10
+    const radius = Math.min(width, height) / 2 - 5
 
     const g = svg
       .attr('width', width)
@@ -57,8 +60,6 @@ function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: st
       .attr('transform', `translate(${width / 2},${height / 2})`)
 
     const pieData = sortedData.map(d => ({ ...d, chartValue: d[valueKey] }))
-
-    const total = d3.sum(pieData, d => d.chartValue)
 
     const pie = d3.pie<typeof pieData[0]>()
       .value(d => d.chartValue)
@@ -98,47 +99,165 @@ function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: st
         d3.select(this).attr('opacity', 1)
       })
 
-    // Add labels for larger slices
-    arcs.each(function(d) {
-      const pct = d.data.chartValue / total
-      if (pct > 0.05) {
-        const [x, y] = arc.centroid(d)
-        d3.select(this)
-          .append('text')
-          .attr('transform', `translate(${x},${y})`)
-          .attr('text-anchor', 'middle')
-          .attr('fill', 'white')
-          .attr('font-size', '8px')
-          .attr('pointer-events', 'none')
-          .text(`${d.data.ticker}`)
-      }
-    })
-
-  }, [sortedData, valueKey])
+  }, [sortedData, valueKey, total])
 
   return (
-    <div ref={containerRef} className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation snap-start active:bg-slate-700/30">
-      <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white mb-0.5 truncate">{title}</h3>
-      <div className="flex justify-center min-h-[70px] xs:min-h-[80px] sm:min-h-[100px] md:min-h-[120px]">
-        <svg ref={ref} className="max-w-full" />
+    <div className="bg-slate-800 rounded-lg p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation snap-start">
+      <h3 className="text-[9px] sm:text-[10px] md:text-xs font-medium text-white mb-1 truncate">{title}</h3>
+      {/* Two-column layout: pie chart | legend */}
+      <div className="flex items-start gap-2">
+        {/* Pie chart */}
+        <div ref={chartContainerRef} className="flex-shrink-0">
+          <svg ref={ref} />
+        </div>
+        {/* Legend with filled bars */}
+        <div className="flex-1 flex flex-col gap-1 min-w-0">
+          {legendData.map((d, i) => {
+            const pct = (d[valueKey] / total * 100)
+            const barWidth = (d[valueKey] / maxValue * 100)
+            const label = `${d.platform}-${d.ticker}`
+            return (
+              <div key={d.id} className="flex flex-col gap-0.5">
+                <div className="flex items-center justify-between text-[8px] sm:text-[9px]">
+                  <span className="text-slate-300 truncate" title={label}>{label}</span>
+                  <span className="text-slate-400 font-mono ml-1 flex-shrink-0">{formatCurrencyCompact(d[valueKey])}</span>
+                </div>
+                {/* Filled bar indicator */}
+                <div className="h-1.5 sm:h-2 bg-slate-700 rounded-sm overflow-hidden">
+                  <div
+                    className="h-full rounded-sm transition-all"
+                    style={{
+                      width: `${barWidth}%`,
+                      backgroundColor: COLORS[i % COLORS.length]
+                    }}
+                  />
+                </div>
+                <span className="text-[7px] sm:text-[8px] text-slate-500">{pct.toFixed(1)}%</span>
+              </div>
+            )
+          })}
+        </div>
       </div>
       <div
         ref={tooltipRef}
-        className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[180px]"
+        className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[180px]"
         style={{ opacity: 0 }}
       />
-      {/* Vertically stacked legend with values, sorted by value descending */}
-      <div className="flex flex-col gap-0.5 mt-1">
-        {sortedData.map((d, i) => (
-          <div key={d.id} className="flex items-center justify-between text-[7px] xs:text-[8px] sm:text-[9px] text-slate-300">
-            <span className="flex items-center gap-1 min-w-0">
-              <span className="w-1.5 h-1.5 xs:w-2 xs:h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-              <span className="truncate">{d.ticker}</span>
-            </span>
-            <span className="text-slate-400 font-mono ml-1 flex-shrink-0">{formatCurrencyCompact(d[valueKey])}</span>
-          </div>
-        ))}
+    </div>
+  )
+}
+
+// Platform Pie Chart Component (shows just platform name in legend)
+function PlatformPieChart({ data, title, valueKey }: { data: AllocationData[]; title: string; valueKey: 'value' | 'cash' | 'fundSize' }) {
+  const ref = useRef<SVGSVGElement>(null)
+  const chartContainerRef = useRef<HTMLDivElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+
+  // Sort data by value descending, take top 5 for legend
+  const sortedData = [...data]
+    .filter(d => d[valueKey] > 0)
+    .sort((a, b) => b[valueKey] - a[valueKey])
+
+  const legendData = sortedData.slice(0, 5)
+  const total = sortedData.reduce((sum, d) => sum + d[valueKey], 0)
+  const maxValue = legendData[0]?.[valueKey] ?? 1
+
+  useEffect(() => {
+    if (!ref.current || !chartContainerRef.current || sortedData.length === 0) return
+
+    const svg = d3.select(ref.current)
+    svg.selectAll('*').remove()
+
+    const size = 100
+    const width = size
+    const height = size
+    const radius = Math.min(width, height) / 2 - 5
+
+    const g = svg
+      .attr('width', width)
+      .attr('height', height)
+      .append('g')
+      .attr('transform', `translate(${width / 2},${height / 2})`)
+
+    const pieData = sortedData.map(d => ({ ...d, chartValue: d[valueKey] }))
+
+    const pie = d3.pie<typeof pieData[0]>()
+      .value(d => d.chartValue)
+      .sort(null)
+
+    const arc = d3.arc<d3.PieArcDatum<typeof pieData[0]>>()
+      .innerRadius(0)
+      .outerRadius(radius)
+
+    const tooltip = d3.select(tooltipRef.current)
+
+    const arcs = g.selectAll('arc')
+      .data(pie(pieData))
+      .enter()
+      .append('g')
+
+    arcs.append('path')
+      .attr('d', arc)
+      .attr('fill', (_, i) => COLORS[i % COLORS.length] ?? '#666')
+      .attr('stroke', '#1e293b')
+      .attr('stroke-width', 1)
+      .attr('cursor', 'pointer')
+      .on('mouseover', function(_event, d) {
+        const pct = (d.data.chartValue / total * 100).toFixed(1)
+        tooltip
+          .style('opacity', 1)
+          .html(`<strong>${d.data.platform}</strong><br/>${formatCurrencyCompact(d.data.chartValue)}<br/>${pct}%`)
+        d3.select(this).attr('opacity', 0.8)
+      })
+      .on('mousemove', function(event) {
+        tooltip
+          .style('left', (event.pageX + 10) + 'px')
+          .style('top', (event.pageY - 10) + 'px')
+      })
+      .on('mouseout', function() {
+        tooltip.style('opacity', 0)
+        d3.select(this).attr('opacity', 1)
+      })
+
+  }, [sortedData, valueKey, total])
+
+  return (
+    <div className="bg-slate-800 rounded-lg p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation snap-start">
+      <h3 className="text-[9px] sm:text-[10px] md:text-xs font-medium text-white mb-1 truncate">{title}</h3>
+      <div className="flex items-start gap-2">
+        <div ref={chartContainerRef} className="flex-shrink-0">
+          <svg ref={ref} />
+        </div>
+        <div className="flex-1 flex flex-col gap-1 min-w-0">
+          {legendData.map((d, i) => {
+            const pct = (d[valueKey] / total * 100)
+            const barWidth = (d[valueKey] / maxValue * 100)
+            return (
+              <div key={d.id} className="flex flex-col gap-0.5">
+                <div className="flex items-center justify-between text-[8px] sm:text-[9px]">
+                  <span className="text-slate-300 truncate">{d.platform}</span>
+                  <span className="text-slate-400 font-mono ml-1 flex-shrink-0">{formatCurrencyCompact(d[valueKey])}</span>
+                </div>
+                <div className="h-1.5 sm:h-2 bg-slate-700 rounded-sm overflow-hidden">
+                  <div
+                    className="h-full rounded-sm transition-all"
+                    style={{
+                      width: `${barWidth}%`,
+                      backgroundColor: COLORS[i % COLORS.length]
+                    }}
+                  />
+                </div>
+                <span className="text-[7px] sm:text-[8px] text-slate-500">{pct.toFixed(1)}%</span>
+              </div>
+            )
+          })}
+        </div>
       </div>
+      <div
+        ref={tooltipRef}
+        className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[180px]"
+        style={{ opacity: 0 }}
+      />
     </div>
   )
 }
@@ -776,15 +895,41 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
   const currentLiquidGain = aggregateTotals?.totalGainUsd ?? timeSeries[timeSeries.length - 1]?.totalGainUsd ?? 0
   const currentRealizedGains = aggregateTotals?.totalRealizedGains ?? timeSeries[timeSeries.length - 1]?.totalRealizedGain ?? 0
 
+  // Aggregate allocations by platform for Platform Allocation chart
+  const platformAllocations: AllocationData[] = Object.values(
+    allocations.reduce((acc, alloc) => {
+      const platform = alloc.platform
+      if (!acc[platform]) {
+        acc[platform] = {
+          id: platform,
+          ticker: platform,
+          platform: platform,
+          value: 0,
+          cash: 0,
+          fundSize: 0,
+          marginAccess: 0,
+          marginBorrowed: 0
+        }
+      }
+      acc[platform].value += alloc.value
+      acc[platform].cash += alloc.cash
+      acc[platform].fundSize += alloc.fundSize
+      acc[platform].marginAccess += alloc.marginAccess
+      acc[platform].marginBorrowed += alloc.marginBorrowed
+      return acc
+    }, {} as Record<string, AllocationData>)
+  )
+
   return (
     <div className="space-y-1.5 xs:space-y-2 sm:space-y-3">
       {/* Pie Charts Row - Scrollable on mobile with fade indicator */}
       <div className="relative">
         <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-slate-900 to-transparent pointer-events-none z-10 sm:hidden" />
         <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0 sm:overflow-x-visible pb-1 sm:pb-0 scroll-smooth scrollbar-thin snap-x snap-mandatory">
-          <div className="grid grid-cols-2 sm:grid-cols-2 gap-1 xs:gap-1.5 sm:gap-2 min-w-[260px] sm:min-w-0">
+          <div className="grid grid-cols-3 gap-1 xs:gap-1.5 sm:gap-2 min-w-[400px] sm:min-w-0">
             <PieChart data={allocations} title="Fund Allocation" valueKey="fundSize" />
             <PieChart data={allocations} title="Asset Allocation" valueKey="value" />
+            <PlatformPieChart data={platformAllocations} title="Platform Allocation" valueKey="value" />
           </div>
         </div>
       </div>
