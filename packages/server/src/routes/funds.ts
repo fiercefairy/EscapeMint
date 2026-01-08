@@ -1589,6 +1589,7 @@ fundsRouter.post('/:id/recalculate', async (req, res, next) => {
   const dividendReinvest = config.dividend_reinvest !== false
   const interestReinvest = config.interest_reinvest !== false
   const expenseFromFund = config.expense_from_fund !== false
+  const manageCash = config.manage_cash !== false
 
   // Sort entries by date
   const sorted = [...fund.entries].sort((a, b) =>
@@ -1603,7 +1604,9 @@ fundsRouter.post('/:id/recalculate', async (req, res, next) => {
   let cumCashInterest = 0
   let cumExpenses = 0
   let cumShares = 0
-  let baseFundSize = config.fund_size_usd // Base starts from config, resets to 0 after liquidation
+  // For manage_cash=true: fund_size starts from config (target allocation + deposits/withdrawals)
+  // For manage_cash=false: fund_size = net invested only (BUYs - SELLs), starts from 0
+  let baseFundSize = manageCash ? config.fund_size_usd : 0
 
   // Recalculate fund_size and equity for each entry
   for (const entry of sorted) {
