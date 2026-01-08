@@ -36,6 +36,7 @@ interface TimeSeriesPoint {
   apy: number
   marginAvailable: number
   marginBorrowed: number
+  expectedTarget: number
 }
 
 // Compute time series data from entries
@@ -45,6 +46,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
   const startDate = new Date(config.start_date)
   const result: TimeSeriesPoint[] = []
   const isCashFund = checkIsCashFund(config.fund_type)
+  const targetApy = config.target_apy ?? 0
 
   let startInput = 0
   let costBasis = 0
@@ -55,6 +57,11 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
   let cumulativeWithdrawals = 0
   let realizedGains = 0
   let cumShares = 0
+
+  // Track buy trades with their dates for expected target calculation
+  // Each buy compounds individually from its purchase date
+  const buyTrades: { date: Date; amount: number }[] = []
+  let expectedGainMultiplier = 1 // Tracks reduction from partial sells
 
   for (const entry of sorted) {
     const date = new Date(entry.date)
@@ -75,6 +82,8 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
     else if (entry.action === 'BUY' && entry.amount) {
       startInput += entry.amount
       costBasis += entry.amount
+      // Track this buy for expected target calculation
+      buyTrades.push({ date, amount: entry.amount })
     } else if (entry.action === 'SELL' && entry.amount) {
       // Calculate extracted profit using proper cost basis
       let extracted = 0
@@ -98,6 +107,9 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
         costBasis = 0
         startInput = 0
         cumShares = 0
+        // Reset expected target tracking
+        buyTrades.length = 0
+        expectedGainMultiplier = 1
       } else {
         // Partial sell
         if (isAccumulate) {
@@ -109,6 +121,18 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
           const costBasisReturned = costBasis * sellProportion
           extracted = entry.amount - costBasisReturned
           costBasis -= costBasisReturned
+        }
+        // Reduce expected gain for partial sells
+        // Use share-based fraction when available, else dollar-based
+        if (hasShareTracking) {
+          const sharesBeforeSell = cumShares + Math.abs(entry.shares!)
+          const sellFraction = sharesBeforeSell > 0
+            ? Math.abs(entry.shares!) / sharesBeforeSell
+            : 1
+          expectedGainMultiplier *= (1 - sellFraction)
+        } else if (startInput > 0) {
+          const sellFraction = Math.min(1, entry.amount / (startInput + entry.amount))
+          expectedGainMultiplier *= (1 - sellFraction)
         }
       }
       realizedGains += extracted
@@ -168,6 +192,18 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
       ? totalReturn / startInput / yearsElapsed
       : 0
 
+    // Expected target calculation: each buy compounds from its purchase date
+    // ExpectedTarget = startInput + Σ(buyAmount * ((1 + targetApy)^(daysSinceBuy/365) - 1)) * multiplier
+    let expectedGain = 0
+    if (targetApy > 0) {
+      for (const buy of buyTrades) {
+        const daysSinceBuy = Math.max(0, (date.getTime() - buy.date.getTime()) / (1000 * 60 * 60 * 24))
+        const gain = buy.amount * (Math.pow(1 + targetApy, daysSinceBuy / 365) - 1)
+        expectedGain += gain
+      }
+    }
+    const expectedTarget = startInput + (expectedGain * expectedGainMultiplier)
+
     result.push({
       date,
       value: isCashFund ? (entry.cash ?? entry.value) : entry.value,  // For cash funds, use cash balance as value
@@ -184,7 +220,8 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
       assetPct,
       apy,
       marginAvailable: entry.margin_available ?? 0,
-      marginBorrowed: entry.margin_borrowed ?? 0
+      marginBorrowed: entry.margin_borrowed ?? 0,
+      expectedTarget
     })
   }
 
@@ -786,6 +823,9 @@ function ValueAndFundSizeChart({
 }) {
   const ref = useRef<SVGSVGElement>(null)
 
+  // Check if we have target data to display (memoized for both useEffect and JSX)
+  const hasTarget = useMemo(() => data.some(d => d.expectedTarget > 0), [data])
+
   useEffect(() => {
     if (!ref.current || data.length === 0) return
 
@@ -804,8 +844,8 @@ function ValueAndFundSizeChart({
       .domain(d3.extent(data, d => d.date) as [Date, Date])
       .range([0, width])
 
-    // Y scale based on max of fund size or asset value
-    const yMax = d3.max(data, d => Math.max(d.fundSize, d.value)) ?? 0
+    // Y scale based on max of fund size, asset value, or target
+    const yMax = d3.max(data, d => Math.max(d.fundSize, d.value, d.expectedTarget)) ?? 0
     const y = d3.scaleLinear()
       .domain([0, yMax || 1])
       .nice()
@@ -864,6 +904,21 @@ function ValueAndFundSizeChart({
       .attr('stroke-width', 2)
       .attr('d', valueLine)
 
+    // Target equity line (cyan/teal dashed) - shows expected value based on target APY
+    if (hasTarget) {
+      const targetLine = d3.line<TimeSeriesPoint>()
+        .x(d => x(d.date))
+        .y(d => y(d.expectedTarget))
+        .curve(d3.curveMonotoneX)
+
+      g.append('path')
+        .datum(data)
+        .attr('fill', 'none')
+        .attr('stroke', '#06b6d4')
+        .attr('stroke-width', 1.5)
+        .attr('stroke-dasharray', '4,3')
+        .attr('d', targetLine)
+    }
 
     // X axis
     g.append('g')
@@ -937,6 +992,14 @@ function ValueAndFundSizeChart({
         .attr('text-anchor', 'middle')
     }
 
+    if (hasTarget) {
+      tooltip.append('text')
+        .attr('class', 'tooltip-target')
+        .attr('fill', '#06b6d4')
+        .attr('font-size', '10px')
+        .attr('text-anchor', 'middle')
+    }
+
     const bisect = d3.bisector<TimeSeriesPoint, Date>(d => d.date).left
 
     g.append('rect')
@@ -969,9 +1032,14 @@ function ValueAndFundSizeChart({
         if (manageCash) {
           tooltipGroup.select('.tooltip-cash').text(`Cash: ${formatCurrencyCompact(d.cashAvailable)}`)
         }
+        if (hasTarget) {
+          tooltipGroup.select('.tooltip-target').text(`Target: ${formatCurrencyCompact(d.expectedTarget)}`)
+        }
 
         const tooltipWidth = 110
-        const tooltipHeight = manageCash ? 60 : 46
+        let tooltipHeight = 46  // base: date + value + invested
+        if (manageCash) tooltipHeight += 14
+        if (hasTarget) tooltipHeight += 14
         const tooltipY = 10
 
         let tooltipX = xPos
@@ -1001,14 +1069,21 @@ function ValueAndFundSizeChart({
           .attr('x', 0)
           .attr('y', 39)
 
+        let nextY = 53
         if (manageCash) {
           tooltipGroup.select('.tooltip-cash')
             .attr('x', 0)
-            .attr('y', 53)
+            .attr('y', nextY)
+          nextY += 14
+        }
+        if (hasTarget) {
+          tooltipGroup.select('.tooltip-target')
+            .attr('x', 0)
+            .attr('y', nextY)
         }
       })
 
-  }, [data, manageCash, resize])
+  }, [data, manageCash, hasTarget, resize])
 
   return (
     <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 flex flex-col h-[200px]">
@@ -1027,6 +1102,12 @@ function ValueAndFundSizeChart({
             <span className="text-[10px] text-slate-400 flex items-center gap-1">
               <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#22c55e' }} />
               Cash
+            </span>
+          )}
+          {hasTarget && (
+            <span className="text-[10px] text-slate-400 flex items-center gap-1">
+              <span className="w-2 h-0.5 rounded-sm" style={{ backgroundColor: '#06b6d4', borderTop: '1px dashed #06b6d4' }} />
+              Target
             </span>
           )}
         </div>
@@ -1282,7 +1363,8 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
         assetPct: 0,
         apy: entry.realizedApy ?? 0,
         marginAvailable: entry.derivAvailableFunds ?? 0,
-        marginBorrowed: 0
+        marginBorrowed: 0,
+        expectedTarget: 0  // Derivatives don't use target APY
       }))
     }
     return computeTimeSeries(entries, config)
