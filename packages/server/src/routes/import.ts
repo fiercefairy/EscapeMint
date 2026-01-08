@@ -1114,7 +1114,14 @@ const findRobinhoodPage = async (browser: Browser): Promise<Page | null> => {
     console.log(`[Import] Context ${i}: ${pages.length} pages`)
     for (const page of pages) {
       const pageUrl = page.url()
-      if (pageUrl.includes('robinhood.com') && !pageUrl.includes('/login')) {
+      // Must start with robinhood.com domain (not just contain it in a fragment/param)
+      // Exclude Stripe iframes and other third-party pages
+      const isRobinhoodPage = (
+        pageUrl.startsWith('https://robinhood.com') ||
+        pageUrl.startsWith('http://robinhood.com')
+      ) && !pageUrl.includes('/login')
+
+      if (isRobinhoodPage) {
         console.log(`[Import] Found existing Robinhood page: ${pageUrl}`)
         return page
       }
@@ -1122,6 +1129,97 @@ const findRobinhoodPage = async (browser: Browser): Promise<Page | null> => {
   }
 
   return null
+}
+
+/**
+ * Navigate to Robinhood history page by clicking through the UI.
+ * This is a fallback when direct URL navigation doesn't work.
+ */
+const navigateRobinhoodViaUI = async (page: Page): Promise<boolean> => {
+  console.log('[Robinhood] Attempting UI navigation to history page')
+
+  // Try multiple strategies to find and click the Account link
+  const accountSelectors = [
+    'a[href="/account"]',
+    'a[href*="/account"]',
+    '[data-testid="AccountLink"]',
+    'text=Account',
+    'nav a:has-text("Account")',
+    '[aria-label="Account"]',
+    'a:has-text("Account")'
+  ]
+
+  let accountClicked = false
+  for (const selector of accountSelectors) {
+    const accountLink = await page.$(selector).catch(() => null)
+    if (accountLink) {
+      console.log(`[Robinhood] Found account link with selector: ${selector}`)
+      await accountLink.click().catch(() => null)
+      accountClicked = true
+      await page.waitForTimeout(2000)
+      break
+    }
+  }
+
+  if (!accountClicked) {
+    console.log('[Robinhood] Could not find Account link, trying direct profile icon click')
+    // Try clicking on profile/account icon (usually in top right)
+    const profileIcon = await page.$('[data-testid="ProfileIcon"], [aria-label="Profile"], svg[class*="profile"], .account-icon').catch(() => null)
+    if (profileIcon) {
+      await profileIcon.click().catch(() => null)
+      await page.waitForTimeout(2000)
+    }
+  }
+
+  // Check if we're on an account page now
+  let currentUrl = page.url()
+  console.log(`[Robinhood] After account click, URL is: ${currentUrl}`)
+
+  // If we're on an account page but not history, click History
+  if (currentUrl.includes('/account') && !currentUrl.includes('history')) {
+    const historySelectors = [
+      'a[href="/account/history"]',
+      'a[href*="history"]',
+      'text=History',
+      'a:has-text("History")',
+      '[data-testid="HistoryLink"]'
+    ]
+
+    for (const selector of historySelectors) {
+      const historyLink = await page.$(selector).catch(() => null)
+      if (historyLink) {
+        console.log(`[Robinhood] Found history link with selector: ${selector}`)
+        await historyLink.click().catch(() => null)
+        await page.waitForTimeout(2000)
+        break
+      }
+    }
+  }
+
+  // Final check
+  currentUrl = page.url()
+  console.log(`[Robinhood] Final URL after UI navigation: ${currentUrl}`)
+
+  if (currentUrl.includes('history') || currentUrl.includes('/account/')) {
+    console.log('[Robinhood] UI navigation successful')
+    return true
+  }
+
+  // Last resort: try clicking any visible "History" text on the page
+  const historyText = await page.$('text=History').catch(() => null)
+  if (historyText) {
+    console.log('[Robinhood] Clicking History text as last resort')
+    await historyText.click().catch(() => null)
+    await page.waitForTimeout(2000)
+
+    currentUrl = page.url()
+    if (currentUrl.includes('history')) {
+      return true
+    }
+  }
+
+  console.log('[Robinhood] UI navigation failed')
+  return false
 }
 
 /**
@@ -1138,117 +1236,103 @@ const createNewPage = async (browser: Browser): Promise<Page> => {
       const pageUrl = existingPage.url()
       if (!pageUrl.startsWith('chrome-extension://') && !pageUrl.startsWith('blob:') && pageUrl !== 'about:blank') {
         console.log(`[Import] Creating new page in context ${i}`)
-        return context.newPage()
+        // Add timeout to prevent hanging
+        const newPagePromise = context.newPage()
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout creating new page')), 10000)
+        )
+        const newPage = await Promise.race([newPagePromise, timeoutPromise])
+        console.log(`[Import] New page created successfully, URL: ${newPage.url()}`)
+        return newPage
       }
     }
   }
 
   // Fallback to first context
+  console.log('[Import] Using fallback context')
   const context = contexts[0]
   if (!context) {
     throw new Error('No browser context found')
   }
-  return context.newPage()
+  const newPagePromise = context.newPage()
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Timeout creating new page in fallback context')), 10000)
+  )
+  const newPage = await Promise.race([newPagePromise, timeoutPromise])
+  console.log('[Import] New page created in fallback context')
+  return newPage
 }
 
 /**
  * Scrape a single transaction from an activity item element.
  * Expands it if needed and extracts all data.
+ * @param existingIds - Set of existing transaction IDs to skip expanding for performance
+ */
+// Track slow operations for diagnostics
+let scrapeCallCount = 0
+
+/**
+ * Extract all data from an activity item in a single browser evaluate call.
+ * This avoids the O(n) cost of page.$$() which creates handles for all items.
  */
 const scrapeActivityItem = async (
   page: Page,
   itemSelector: string,
-  index: number
+  index: number,
+  _existingIds?: Set<string>  // Unused - kept for API compatibility
 ): Promise<ScrapedTransaction | null> => {
-  const items = await page.$$(itemSelector)
-  const item = items[index]
-  if (!item) return null
+  scrapeCallCount++
+  const shouldLog = scrapeCallCount % 100 === 0
+  const timings: Record<string, number> = {}
+  const t0 = Date.now()
 
-  // Get header content
-  const headerEl = await item.$('[data-testid="rh-ExpandableItem-buttonContent"]')
-  if (!headerEl) return null
+  // Extract header data in a single evaluate - no expansion, just header info
+  const headerData = await page.evaluate(
+    ([idx, sel]) => {
+      const items = document.querySelectorAll(sel)
+      const item = items[idx]
+      if (!item) return null
 
-  // Extract title from h3
-  const titleEl = await headerEl.$('h3')
-  const title = await titleEl?.textContent() ?? ''
-  if (!title) return null
+      const header = item.querySelector('[data-testid="rh-ExpandableItem-buttonContent"]')
+      if (!header) return null
 
-  // Extract date from span (usually the second one in the header)
-  const dateSpans = await headerEl.$$('.css-16mmcnu span, header span')
+      const titleEl = header.querySelector('h3')
+      const title = titleEl?.textContent ?? ''
+      if (!title) return null
+
+      const headerText = header.textContent ?? ''
+      return { title, headerText }
+    },
+    [index, itemSelector] as [number, string]
+  )
+
+  if (!headerData) return null
+  const { title, headerText } = headerData
+  if (shouldLog) timings['getHeader'] = Date.now() - t0
+
+  // Extract date from header text
   let dateText = ''
-  for (const span of dateSpans) {
-    const text = await span.textContent() ?? ''
-    // Look for date pattern
-    if (/[A-Z][a-z]{2}\s+\d{1,2}/.test(text)) {
-      dateText = text
-      break
-    }
+  const dateMatch = headerText.match(/([A-Z][a-z]{2}\s+\d{1,2}(?:,?\s+\d{4})?)/)
+  if (dateMatch && dateMatch[1]) {
+    dateText = dateMatch[1]
   }
 
-  // Extract amount - look for the amount in the header
-  const amountEls = await headerEl.$$('h3 span, .css-5a1gnn h3')
+  // Extract amount from header text
   let amountText = ''
-  for (const el of amountEls) {
-    const text = await el.textContent() ?? ''
-    if (text.includes('$')) {
-      amountText = text
-      break
-    }
+  const amountMatch = headerText.match(/\$[\d,]+\.?\d*/)
+  if (amountMatch) {
+    amountText = amountMatch[0]
   }
 
-  // Also look for shares info in the header (e.g., "1.009998 shares at $99.01")
+  // Also look for shares info in the header
   let headerSharesText = ''
-  const headerText = await headerEl.textContent() ?? ''
-  const sharesMatch = headerText.match(/[\d.]+\s+shares?\s+at\s+\$[\d,.]+/)
+  const sharesMatch = headerText.match(/([\d.]+)\s+shares?\s+at\s+\$([\d,.]+)/)
   if (sharesMatch) {
     headerSharesText = sharesMatch[0]
   }
 
-  // Check if expanded by looking for the content div
-  const contentEl = await item.$('[data-testid="rh-ExpandableItem-content"]')
-  const isHidden = await contentEl?.evaluate(el => {
-    const parent = el.closest('[aria-hidden]')
-    return parent?.getAttribute('aria-hidden') === 'true'
-  }) ?? true
-
-  // Click to expand if not already expanded
-  if (isHidden) {
-    const button = await item.$('[data-testid="rh-ExpandableItem-button"]')
-    if (button) {
-      // Use force:true to bypass intercepting elements (sticky nav, overlays)
-      await button.click({ force: true }).catch(() => {
-        // If click fails, try scrolling the element into view first
-        return button.scrollIntoViewIfNeeded().then(() => button.click({ force: true }))
-      })
-      await page.waitForTimeout(300) // Wait for expansion animation
-    }
-  }
-
-  // Extract details from expanded content
+  // No expansion - just use header data
   const details: Record<string, string> = {}
-  const detailsEl = await item.$('[data-testid="rh-ExpandableItem-content"]')
-  if (detailsEl) {
-    // Get all cell-label elements (key-value pairs)
-    const cells = await detailsEl.$$('[data-testid="cell-label"]')
-    for (const cell of cells) {
-      const spans = await cell.$$('span div')
-      if (spans.length >= 2) {
-        const key = await spans[0]?.textContent() ?? ''
-        const valueEl = spans[spans.length - 1]
-        // Check for link in value (for Symbol)
-        const link = await valueEl?.$('a')
-        let value = ''
-        if (link) {
-          value = await link.textContent() ?? ''
-        } else {
-          value = await valueEl?.textContent() ?? ''
-        }
-        if (key && value) {
-          details[key.trim()] = value.trim()
-        }
-      }
-    }
-  }
 
   // Parse the data
   const type = determineTransactionType(title)
@@ -1286,14 +1370,14 @@ const scrapeActivityItem = async (
   const titleHash = title.split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0).toString(36)
   const id = `${date}-${type}-${amount.toFixed(2)}-${symbol || titleHash}`
 
+  // Slim result - only essential fields
   const result: ScrapedTransaction = {
     id,
     date,
     type,
-    title,
+    title,  // Keep title for debugging/display
     amount,
-    details,
-    rawText: headerText  // Store full text for later analysis
+    details  // Empty object now, but keep for type compatibility
   }
 
   // Only add optional properties if they have values
@@ -1301,10 +1385,11 @@ const scrapeActivityItem = async (
   if (shares) result.shares = shares
   if (pricePerShare) result.pricePerShare = pricePerShare
 
-  // Store rawHtml for 'other' type transactions for debugging
-  if (type === 'other') {
-    const html = await item.innerHTML().catch(() => '')
-    if (html) result.rawHtml = html
+  // Log timing breakdown every 100 items
+  if (shouldLog && Object.keys(timings).length > 0) {
+    const total = Object.values(timings).reduce((a, b) => a + b, 0)
+    const breakdown = Object.entries(timings).map(([k, v]) => `${k}=${v}ms`).join(', ')
+    console.log(`[Robinhood] Item #${scrapeCallCount} timing (total=${total}ms): ${breakdown}`)
   }
 
   return result
@@ -1313,109 +1398,171 @@ const scrapeActivityItem = async (
 /**
  * Scrape transaction history from a Robinhood page with progress updates.
  * Expands each item to get full details.
+ * @param fullSync - When true, disables early exit on consecutive existing transactions (for full resync)
  */
 const scrapeRobinhoodHistoryWithProgress = async (
   page: Page,
   archive: ScrapeArchive,
   onProgress: (current: number, total: number, tx: ScrapedTransaction | null) => void,
-  maxScrolls = 500  // Increased for 7+ years of history
+  _maxScrolls = 500,  // Deprecated: no longer used, safety limit is built into while loop
+  fullSync = false   // When true, don't early exit on consecutive existing transactions
 ): Promise<{ newCount: number; totalScraped: number }> => {
   // Wait for activity items to load
   await page.waitForSelector('[data-testid="activity-item"], [data-testid="UnifiedTransferActivityItem"]', {
     timeout: 15000
   }).catch(() => null)
 
-  await page.waitForTimeout(2000)
+  // Wait for page to stabilize - check that items have loaded and page is ready
+  await page.waitForFunction(
+    (sel) => {
+      const items = document.querySelectorAll(sel as string)
+      // Wait until we have at least a few items loaded
+      return items.length >= 3
+    },
+    '[data-testid="activity-item"], [data-testid="UnifiedTransferActivityItem"]',
+    { timeout: 10000 }
+  ).catch(() => null)
 
   let totalScraped = 0
   let newCount = 0
-  let previousItemCount = 0
-  let noNewItemsCount = 0
   let consecutiveExisting = 0  // Track consecutive already-scraped transactions
   const MAX_CONSECUTIVE_EXISTING = 50  // Stop early if we've seen this many existing txns in a row
 
   const itemSelector = '[data-testid="activity-item"], [data-testid="UnifiedTransferActivityItem"]'
 
-  // Process items and scroll loop
-  for (let scroll = 0; scroll < maxScrolls; scroll++) {
-    const items = await page.$$(itemSelector)
-    const currentItemCount = items.length
+  // Build set of existing IDs for fast lookup
+  const existingIds = new Set(archive.transactions.map(t => t.id))
 
-    // Process new items
+  // Process items using index-based approach with periodic page refresh
+  // Refresh every BATCH_SIZE items to reset browser state and prevent slowdown
+  const BATCH_SIZE = 200
+  let previousItemCount = 0
+  let noNewItemsCount = 0
+  const maxScrolls = 500
+
+  // Timing diagnostics
+  let lastLogTime = Date.now()
+  let itemTimes: number[] = []
+  let batchStartCount = 0
+
+  for (let scroll = 0; scroll < maxScrolls; scroll++) {
+    // Get current item count
+    const currentItemCount = await page.evaluate(
+      (sel) => document.querySelectorAll(sel).length,
+      itemSelector
+    )
+
+    // Process new items (from previousItemCount to currentItemCount)
     let shouldBreak = false
+    let needsRefresh = false
+
     for (let i = previousItemCount; i < currentItemCount; i++) {
-      const tx = await scrapeActivityItem(page, itemSelector, i)
+      const itemStart = Date.now()
+      const tx = await scrapeActivityItem(page, itemSelector, i, existingIds)
+
       if (tx) {
         totalScraped++
         const isNew = addToArchive(archive, tx)
         if (isNew) {
           newCount++
-          consecutiveExisting = 0  // Reset counter when we find a new transaction
-          // Save incrementally every 10 new transactions
-          if (newCount % 10 === 0) {
-            await saveArchive(archive)
-          }
+          existingIds.add(tx.id)
+          consecutiveExisting = 0
         } else {
           consecutiveExisting++
-          // Early exit: if we've seen many consecutive existing transactions, we're caught up
-          if (consecutiveExisting >= MAX_CONSECUTIVE_EXISTING) {
+          if (!fullSync && consecutiveExisting >= MAX_CONSECUTIVE_EXISTING) {
             console.log(`[Robinhood] Early exit: ${consecutiveExisting} consecutive existing transactions, stopping scrape`)
             shouldBreak = true
             break
           }
         }
         onProgress(totalScraped, currentItemCount, tx)
+
+        // Track timing
+        itemTimes.push(Date.now() - itemStart)
+
+        // Save and log every 100 items
+        if (totalScraped % 100 === 0) {
+          await saveArchive(archive)
+          const avg = itemTimes.reduce((a, b) => a + b, 0) / itemTimes.length
+          const max = Math.max(...itemTimes)
+          const elapsed = Date.now() - lastLogTime
+          console.log(`[Robinhood] Items ${totalScraped - 99}-${totalScraped}: avg=${avg.toFixed(0)}ms, max=${max}ms, total=${elapsed}ms, new=${newCount}`)
+          itemTimes = []
+          lastLogTime = Date.now()
+        }
+
+        // Check if we need to refresh page to reset browser state
+        if (totalScraped - batchStartCount >= BATCH_SIZE) {
+          needsRefresh = true
+          break
+        }
       }
     }
 
-    if (shouldBreak) {
-      break
+    if (shouldBreak) break
+
+    // Remove processed items from DOM in bulk to reset browser state
+    // This is faster than page refresh and doesn't require scrolling to reload
+    if (needsRefresh) {
+      console.log(`[Robinhood] Removing ${previousItemCount} processed items from DOM to reset browser state...`)
+      await saveArchive(archive)
+
+      // Remove first N items (the ones we just processed) in a single bulk operation
+      const removed = await page.evaluate(
+        ([count, sel]) => {
+          const items = document.querySelectorAll(sel)
+          let removedCount = 0
+          // Remove items from the beginning (oldest processed items)
+          for (let i = 0; i < count && i < items.length; i++) {
+            const item = items[i]
+            if (item) {
+              item.remove()
+              removedCount++
+            }
+          }
+          return removedCount
+        },
+        [previousItemCount, itemSelector] as [number, string]
+      )
+
+      console.log(`[Robinhood] Removed ${removed} items, DOM now has ${await page.evaluate((sel) => document.querySelectorAll(sel).length, itemSelector)} items`)
+
+      // Wait a moment for React to stabilize after bulk removal
+      await page.waitForTimeout(500)
+
+      // Reset counters - we now start from index 0 since we removed processed items
+      previousItemCount = 0
+      batchStartCount = totalScraped
+      noNewItemsCount = 0
+      continue
     }
 
     previousItemCount = currentItemCount
 
-    // Scroll to load more - try multiple scroll strategies
+    // Scroll to load more
     await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight)
     })
-    await page.waitForTimeout(2000)  // Increased wait time
 
-    // Try scrolling specific container if main scroll doesn't work
-    await page.evaluate(() => {
-      const scrollableContainers = document.querySelectorAll('[data-testid="activity-feed"], .ReactVirtualized__Grid, [class*="scroll"]')
-      scrollableContainers.forEach(container => {
-        if (container.scrollHeight > container.clientHeight) {
-          container.scrollTop = container.scrollHeight
-        }
-      })
-    })
-    await page.waitForTimeout(500)
+    // Wait for new items to load
+    const gotNewItems = await page.waitForFunction(
+      ([prevCount, sel]) => document.querySelectorAll(sel).length > prevCount,
+      [currentItemCount, itemSelector] as [number, string],
+      { timeout: 3000 }
+    ).then(() => true).catch(() => false)
 
-    // Check if we got new items
-    const newItems = await page.$$(itemSelector)
-    if (newItems.length === currentItemCount) {
+    if (!gotNewItems) {
       noNewItemsCount++
-      // More patient - wait for 5 consecutive scrolls with no new items
-      if (noNewItemsCount >= 5) {
-        // Try one more aggressive scroll before giving up
-        await page.evaluate(() => {
-          window.scrollBy(0, 5000)
-        })
-        await page.waitForTimeout(3000)
-        const finalCheck = await page.$$(itemSelector)
-        if (finalCheck.length === currentItemCount) {
-          // Really at the end
-          break
-        }
+      if (noNewItemsCount >= 2) {
+        console.log(`[Robinhood] No more items after ${noNewItemsCount} scroll attempts`)
+        break
       }
     } else {
       noNewItemsCount = 0
     }
 
-    // Safety limit - increased for 7+ years of history (estimate ~10 transactions/week = 3640)
-    if (totalScraped > 10000) {
-      break
-    }
+    // Safety limit
+    if (totalScraped > 10000) break
   }
 
   // Final save
@@ -1836,9 +1983,14 @@ importRouter.post('/archive/:platform/reclassify', async (req, res) => {
 /**
  * GET /import/robinhood/scrape-stream
  * SSE endpoint for scraping with real-time progress updates.
+ * Query params:
+ *   - url: Robinhood history page URL (required)
+ *   - platform: Platform name for archive (default: 'robinhood')
+ *   - full: When 'true', performs full sync without early exit (for complete resync)
  */
 importRouter.get('/robinhood/scrape-stream', async (req, res) => {
-  const { url, platform = 'robinhood' } = req.query as { url?: string; platform?: string }
+  const { url, platform = 'robinhood', full } = req.query as { url?: string; platform?: string; full?: string }
+  const fullSync = full === 'true'
 
   // Set up SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
@@ -1888,56 +2040,119 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
     console.log(`[Import] Using existing Robinhood page: ${page.url()}`)
     sendEvent('status', { message: 'Found logged-in Robinhood page', phase: 'navigating' })
   } else {
-    // No existing page - create new one and tell user to log in
-    console.log('[Import] No Robinhood page found, creating new one')
-    sendEvent('status', { message: 'Opening Robinhood...', phase: 'navigating' })
+    // No Robinhood page found - try to find ANY page we can use
+    console.log('[Import] No Robinhood page found, looking for any usable page...')
+    sendEvent('status', { message: 'Looking for browser page...', phase: 'navigating' })
 
-    page = await createNewPage(browser).catch((err: Error) => {
-      sendEvent('error', { message: err.message })
-      return null
-    }) as Page | null
+    // Find any existing page to reuse (avoid creating new pages which can hang)
+    const contexts = browser.contexts()
+    for (const context of contexts) {
+      const pages = context.pages()
+      for (const existingPage of pages) {
+        const pageUrl = existingPage.url()
+        // Use any non-extension page
+        if (!pageUrl.startsWith('chrome-extension://') && !pageUrl.startsWith('blob:')) {
+          console.log(`[Import] Found usable page: ${pageUrl}`)
+          page = existingPage
+          break
+        }
+      }
+      if (page) break
+    }
 
     if (!page) {
-      res.end()
-      return
+      // Last resort: try to create a new page
+      console.log('[Import] No usable page found, attempting to create new one...')
+      sendEvent('status', { message: 'Creating new browser tab...', phase: 'navigating' })
+
+      page = await createNewPage(browser).catch((err: Error) => {
+        console.log(`[Import] Failed to create new page: ${err.message}`)
+        sendEvent('error', { message: `Failed to create browser tab: ${err.message}. Please open a tab manually and try again.` })
+        return null
+      }) as Page | null
+
+      if (!page) {
+        res.end()
+        return
+      }
+      pageCreated = true
     }
 
-    pageCreated = true
-
-    // Navigate to Robinhood
-    const navResult = await page.goto('https://robinhood.com', { waitUntil: 'networkidle', timeout: 30000 }).catch((err: Error) => err)
-    if (navResult instanceof Error) {
-      sendEvent('error', { message: `Navigation failed: ${navResult.message}` })
-      await page.close().catch(() => {})
-      res.end()
-      return
-    }
-
-    await page.waitForTimeout(2000)
-
-    // Check if redirected to login
-    if (page.url().includes('/login')) {
-      console.log('[Import] Redirected to login - user needs to log in manually')
-      sendEvent('error', {
-        message: 'Please log in to Robinhood in your browser first, then navigate to the history page and try again.'
-      })
-      // Don't close the page - let user log in
-      res.end()
-      return
-    }
+    console.log(`[Robinhood] Using page: ${page.url()}`)
   }
 
-  // Navigate to history if needed
-  if (!page.url().includes('history')) {
-    sendEvent('status', { message: 'Opening history page...', phase: 'navigating' })
-    const navResult = await page.goto(url, { waitUntil: 'load', timeout: 30000 }).catch((err: Error) => err)
+  // Bring page to front
+  console.log('[Robinhood] Bringing page to front...')
+  await page.bringToFront()
+  console.log('[Robinhood] Page brought to front')
+
+  // Navigate to history page
+  const currentUrl = page.url()
+  console.log(`[Robinhood] Current page URL: ${currentUrl}`)
+  console.log(`[Robinhood] Target URL: ${url}`)
+
+  // Always navigate to the target URL if not already there
+  if (!currentUrl.includes('history')) {
+    sendEvent('status', { message: `Navigating to history page...`, phase: 'navigating' })
+
+    console.log(`[Robinhood] Navigating to: ${url}`)
+
+    // Navigate directly to history URL - use domcontentloaded for speed
+    const navResult = await page.goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000
+    }).catch((err: Error) => err)
+
     if (navResult instanceof Error) {
+      console.log(`[Robinhood] Navigation error: ${navResult.message}`)
       sendEvent('error', { message: `Navigation failed: ${navResult.message}` })
       if (pageCreated) await page.close().catch(() => {})
       res.end()
       return
     }
+
+    // Short wait for any redirects
     await page.waitForTimeout(2000)
+
+    // Check URL immediately
+    let newUrl = page.url()
+    console.log(`[Robinhood] After navigation, URL is: ${newUrl}`)
+
+    // Check if redirected to login
+    if (newUrl.includes('/login')) {
+      console.log('[Robinhood] Redirected to login - user needs to log in manually')
+      sendEvent('error', {
+        message: 'Please log in to Robinhood in your browser first, then navigate to the history page and try again.'
+      })
+      res.end()
+      return
+    }
+
+    // If we got redirected away from history, try UI navigation
+    if (!newUrl.includes('history') && !newUrl.includes('/account/')) {
+      console.log(`[Robinhood] Redirected to: ${newUrl}, trying UI navigation`)
+      sendEvent('status', { message: `Navigating via UI...`, phase: 'navigating' })
+
+      // Try clicking through the UI instead
+      const navSuccess = await navigateRobinhoodViaUI(page)
+      if (!navSuccess) {
+        const finalUrl = page.url()
+        sendEvent('error', {
+          message: `Cannot navigate to history page. Ended up at: ${finalUrl}. Please log in to Robinhood and manually navigate to Account > History, then try again.`
+        })
+        res.end()
+        return
+      }
+      newUrl = page.url()
+      console.log(`[Robinhood] After UI navigation, URL is: ${newUrl}`)
+    }
+
+    // Now wait for history items to load
+    console.log('[Robinhood] Waiting for history items to load...')
+    sendEvent('status', { message: `Loading history...`, phase: 'loading' })
+    await page.waitForSelector('[data-testid="activity-item"], [data-testid="UnifiedTransferActivityItem"]', {
+      timeout: 15000
+    }).catch(() => null)
   }
 
   // Verify we're on the history page and logged in
@@ -1959,11 +2174,14 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
   const existingCount = archive.transactions.length
 
   sendEvent('status', {
-    message: existingCount > 0
-      ? `Found ${existingCount} existing transactions. Scraping for new data...`
-      : 'Starting fresh scrape...',
+    message: fullSync
+      ? `Full sync mode: Found ${existingCount} existing transactions. Scraping ALL history...`
+      : existingCount > 0
+        ? `Found ${existingCount} existing transactions. Scraping for new data...`
+        : 'Starting fresh scrape...',
     phase: 'scraping',
-    existingCount
+    existingCount,
+    fullSync
   })
 
   // Scrape with progress updates
@@ -1983,7 +2201,9 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
           title: tx.title.substring(0, 50)
         } : null
       })
-    }
+    },
+    500,      // maxScrolls
+    fullSync  // fullSync parameter
   ).catch((err: Error) => {
     sendEvent('error', { message: `Scraping error: ${err.message}` })
     return null
@@ -2010,13 +2230,20 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
  * POST /import/robinhood/scrape
  * Scrape transaction history from a Robinhood URL.
  * Returns immediately with scraped data (non-streaming version for backward compatibility).
+ * Body params:
+ *   - url: Robinhood history page URL (required)
+ *   - platform: Platform name for archive (default: 'robinhood')
+ *   - cdpUrl: Chrome DevTools Protocol URL
+ *   - full: When true, performs full sync without early exit (for complete resync)
  */
 importRouter.post('/robinhood/scrape', async (req, res, next) => {
-  const { url, platform = 'robinhood', cdpUrl = DEFAULT_CDP_URL } = req.body as {
+  const { url, platform = 'robinhood', cdpUrl = DEFAULT_CDP_URL, full = false } = req.body as {
     url?: string
     platform?: string
     cdpUrl?: string
+    full?: boolean
   }
+  const fullSync = full === true
 
   if (!url) {
     return next(badRequest('url is required'))
@@ -2075,7 +2302,9 @@ importRouter.post('/robinhood/scrape', async (req, res, next) => {
   const result = await scrapeRobinhoodHistoryWithProgress(
     page,
     archive,
-    () => {} // No progress callback for non-streaming
+    () => {}, // No progress callback for non-streaming
+    500,      // maxScrolls
+    fullSync  // fullSync parameter
   ).catch((err: Error) => {
     return { error: err.message }
   })
@@ -2657,7 +2886,10 @@ importRouter.post('/crypto/parse-all', async (_req, res) => {
   // Sort transactions by date
   allTransactions.sort((a, b) => a.date.localeCompare(b.date))
 
-  // Build summary by symbol
+  // Load funds to check existence
+  const allFunds = await readAllFunds(FUNDS_DIR).catch(() => [] as FundData[])
+
+  // Build summary by symbol with fund existence check
   const bySymbol: Record<string, {
     buys: number
     sells: number
@@ -2665,18 +2897,23 @@ importRouter.post('/crypto/parse-all', async (_req, res) => {
     totalSold: number
     totalSpent: number
     totalReceived: number
+    fundId: string
+    fundExists: boolean
   }> = {}
 
   for (const tx of allTransactions) {
     let stats = bySymbol[tx.symbol]
     if (!stats) {
+      const fundId = buildFundId('robinhood', tx.symbol)
       stats = {
         buys: 0,
         sells: 0,
         totalBought: 0,
         totalSold: 0,
         totalSpent: 0,
-        totalReceived: 0
+        totalReceived: 0,
+        fundId,
+        fundExists: fundExists(fundId, allFunds)
       }
       bySymbol[tx.symbol] = stats
     }

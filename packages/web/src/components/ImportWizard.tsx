@@ -16,6 +16,7 @@ import {
   getScrapeArchive,
   getLocalCryptoStatements,
   parseAllCryptoStatements,
+  importCryptoToFund,
   downloadCryptoStatementsStream,
   getLocalM1Statements,
   parseAllM1Statements,
@@ -362,6 +363,7 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
   const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set())
   const [clearBeforeImport, setClearBeforeImport] = useState(false)
   const [includeCashImpact, setIncludeCashImpact] = useState(false)
+  const [fullSync, setFullSync] = useState(false)
   const [scrapeProgress, setScrapeProgress] = useState<ScrapeProgress>({
     status: '',
     phase: 'navigating',
@@ -379,6 +381,15 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
     downloaded: number
     message: string
   }>({ phase: 'idle', current: 0, total: 0, downloaded: 0, message: '' })
+  const [cryptoSelectedSymbols, setCryptoSelectedSymbols] = useState<Set<string>>(new Set())
+  const [cryptoConsolidate, setCryptoConsolidate] = useState(true)
+  const [cryptoClearBeforeImport, setCryptoClearBeforeImport] = useState(false)
+  const [cryptoImportProgress, setCryptoImportProgress] = useState<{
+    phase: 'idle' | 'importing' | 'complete' | 'error'
+    current: number
+    total: number
+    results: Array<{ symbol: string; success: boolean; imported: number; error?: string }>
+  }>({ phase: 'idle', current: 0, total: 0, results: [] })
   const [m1Statements, setM1Statements] = useState<M1StatementsListResponse | null>(null)
   const [m1ParseResult, setM1ParseResult] = useState<M1StatementsParseAllResponse | null>(null)
   const [m1DownloadProgress, setM1DownloadProgress] = useState<{
@@ -698,8 +709,8 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
         setIsProcessing(false)
         setStep('url')
       }
-    })
-  }, [scrapeUrl])
+    }, fullSync)
+  }, [scrapeUrl, fullSync])
 
   const handleScrapeM1Cash = useCallback(async () => {
     if (!m1CashUrl.trim()) {
@@ -897,6 +908,8 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
       setArchive(null)
       setCryptoStatements(null)
       setCryptoParseResult(null)
+      setCryptoSelectedSymbols(new Set())
+      setCryptoImportProgress({ phase: 'idle', current: 0, total: 0, results: [] })
       setM1Statements(null)
       setM1ParseResult(null)
     } else if (step === 'url') {
@@ -937,6 +950,8 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
     } else if (step === 'crypto-preview') {
       setStep('crypto-pdf')
       setCryptoParseResult(null)
+      setCryptoSelectedSymbols(new Set())
+      setCryptoImportProgress({ phase: 'idle', current: 0, total: 0, results: [] })
     } else if (step === 'm1-statements-preview') {
       setStep('m1-statements')
       setM1ParseResult(null)
@@ -1530,6 +1545,13 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                           setIsProcessing(false)
                           if (result.data) {
                             setCryptoParseResult(result.data)
+                            // Pre-select matched funds
+                            const matched = new Set<string>()
+                            Object.entries(result.data.bySymbol).forEach(([symbol, data]) => {
+                              if (data.fundExists) matched.add(symbol)
+                            })
+                            setCryptoSelectedSymbols(matched)
+                            setCryptoImportProgress({ phase: 'idle', current: 0, total: 0, results: [] })
                             setStep('crypto-preview')
                             if (result.data.errors && result.data.errors.length > 0) {
                               toast.error(`Parsed with ${result.data.errors.length} error(s)`)
@@ -1590,54 +1612,180 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                 </div>
               </div>
 
-              {/* By Symbol Summary */}
+              {/* Fund Selection */}
               <div className="bg-slate-700/30 rounded-lg p-4">
-                <h3 className="text-sm font-medium text-slate-300 mb-3">By Symbol</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {Object.entries(cryptoParseResult.bySymbol).map(([symbol, data]) => (
-                    <div key={symbol} className="bg-slate-700/50 rounded p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-lg font-bold text-white">{symbol}</span>
-                        <span className="text-sm text-slate-400">{data.buys + data.sells} txns</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <span className="text-green-400">Buys:</span> {data.buys}
-                          <div className="text-xs text-slate-500">{formatCurrency(data.totalSpent)} spent</div>
-                        </div>
-                        <div>
-                          <span className="text-red-400">Sells:</span> {data.sells}
-                          <div className="text-xs text-slate-500">{formatCurrency(data.totalReceived)} received</div>
-                        </div>
-                      </div>
+                <h3 className="text-sm font-medium text-slate-300 mb-3">Select Funds to Import</h3>
+
+                {/* Matched Funds */}
+                {Object.entries(cryptoParseResult.bySymbol).some(([, d]) => d.fundExists) && (
+                  <div className="mb-4">
+                    <h4 className="text-xs font-medium text-green-400 mb-2">Matched Funds (click to select)</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(cryptoParseResult.bySymbol)
+                        .filter(([, data]) => data.fundExists)
+                        .sort(([, a], [, b]) => (b.buys + b.sells) - (a.buys + a.sells))
+                        .map(([symbol, data]) => {
+                          const isSelected = cryptoSelectedSymbols.has(symbol)
+                          return (
+                            <button
+                              key={symbol}
+                              onClick={() => {
+                                const next = new Set(cryptoSelectedSymbols)
+                                if (isSelected) next.delete(symbol)
+                                else next.add(symbol)
+                                setCryptoSelectedSymbols(next)
+                              }}
+                              className={`px-3 py-2 rounded text-sm transition-colors ${
+                                isSelected
+                                  ? 'bg-green-500/30 text-green-300 border border-green-500/50'
+                                  : 'bg-slate-700/50 text-slate-400 border border-transparent hover:border-slate-500'
+                              }`}
+                              title={`${data.fundId} - ${data.buys + data.sells} transactions`}
+                            >
+                              <span className="font-medium">{symbol}</span>
+                              <span className="text-slate-400 ml-2">{data.buys + data.sells}</span>
+                              <div className="text-xs mt-1">
+                                <span className="text-green-400">{data.buys}B</span>
+                                {' / '}
+                                <span className="text-red-400">{data.sells}S</span>
+                              </div>
+                            </button>
+                          )
+                        })}
                     </div>
-                  ))}
+                  </div>
+                )}
+
+                {/* Unmatched Funds */}
+                {Object.entries(cryptoParseResult.bySymbol).some(([, d]) => !d.fundExists) && (
+                  <div>
+                    <h4 className="text-xs font-medium text-amber-400 mb-2">Unmatched (no fund exists)</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(cryptoParseResult.bySymbol)
+                        .filter(([, data]) => !data.fundExists)
+                        .sort(([, a], [, b]) => (b.buys + b.sells) - (a.buys + a.sells))
+                        .map(([symbol, data]) => (
+                          <div
+                            key={symbol}
+                            className="px-3 py-2 rounded text-sm bg-slate-800/50 text-slate-500 border border-slate-700"
+                            title={`Would map to ${data.fundId} - create fund first`}
+                          >
+                            <span>{symbol}</span>
+                            <span className="ml-2">{data.buys + data.sells}</span>
+                            <span className="ml-1 text-amber-500">⚠</span>
+                          </div>
+                        ))}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-2">
+                      Create funds for these symbols to enable import
+                    </p>
+                  </div>
+                )}
+
+                {/* Quick Actions */}
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={() => {
+                      const matched = new Set<string>()
+                      Object.entries(cryptoParseResult.bySymbol).forEach(([symbol, data]) => {
+                        if (data.fundExists) matched.add(symbol)
+                      })
+                      setCryptoSelectedSymbols(matched)
+                    }}
+                    className="px-3 py-1 text-xs bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition-colors"
+                  >
+                    Select All Matched
+                  </button>
+                  <button
+                    onClick={() => setCryptoSelectedSymbols(new Set())}
+                    className="px-3 py-1 text-xs bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition-colors"
+                  >
+                    Deselect All
+                  </button>
                 </div>
               </div>
 
-              {/* Current Holdings */}
-              {cryptoParseResult.holdings.length > 0 && (
-                <div className="bg-slate-700/30 rounded-lg p-4">
-                  <h3 className="text-sm font-medium text-slate-300 mb-3">Latest Holdings Snapshot</h3>
-                  <div className="grid grid-cols-3 gap-2">
-                    {cryptoParseResult.holdings.map(h => (
-                      <div key={h.symbol} className="bg-slate-700/50 rounded p-2 text-sm">
-                        <div className="font-medium text-white">{h.symbol}</div>
-                        <div className="text-slate-400">{h.quantity.toFixed(8)}</div>
-                        <div className="text-amber-400">{formatCurrency(h.marketValue)}</div>
-                      </div>
-                    ))}
+              {/* Import Options */}
+              <div className="bg-slate-700/30 rounded-lg p-4 space-y-3">
+                <h3 className="text-sm font-medium text-slate-300 mb-2">Import Options</h3>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cryptoConsolidate}
+                    onChange={(e) => setCryptoConsolidate(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-600 text-mint-500 focus:ring-mint-500 focus:ring-offset-slate-800"
+                  />
+                  <div>
+                    <span className="text-white">Consolidate same-day transactions</span>
+                    <p className="text-xs text-slate-400">Combine multiple buys/sells on the same day into single entries</p>
                   </div>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cryptoClearBeforeImport}
+                    onChange={(e) => setCryptoClearBeforeImport(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-600 text-red-500 focus:ring-red-500 focus:ring-offset-slate-800"
+                  />
+                  <div>
+                    <span className="text-white">Clear fund entries before import</span>
+                    <p className="text-xs text-red-400/80">Warning: This will delete all existing entries in selected funds</p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Import Progress */}
+              {cryptoImportProgress.phase !== 'idle' && (
+                <div className="bg-slate-700/30 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    {cryptoImportProgress.phase === 'importing' && <span className="animate-spin">⏳</span>}
+                    {cryptoImportProgress.phase === 'complete' && <span>✅</span>}
+                    {cryptoImportProgress.phase === 'error' && <span>❌</span>}
+                    <span className="text-white font-medium">
+                      {cryptoImportProgress.phase === 'importing' && `Importing ${cryptoImportProgress.current}/${cryptoImportProgress.total}...`}
+                      {cryptoImportProgress.phase === 'complete' && 'Import Complete'}
+                      {cryptoImportProgress.phase === 'error' && 'Import Error'}
+                    </span>
+                  </div>
+                  {cryptoImportProgress.results.length > 0 && (
+                    <div className="space-y-1 text-sm">
+                      {cryptoImportProgress.results.map((r, i) => (
+                        <div key={i} className={r.success ? 'text-green-400' : 'text-red-400'}>
+                          {r.symbol}: {r.success ? `${r.imported} transactions imported` : r.error}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Transaction Preview */}
-              <div className="border border-slate-700 rounded overflow-hidden">
-                <div className="bg-slate-700/50 p-3 flex justify-between items-center">
-                  <span className="text-sm font-medium text-slate-300">
-                    Recent Transactions (showing first 50)
-                  </span>
+              {/* Import Summary */}
+              {cryptoSelectedSymbols.size > 0 && cryptoImportProgress.phase === 'idle' && (
+                <div className="bg-mint-500/10 border border-mint-500/30 rounded p-4 text-center">
+                  <p className="text-mint-300">
+                    Ready to import{' '}
+                    <strong>
+                      {Array.from(cryptoSelectedSymbols).reduce((sum, symbol) => {
+                        const data = cryptoParseResult.bySymbol[symbol]
+                        return sum + (data ? data.buys + data.sells : 0)
+                      }, 0)}
+                    </strong>{' '}
+                    transactions from{' '}
+                    <strong>{cryptoSelectedSymbols.size}</strong> fund{cryptoSelectedSymbols.size !== 1 ? 's' : ''}
+                    {cryptoClearBeforeImport && (
+                      <span className="text-amber-400 ml-1">(funds will be cleared first)</span>
+                    )}
+                  </p>
                 </div>
+              )}
+
+              {/* Transaction Preview (collapsible) */}
+              <details className="border border-slate-700 rounded overflow-hidden">
+                <summary className="bg-slate-700/50 p-3 cursor-pointer hover:bg-slate-700/70 transition-colors">
+                  <span className="text-sm font-medium text-slate-300">
+                    Transaction Preview (first 50)
+                  </span>
+                </summary>
                 <div className="max-h-64 overflow-y-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-800 sticky top-0">
@@ -1672,7 +1820,7 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </details>
 
               {/* Errors if any */}
               {cryptoParseResult.errors && cryptoParseResult.errors.length > 0 && (
@@ -1686,12 +1834,57 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                 </div>
               )}
 
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded p-4">
-                <p className="text-amber-300 text-sm">
-                  <strong>Note:</strong> To import these transactions, create funds for each crypto symbol first.
-                  The parsed data is shown for review - import functionality coming soon.
-                </p>
-              </div>
+              {/* Import Button */}
+              {cryptoSelectedSymbols.size > 0 && cryptoImportProgress.phase === 'idle' && (
+                <div className="flex justify-center">
+                  <button
+                    onClick={async () => {
+                      setCryptoImportProgress({ phase: 'importing', current: 0, total: cryptoSelectedSymbols.size, results: [] })
+                      const symbols = Array.from(cryptoSelectedSymbols)
+                      const results: Array<{ symbol: string; success: boolean; imported: number; error?: string }> = []
+
+                      for (let i = 0; i < symbols.length; i++) {
+                        const symbol = symbols[i]
+                        const data = cryptoParseResult.bySymbol[symbol]
+                        if (!data) continue
+
+                        setCryptoImportProgress(prev => ({ ...prev, current: i + 1 }))
+
+                        const result = await importCryptoToFund({
+                          fundId: data.fundId,
+                          symbol,
+                          mode: cryptoClearBeforeImport ? 'replace' : 'append',
+                          consolidate: cryptoConsolidate
+                        })
+
+                        if (result.data?.success) {
+                          results.push({ symbol, success: true, imported: result.data.imported })
+                        } else {
+                          results.push({ symbol, success: false, imported: 0, error: result.error ?? 'Unknown error' })
+                        }
+
+                        setCryptoImportProgress(prev => ({ ...prev, results: [...results] }))
+                      }
+
+                      setCryptoImportProgress(prev => ({ ...prev, phase: 'complete' }))
+
+                      const successCount = results.filter(r => r.success).length
+                      const totalImported = results.reduce((sum, r) => sum + r.imported, 0)
+
+                      if (successCount === symbols.length) {
+                        toast.success(`Imported ${totalImported} transactions to ${successCount} fund(s)`)
+                      } else {
+                        toast.error(`Import completed with errors: ${successCount}/${symbols.length} funds succeeded`)
+                      }
+
+                      notifyFundsChanged()
+                    }}
+                    className="px-6 py-3 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors font-medium"
+                  >
+                    Import {cryptoSelectedSymbols.size} Fund{cryptoSelectedSymbols.size !== 1 ? 's' : ''}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -2697,16 +2890,32 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                 />
               </div>
 
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={fullSync}
+                  onChange={(e) => setFullSync(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-amber-500 focus:ring-amber-500 focus:ring-offset-0"
+                />
+                <div>
+                  <span className="text-sm font-medium text-slate-300">Full Sync</span>
+                  <p className="text-xs text-slate-500">Scrape all history instead of stopping at existing data</p>
+                </div>
+              </label>
+
               <button
                 onClick={handleScrapeUrl}
                 disabled={!scrapeUrl.trim() || isProcessing}
                 className="w-full px-4 py-3 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
               >
-                Scrape Transactions
+                {fullSync ? 'Full Sync Transactions' : 'Scrape Transactions'}
               </button>
 
               <p className="text-xs text-slate-500 text-center">
-                We'll automatically scroll to load your entire transaction history.
+                {fullSync
+                  ? 'Full sync will scrape ALL history (may take longer). Use when data is missing.'
+                  : "We'll automatically scroll to load your entire transaction history."
+                }
               </p>
             </div>
           )}

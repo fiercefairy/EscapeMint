@@ -305,6 +305,7 @@ export async function reclassifyArchive(platform = 'robinhood'): Promise<ApiResu
 /**
  * Scrape Robinhood history with real-time progress via SSE.
  * Returns an EventSource that emits ScrapeEvent objects.
+ * @param full - When true, performs full sync without early exit (for complete resync)
  */
 export function scrapeRobinhoodHistoryStream(
   url: string,
@@ -314,11 +315,13 @@ export function scrapeRobinhoodHistoryStream(
     onProgress?: (data: ScrapeProgressEvent) => void
     onComplete?: (data: ScrapeCompleteEvent) => void
     onError?: (data: ScrapeErrorEvent) => void
-  }
+  },
+  full = false
 ): { close: () => void } {
   const encodedUrl = encodeURIComponent(url)
+  const fullParam = full ? '&full=true' : ''
   const eventSource = new EventSource(
-    `${API_BASE}/import/robinhood/scrape-stream?url=${encodedUrl}&platform=${platform}`
+    `${API_BASE}/import/robinhood/scrape-stream?url=${encodedUrl}&platform=${platform}${fullParam}`
   )
 
   eventSource.addEventListener('status', (e: MessageEvent) => {
@@ -473,7 +476,23 @@ export interface CryptoParseAllResponse {
     totalSold: number
     totalSpent: number
     totalReceived: number
+    fundId: string
+    fundExists: boolean
   }>
+  errors?: string[]
+}
+
+export interface CryptoImportResult {
+  success: boolean
+  fundId: string
+  symbol: string
+  mode: 'append' | 'replace'
+  consolidate: boolean
+  startDate: string | null
+  imported: number
+  consolidated: number
+  skippedSells: number
+  finalShares: number
   errors?: string[]
 }
 
@@ -519,6 +538,23 @@ export async function parseAllCryptoStatements(): Promise<ApiResult<CryptoParseA
     `${API_BASE}/import/crypto/parse-all`,
     {},
     'Failed to parse PDFs'
+  )
+}
+
+/**
+ * Import crypto transactions for a specific symbol into a fund.
+ */
+export async function importCryptoToFund(params: {
+  fundId: string
+  symbol: string
+  mode?: 'append' | 'replace'
+  consolidate?: boolean
+  startDate?: string
+}): Promise<ApiResult<CryptoImportResult>> {
+  return postJson<CryptoImportResult>(
+    `${API_BASE}/import/crypto/import-to-fund`,
+    params,
+    'Failed to import crypto transactions'
   )
 }
 

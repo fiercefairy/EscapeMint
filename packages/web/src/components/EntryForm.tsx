@@ -652,9 +652,14 @@ export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: n
   }
 
   // For DEPOSIT/WITHDRAW actions, use the amount field directly
+  // For HOLD actions, positive amount = deposit, negative amount = withdrawal
   // Otherwise fall back to parsing from notes
   const getDeposit = (): string => {
     if (entry.action === 'DEPOSIT' && entry.amount) {
+      return entry.amount.toFixed(2)
+    }
+    // HOLD with positive amount = deposit
+    if (entry.action === 'HOLD' && entry.amount && entry.amount > 0) {
       return entry.amount.toFixed(2)
     }
     return parseDepositFromNotes(entry.notes)
@@ -663,6 +668,10 @@ export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: n
   const getWithdrawal = (): string => {
     if (entry.action === 'WITHDRAW' && entry.amount) {
       return entry.amount.toFixed(2)
+    }
+    // HOLD with negative amount = withdrawal
+    if (entry.action === 'HOLD' && entry.amount && entry.amount < 0) {
+      return Math.abs(entry.amount).toFixed(2)
     }
     return parseWithdrawalFromNotes(entry.notes)
   }

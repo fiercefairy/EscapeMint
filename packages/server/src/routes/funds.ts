@@ -1430,16 +1430,16 @@ fundsRouter.post('/:id/recalculate', async (req, res, next) => {
 
   // Recalculate fund_size and equity for each entry
   for (const entry of sorted) {
-    // Recalculate equity FIRST (before this entry's action): equity = cumShares × price
-    // Equity represents portfolio value BEFORE the action on this row
-    if (entry.price && entry.price > 0) {
-      entry.value = Math.round(cumShares * entry.price * 100) / 100
-    }
-
-    // Track shares AFTER calculating equity - BUY adds, SELL subtracts
+    // Track shares FIRST - BUY adds, SELL subtracts
     if (entry.shares) {
       const sharesAbs = Math.abs(entry.shares)
       cumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
+    }
+
+    // Recalculate equity AFTER updating shares: equity = cumShares × price
+    // This represents portfolio value after this entry's action
+    if (entry.price && entry.price > 0) {
+      entry.value = Math.round(cumShares * entry.price * 100) / 100
     }
 
     // Check for full liquidation (cumShares should be ~0 after a full sell)
