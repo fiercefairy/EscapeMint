@@ -365,13 +365,16 @@ export function computeFundState(
   if (config.fund_type === 'cash') {
     // For cash funds, compute interest earned on the cash balance
     const cashInterest = computeCashInterest(config, trades, cashflows, asOfDate)
+    // start_input = principal (deposits minus withdrawals) = actualValue - interest
+    // This ensures gain calculations only count interest, not the full cash balance
+    const startInput = actualValue - cashInterest
     return {
       cash_available_usd: actualValue,
       expected_target_usd: 0,
       actual_value_usd: actualValue,
-      start_input_usd: 0,
+      start_input_usd: startInput,
       gain_usd: cashInterest,
-      gain_pct: config.fund_size_usd > 0 ? cashInterest / config.fund_size_usd : 0,
+      gain_pct: startInput > 0 ? cashInterest / startInput : 0,
       target_diff_usd: 0,
       cash_interest_usd: cashInterest,
       realized_gains_usd: cashInterest
