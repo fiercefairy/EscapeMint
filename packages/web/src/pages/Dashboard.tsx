@@ -3,23 +3,20 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { FundCard } from '../components/FundCard'
 import { AggregatePanel } from '../components/AggregatePanel'
-import { PortfolioCharts } from '../components/PortfolioCharts'
+import { LazyPortfolioCharts } from '../components/PortfolioCharts'
 import { CreateFundModal } from '../components/CreateFundModal'
 import { ImportWizard } from '../components/ImportWizard'
 import { WelcomePanel } from '../components/WelcomePanel'
 import {
   fetchFunds,
   fetchAggregateMetrics,
-  fetchHistory,
   type FundSummary,
-  type AggregateMetrics,
-  type HistoryResponse
+  type AggregateMetrics
 } from '../api/funds'
 
 export function Dashboard() {
   const [funds, setFunds] = useState<FundSummary[]>([])
   const [metrics, setMetrics] = useState<AggregateMetrics | null>(null)
-  const [history, setHistory] = useState<HistoryResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
   const [filterPlatform, setFilterPlatform] = useState<string>('all')
@@ -31,10 +28,10 @@ export function Dashboard() {
   const loadData = useCallback(async () => {
     setLoading(true)
 
-    const [fundsResult, metricsResult, historyResult] = await Promise.all([
+    // Fetch funds and metrics - charts load their own data lazily
+    const [fundsResult, metricsResult] = await Promise.all([
       fetchFunds(showTestData),
-      fetchAggregateMetrics(showTestData),
-      fetchHistory(showTestData)
+      fetchAggregateMetrics(showTestData)
     ])
 
     if (fundsResult.error) {
@@ -47,12 +44,6 @@ export function Dashboard() {
       toast.error(metricsResult.error)
     } else {
       setMetrics(metricsResult.data ?? null)
-    }
-
-    if (historyResult.error) {
-      toast.error(historyResult.error)
-    } else {
-      setHistory(historyResult.data ?? null)
     }
 
     setLoading(false)
@@ -88,26 +79,6 @@ export function Dashboard() {
       return a.ticker.localeCompare(b.ticker)
     })
   }
-
-  // Filter history data based on selected platform
-  const filteredHistory = history && filterPlatform !== 'all' ? {
-    ...history,
-    currentAllocations: history.currentAllocations.filter(a => a.platform === filterPlatform),
-    totals: {
-      totalCurrentValue: history.currentAllocations
-        .filter(a => a.platform === filterPlatform)
-        .reduce((sum, a) => sum + a.value, 0),
-      totalCurrentCash: history.currentAllocations
-        .filter(a => a.platform === filterPlatform)
-        .reduce((sum, a) => sum + a.cash, 0),
-      totalCurrentMarginAccess: history.currentAllocations
-        .filter(a => a.platform === filterPlatform)
-        .reduce((sum, a) => sum + a.marginAccess, 0),
-      totalCurrentMarginBorrowed: history.currentAllocations
-        .filter(a => a.platform === filterPlatform)
-        .reduce((sum, a) => sum + a.marginBorrowed, 0)
-    }
-  } : history
 
   // Calculate filtered metrics based on selected platform
   const filteredMetrics = metrics && filterPlatform !== 'all' ? (() => {
@@ -284,13 +255,11 @@ export function Dashboard() {
           {/* Aggregate Metrics Panel */}
           {filteredMetrics && <AggregatePanel metrics={filteredMetrics} />}
 
-          {/* Portfolio Charts */}
-          {showCharts && filteredHistory && filteredHistory.currentAllocations.length > 0 && (
-            <PortfolioCharts
-              timeSeries={filteredHistory.timeSeries}
-              allocations={filteredHistory.currentAllocations}
-              totals={filteredHistory.totals}
-              aggregateTotals={filteredHistory.aggregateTotals}
+          {/* Portfolio Charts - loads data lazily */}
+          {showCharts && (
+            <LazyPortfolioCharts
+              showTestData={showTestData}
+              filterPlatform={filterPlatform}
             />
           )}
 
