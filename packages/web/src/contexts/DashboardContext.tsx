@@ -58,6 +58,7 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
   const showTestDataRef = useRef(showTestData)
+  const isUnmountingRef = useRef(false)
 
   // Keep ref in sync
   useEffect(() => {
@@ -65,8 +66,18 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
   }, [showTestData])
 
   const connect = useCallback(() => {
+    // Don't connect if unmounting
+    if (isUnmountingRef.current) return
+
+    // Clear any pending reconnect
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+
     // Close existing connection
     if (wsRef.current) {
+      wsRef.current.onclose = null // Prevent reconnect trigger
       wsRef.current.close()
     }
 
@@ -74,6 +85,10 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
     wsRef.current = ws
 
     ws.onopen = () => {
+      if (isUnmountingRef.current) {
+        ws.close()
+        return
+      }
       setState(prev => ({ ...prev, connected: true, error: null }))
 
       // Subscribe to dashboard channel
@@ -85,6 +100,7 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
     }
 
     ws.onmessage = (event) => {
+      if (isUnmountingRef.current) return
       const message = JSON.parse(event.data as string) as ServerMessage
 
       switch (message.type) {
@@ -129,6 +145,7 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
     }
 
     ws.onerror = () => {
+      if (isUnmountingRef.current) return
       setState(prev => ({
         ...prev,
         connected: false,
@@ -137,6 +154,7 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
     }
 
     ws.onclose = () => {
+      if (isUnmountingRef.current) return
       setState(prev => ({ ...prev, connected: false }))
 
       // Attempt reconnect after 3 seconds
@@ -161,14 +179,19 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
 
   // Connect on mount
   useEffect(() => {
+    isUnmountingRef.current = false
     connect()
 
     return () => {
+      isUnmountingRef.current = true
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
       }
       if (wsRef.current) {
+        wsRef.current.onclose = null // Prevent reconnect trigger
         wsRef.current.close()
+        wsRef.current = null
       }
     }
   }, [connect])
