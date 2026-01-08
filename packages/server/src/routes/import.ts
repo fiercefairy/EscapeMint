@@ -1331,6 +1331,8 @@ const scrapeRobinhoodHistoryWithProgress = async (
   let newCount = 0
   let previousItemCount = 0
   let noNewItemsCount = 0
+  let consecutiveExisting = 0  // Track consecutive already-scraped transactions
+  const MAX_CONSECUTIVE_EXISTING = 50  // Stop early if we've seen this many existing txns in a row
 
   const itemSelector = '[data-testid="activity-item"], [data-testid="UnifiedTransferActivityItem"]'
 
@@ -1340,6 +1342,7 @@ const scrapeRobinhoodHistoryWithProgress = async (
     const currentItemCount = items.length
 
     // Process new items
+    let shouldBreak = false
     for (let i = previousItemCount; i < currentItemCount; i++) {
       const tx = await scrapeActivityItem(page, itemSelector, i)
       if (tx) {
@@ -1347,13 +1350,26 @@ const scrapeRobinhoodHistoryWithProgress = async (
         const isNew = addToArchive(archive, tx)
         if (isNew) {
           newCount++
+          consecutiveExisting = 0  // Reset counter when we find a new transaction
           // Save incrementally every 10 new transactions
           if (newCount % 10 === 0) {
             await saveArchive(archive)
           }
+        } else {
+          consecutiveExisting++
+          // Early exit: if we've seen many consecutive existing transactions, we're caught up
+          if (consecutiveExisting >= MAX_CONSECUTIVE_EXISTING) {
+            console.log(`[Robinhood] Early exit: ${consecutiveExisting} consecutive existing transactions, stopping scrape`)
+            shouldBreak = true
+            break
+          }
         }
         onProgress(totalScraped, currentItemCount, tx)
       }
+    }
+
+    if (shouldBreak) {
+      break
     }
 
     previousItemCount = currentItemCount
@@ -3090,6 +3106,8 @@ const scrapeM1CashHistoryWithProgress = async (
   let totalScraped = 0
   let newCount = 0
   let pageNum = 0
+  let consecutiveExisting = 0  // Track consecutive already-scraped transactions
+  const MAX_CONSECUTIVE_EXISTING = 30  // Stop early if we've seen this many existing txns in a row
 
   // Process pages
   while (pageNum < maxPages) {
@@ -3098,17 +3116,31 @@ const scrapeM1CashHistoryWithProgress = async (
     // Scrape current page
     const pageTxns = await scrapeM1CashTransactionsFromPage(page)
 
+    let shouldBreak = false
     for (const tx of pageTxns) {
       totalScraped++
       const isNew = addToArchive(archive, tx)
       if (isNew) {
         newCount++
+        consecutiveExisting = 0  // Reset counter when we find a new transaction
         // Save incrementally every 10 new transactions
         if (newCount % 10 === 0) {
           await saveArchive(archive)
         }
+      } else {
+        consecutiveExisting++
+        // Early exit: if we've seen many consecutive existing transactions, we're caught up
+        if (consecutiveExisting >= MAX_CONSECUTIVE_EXISTING) {
+          console.log(`[M1 Import] Early exit: ${consecutiveExisting} consecutive existing transactions, stopping scrape`)
+          shouldBreak = true
+          break
+        }
       }
       onProgress(totalScraped, totalScraped, tx)
+    }
+
+    if (shouldBreak) {
+      break
     }
 
     // Check for Next button and click it
@@ -4842,6 +4874,8 @@ const scrapeCoinbaseTransactionsWithProgress = async (
   let previousItemCount = 0
   let noNewItemsCount = 0
   let stoppedAtDate = false
+  let consecutiveExisting = 0  // Track consecutive already-scraped transactions
+  const MAX_CONSECUTIVE_EXISTING = 50  // Stop early if we've seen this many existing txns in a row
 
   const rowSelector = 'tr[data-testid="transaction-history-row"]'
 
@@ -4921,6 +4955,7 @@ const scrapeCoinbaseTransactionsWithProgress = async (
         const isNew = addToCoinbaseTransactionsArchive(archive, tx)
         if (isNew) {
           newCount++
+          consecutiveExisting = 0  // Reset counter when we find a new transaction
           // Save incrementally every 10 new transactions
           if (newCount % 10 === 0) {
             await saveCoinbaseTransactionsArchive(archive)
@@ -4928,6 +4963,14 @@ const scrapeCoinbaseTransactionsWithProgress = async (
           // Call real-time apply callback if provided
           if (onNewTransaction) {
             await onNewTransaction(tx)
+          }
+        } else {
+          consecutiveExisting++
+          // Early exit: if we've seen many consecutive existing transactions, we're caught up
+          if (consecutiveExisting >= MAX_CONSECUTIVE_EXISTING) {
+            console.log(`[Coinbase TX] Early exit: ${consecutiveExisting} consecutive existing transactions, stopping scrape`)
+            await saveCoinbaseTransactionsArchive(archive)
+            return { newCount, totalScraped, stoppedAtDate: false }
           }
         }
         onProgress(totalScraped, rows.length, tx)
