@@ -122,10 +122,10 @@ export function FundDetail() {
     }
   }, [id, fund])
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (showLoading = true) => {
     if (!id) return
 
-    setLoading(true)
+    if (showLoading) setLoading(true)
 
     const [fundResult, stateResult] = await Promise.all([
       fetchFund(id),
@@ -142,7 +142,7 @@ export function FundDetail() {
       setState(stateResult.data)
     }
 
-    setLoading(false)
+    if (showLoading) setLoading(false)
   }, [id])
 
   // Handle inline fund updates from edit/delete operations
@@ -1494,7 +1494,7 @@ export function FundDetail() {
               setShowAddEntry(false)
               if (isAdding) navigate(`/fund/${fund.id}`, { replace: true })
             }}
-            onAdded={loadData}
+            onAdded={() => loadData(false)}
           />
         )}
 
