@@ -396,8 +396,8 @@ export interface TimeSeriesPoint {
   totalDividends: number
   totalExpenses: number
   realizedAPY: number
-  dpiLiquid: number
-  dpiExtracted: number
+  totalGainUsd: number
+  totalGainPct: number
 }
 
 export interface AllocationData {

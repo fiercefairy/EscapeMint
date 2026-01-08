@@ -389,10 +389,9 @@ export function PortfolioCharts({ timeSeries, allocations, totals }: PortfolioCh
       <div className="relative">
         <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-slate-900 to-transparent pointer-events-none z-10 sm:hidden" />
         <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0 sm:overflow-x-visible pb-1 sm:pb-0 scroll-smooth scrollbar-thin snap-x snap-mandatory">
-          <div className={`grid grid-cols-2 xs:grid-cols-3 ${hasMarginAccess ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-1 xs:gap-1.5 sm:gap-2 min-w-[260px] sm:min-w-0`}>
+          <div className={`grid grid-cols-2 ${hasMarginAccess ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-1 xs:gap-1.5 sm:gap-2 min-w-[260px] sm:min-w-0`}>
             <PieChart data={allocations} title="Fund Allocation" valueKey="fundSize" />
             <PieChart data={allocations} title="Asset Allocation" valueKey="value" />
-            <PieChart data={allocations} title="Cash Allocation" valueKey="cash" />
             {hasMarginAccess && (
               <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 snap-start active:bg-slate-700/30">
                 <h3 className="text-[8px] xs:text-[9px] sm:text-xs font-medium text-white mb-0.5 truncate">Margin Access</h3>
@@ -423,17 +422,17 @@ export function PortfolioCharts({ timeSeries, allocations, totals }: PortfolioCh
         />
         <AreaChart
           data={timeSeries}
-          title="DPI (Liquid)"
-          valueKey="dpiLiquid"
+          title="Total Gain ($)"
+          valueKey="totalGainUsd"
           color="#3b82f6"
-          formatValue={(v) => v.toFixed(2)}
+          formatValue={formatCurrencyCompact}
         />
         <AreaChart
           data={timeSeries}
-          title="DPI (Extracted)"
-          valueKey="dpiExtracted"
+          title="Total Gain (%)"
+          valueKey="totalGainPct"
           color="#8b5cf6"
-          formatValue={(v) => v.toFixed(2)}
+          formatValue={formatPercentSimple}
         />
       </div>
 
