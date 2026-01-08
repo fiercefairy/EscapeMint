@@ -15,6 +15,7 @@ import {
   type Dividend,
   type Expense
 } from '@escapemint/engine'
+import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
 
 const FUNDS_DIR = join(process.env['DATA_DIR'] ?? './data', 'funds')
 
@@ -320,40 +321,23 @@ export async function getAggregateMetrics(includeTest = false): Promise<Dashboar
   return aggregated
 }
 
-// Compute metrics for a single fund
+// Compute metrics for a single fund using the same logic as /aggregate endpoint
 function computeFundMetrics(fund: FundData): FundMetrics | null {
+  if (fund.entries.length === 0) return null
+
   const sortedEntries = [...fund.entries].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
   )
 
-  if (sortedEntries.length === 0) return null
-
   const latestEntry = sortedEntries[sortedEntries.length - 1]!
-  const firstEntry = sortedEntries[0]!
 
-  const trades = entriesToTrades(sortedEntries)
-  const dividends = entriesToDividends(sortedEntries)
-  const expenses = entriesToExpenses(sortedEntries)
+  // Use computeFundFinalMetrics for accurate APY calculations (same as /aggregate endpoint)
+  const finalMetrics = computeFundFinalMetrics(fund)
 
   const actualFundSize = latestEntry.fund_size ?? fund.config.fund_size_usd
-  const configWithActualFundSize = { ...fund.config, fund_size_usd: actualFundSize }
+  const daysActive = finalMetrics.daysActive
 
-  const state = computeFundState(
-    configWithActualFundSize,
-    trades,
-    [],
-    dividends,
-    expenses,
-    latestEntry.value,
-    latestEntry.date
-  )
-
-  const daysActive = Math.max(
-    1,
-    Math.floor((new Date(latestEntry.date).getTime() - new Date(firstEntry.date).getTime()) / (24 * 60 * 60 * 1000))
-  )
-
-  // Time-weighted fund size calculation
+  // Time-weighted fund size calculation (for share weighting in aggregation)
   let timeWeightedFundSize = 0
   for (let i = 0; i < sortedEntries.length; i++) {
     const entry = sortedEntries[i]!
@@ -370,22 +354,16 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
   const isCashFund = fund.config.fund_type === 'cash'
   const isClosed = fund.config.status === 'closed' || fund.config.fund_size_usd === 0
 
-  // For cash funds, gain = interest earned only
-  const gainUsd = isCashFund ? state.realized_gains_usd : state.gain_usd
-  const gainPct = state.start_input_usd > 0 ? gainUsd / state.start_input_usd : 0
-
-  // Realized APY
-  const realizedAPY = timeWeightedFundSize > 0 && daysActive > 0
-    ? (state.realized_gains_usd / timeWeightedFundSize) * (365 / daysActive)
-    : 0
-
-  // Liquid APY
-  const liquidAPY = timeWeightedFundSize > 0 && daysActive > 0
-    ? (gainUsd / timeWeightedFundSize) * (365 / daysActive)
-    : 0
+  // Use APY from finalMetrics (proper TWAB and compound interest formula)
+  const realizedAPY = finalMetrics.realizedApy
+  const liquidAPY = finalMetrics.liquidApy
 
   // Projected annual return
   const projectedAnnualReturn = liquidAPY * actualFundSize
+
+  // For cash funds, gain = interest earned only
+  const gainUsd = isCashFund ? finalMetrics.realized : finalMetrics.liquidPnl
+  const gainPct = finalMetrics.totalInvested > 0 ? gainUsd / finalMetrics.totalInvested : 0
 
   return {
     id: fund.id,
@@ -394,11 +372,11 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
     status: isClosed ? 'closed' : 'active',
     fundType: (fund.config.fund_type ?? 'stock') as 'cash' | 'stock' | 'crypto' | 'derivatives',
     fundSize: actualFundSize,
-    currentValue: latestEntry.value,
-    startInput: state.start_input_usd,
+    currentValue: finalMetrics.currentValue,
+    startInput: finalMetrics.totalInvested,
     daysActive,
     timeWeightedFundSize,
-    realizedGains: state.realized_gains_usd,
+    realizedGains: finalMetrics.realized,
     realizedAPY,
     liquidAPY,
     projectedAnnualReturn,
@@ -453,10 +431,10 @@ function recalculateAggregates(fundMetrics: FundMetrics[]): DashboardMetrics {
   const totalGainUsd = totalValue - totalStartInput
   const totalGainPct = totalStartInput > 0 ? totalGainUsd / totalStartInput : 0
 
-  // Aggregate liquid APY
-  const avgDaysActive = fundsWithSharesPct.length > 0 ? totalDaysActive / fundsWithSharesPct.length : 1
-  const liquidAPY = totalTimeWeightedFundSize > 0 && avgDaysActive > 0
-    ? (totalGainUsd / totalTimeWeightedFundSize) * (365 / avgDaysActive)
+  // Aggregate liquid APY: totalGainUsd / totalTimeWeightedFundSize * 365
+  // totalTimeWeightedFundSize is already in dollar-days
+  const liquidAPY = totalTimeWeightedFundSize > 0
+    ? (totalGainUsd * 365) / totalTimeWeightedFundSize
     : 0
 
   return {
