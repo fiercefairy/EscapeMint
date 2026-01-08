@@ -224,7 +224,16 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
     currentValue = cash
   } else {
     fundSize = latestEntry?.fund_size ?? config.fund_size_usd
-    currentValue = latestEntry?.value ?? 0
+    // Calculate post-action value (entry.value is pre-action)
+    // After a BUY, the equity value increases by the buy amount
+    // After a SELL, the equity value decreases by the sell amount
+    let postActionValue = latestEntry?.value ?? 0
+    if (latestEntry?.action === 'BUY' && latestEntry?.amount) {
+      postActionValue += latestEntry.amount
+    } else if (latestEntry?.action === 'SELL' && latestEntry?.amount) {
+      postActionValue = Math.max(0, postActionValue - latestEntry.amount)
+    }
+    currentValue = postActionValue
     if (!manageCash) {
       cash = 0
     } else {
