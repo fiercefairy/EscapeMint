@@ -8,12 +8,22 @@ import { AuditTrail } from './pages/AuditTrail'
 import { Platforms } from './pages/Platforms'
 import { Settings } from './pages/Settings'
 import { Layout } from './components/Layout'
+import { DashboardProvider } from './contexts/DashboardContext'
+
+// Wrap Dashboard with its WebSocket provider
+function DashboardWithProvider() {
+  return (
+    <DashboardProvider>
+      <Dashboard />
+    </DashboardProvider>
+  )
+}
 
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
-        <Route index element={<Dashboard />} />
+        <Route index element={<DashboardWithProvider />} />
         <Route path="fund/:id" element={<FundDetail />} />
         <Route path="fund/:id/edit" element={<FundDetail />} />
         <Route path="fund/:id/add" element={<FundDetail />} />

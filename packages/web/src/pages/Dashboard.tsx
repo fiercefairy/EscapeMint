@@ -1,91 +1,132 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { toast } from 'sonner'
 import { FundCard } from '../components/FundCard'
 import { AggregatePanel } from '../components/AggregatePanel'
-import { LazyPortfolioCharts } from '../components/PortfolioCharts'
+import { PortfolioCharts } from '../components/PortfolioCharts'
 import { CreateFundModal } from '../components/CreateFundModal'
 import { ImportWizard } from '../components/ImportWizard'
 import { WelcomePanel } from '../components/WelcomePanel'
-import {
-  fetchFunds,
-  fetchAggregateMetrics,
-  type FundSummary,
-  type AggregateMetrics
-} from '../api/funds'
+import { useDashboard } from '../contexts/DashboardContext'
+import type { FundSummary, AggregateMetrics } from '../api/funds'
+
+// Skeleton for metrics panel
+function MetricsPanelSkeleton() {
+  return (
+    <div className="bg-slate-800 rounded-lg p-3 sm:p-4 border border-slate-700 animate-pulse">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="space-y-2">
+            <div className="h-3 w-20 bg-slate-700 rounded" />
+            <div className="h-6 w-24 bg-slate-700 rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Skeleton for fund cards
+function FundCardsSkeleton() {
+  return (
+    <div className="space-y-3 xs:space-y-4 sm:space-y-5">
+      <div>
+        <div className="h-4 w-24 bg-slate-700 rounded mb-2" />
+        <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1.5 xs:gap-2 sm:gap-3">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="bg-slate-800 rounded-lg p-2 sm:p-3 border border-slate-700 animate-pulse">
+              <div className="h-4 w-16 bg-slate-700 rounded mb-2" />
+              <div className="h-6 w-20 bg-slate-700 rounded mb-1" />
+              <div className="h-3 w-12 bg-slate-700 rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export function Dashboard() {
-  const [funds, setFunds] = useState<FundSummary[]>([])
-  const [metrics, setMetrics] = useState<AggregateMetrics | null>(null)
-  const [loading, setLoading] = useState(true)
+  const {
+    funds,
+    metrics,
+    history,
+    fundsLoading,
+    metricsLoading,
+    historyLoading,
+    showTestData,
+    setShowTestData,
+    refresh,
+    connected
+  } = useDashboard()
+
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
   const [filterPlatform, setFilterPlatform] = useState<string>('all')
   const [showCharts, setShowCharts] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
-  const [showTestData, setShowTestData] = useState(false)
-
-  const loadData = useCallback(async () => {
-    setLoading(true)
-
-    // Fetch funds and metrics - charts load their own data lazily
-    const [fundsResult, metricsResult] = await Promise.all([
-      fetchFunds(showTestData),
-      fetchAggregateMetrics(showTestData)
-    ])
-
-    if (fundsResult.error) {
-      toast.error(fundsResult.error)
-    } else {
-      setFunds(fundsResult.data ?? [])
-    }
-
-    if (metricsResult.error) {
-      toast.error(metricsResult.error)
-    } else {
-      setMetrics(metricsResult.data ?? null)
-    }
-
-    setLoading(false)
-  }, [showTestData])
-
-  useEffect(() => {
-    loadData()
-  }, [loadData])
 
   // Get unique platforms
-  const platforms = [...new Set(funds.map(f => f.platform))]
+  const platforms = useMemo(() => {
+    if (!funds) return []
+    return [...new Set(funds.map(f => f.platform))]
+  }, [funds])
 
   // Filter funds
-  const filteredFunds = filterPlatform === 'all'
-    ? funds
-    : funds.filter(f => f.platform === filterPlatform)
+  const filteredFunds = useMemo(() => {
+    if (!funds) return []
+    return filterPlatform === 'all'
+      ? funds
+      : funds.filter(f => f.platform === filterPlatform)
+  }, [funds, filterPlatform])
 
   // Group by platform and sort cash funds to top within each group
-  const fundsByPlatform = filteredFunds.reduce((acc, fund) => {
-    const key = fund.platform
-    if (!acc[key]) acc[key] = []
-    acc[key].push(fund)
-    return acc
-  }, {} as Record<string, FundSummary[]>)
+  const fundsByPlatform = useMemo(() => {
+    const grouped = filteredFunds.reduce((acc, fund) => {
+      const key = fund.platform
+      if (!acc[key]) acc[key] = []
+      acc[key].push(fund)
+      return acc
+    }, {} as Record<string, FundSummary[]>)
 
-  // Sort each platform's funds: cash funds first, then by ticker
-  for (const platform of Object.keys(fundsByPlatform)) {
-    fundsByPlatform[platform]?.sort((a, b) => {
-      const aIsCash = a.config.fund_type === 'cash'
-      const bIsCash = b.config.fund_type === 'cash'
-      if (aIsCash && !bIsCash) return -1
-      if (!aIsCash && bIsCash) return 1
-      return a.ticker.localeCompare(b.ticker)
-    })
-  }
+    // Sort each platform's funds: cash funds first, then by ticker
+    for (const platform of Object.keys(grouped)) {
+      grouped[platform]?.sort((a, b) => {
+        const aIsCash = a.config.fund_type === 'cash'
+        const bIsCash = b.config.fund_type === 'cash'
+        if (aIsCash && !bIsCash) return -1
+        if (!aIsCash && bIsCash) return 1
+        return a.ticker.localeCompare(b.ticker)
+      })
+    }
+
+    return grouped
+  }, [filteredFunds])
+
+  // Filter history data based on selected platform
+  const filteredHistory = useMemo(() => {
+    if (!history) return null
+    if (filterPlatform === 'all') return history
+
+    const filteredAllocations = history.currentAllocations.filter(a => a.platform === filterPlatform)
+    return {
+      ...history,
+      currentAllocations: filteredAllocations,
+      totals: {
+        totalCurrentValue: filteredAllocations.reduce((sum, a) => sum + a.value, 0),
+        totalCurrentCash: filteredAllocations.reduce((sum, a) => sum + a.cash, 0),
+        totalCurrentMarginAccess: filteredAllocations.reduce((sum, a) => sum + a.marginAccess, 0),
+        totalCurrentMarginBorrowed: filteredAllocations.reduce((sum, a) => sum + a.marginBorrowed, 0)
+      }
+    }
+  }, [history, filterPlatform])
 
   // Calculate filtered metrics based on selected platform
-  const filteredMetrics = metrics && filterPlatform !== 'all' ? (() => {
-    // Filter the per-fund metrics by platform
+  const filteredMetrics = useMemo((): AggregateMetrics | null => {
+    if (!metrics) return null
+    if (filterPlatform === 'all') return metrics
+
     const filteredFundMetrics = metrics.funds.filter(f => f.platform === filterPlatform)
 
-    // Recalculate all aggregate values from filtered funds
     const totalFundSize = filteredFundMetrics.reduce((sum, f) => sum + f.fundSize, 0)
     const totalValue = filteredFundMetrics.reduce((sum, f) => sum + f.currentValue, 0)
     const totalStartInput = filteredFundMetrics.reduce((sum, f) => sum + f.startInput, 0)
@@ -95,7 +136,6 @@ export function Dashboard() {
     const activeFunds = filteredFundMetrics.filter(f => f.status !== 'closed').length
     const closedFunds = filteredFundMetrics.filter(f => f.status === 'closed').length
 
-    // Recalculate fund shares within the filtered subset
     const dollarsPerDay = totalTimeWeightedFundSize > 0 && totalDaysActive > 0
       ? totalTimeWeightedFundSize / totalDaysActive
       : 0
@@ -114,13 +154,11 @@ export function Dashboard() {
       fundSharesPct: totalFundShares > 0 ? fund.fundShares / totalFundShares : 0
     }))
 
-    // Recalculate realized APY using fund shares weighting
     let weightedRealizedAPY = 0
     for (const fund of fundsWithSharesPct) {
       weightedRealizedAPY += fund.realizedAPY * fund.fundSharesPct
     }
 
-    // Sum projected annual returns from active funds
     const projectedAnnualReturn = fundsWithSharesPct
       .filter(f => f.currentValue > 0)
       .reduce((sum, f) => sum + f.projectedAnnualReturn, 0)
@@ -128,7 +166,6 @@ export function Dashboard() {
     const totalGainUsd = totalValue - totalStartInput
     const totalGainPct = totalStartInput > 0 ? (totalValue / totalStartInput - 1) : 0
 
-    // Compute aggregate liquid APY directly from totals (not weighted average)
     const avgDaysActive = fundsWithSharesPct.length > 0 ? totalDaysActive / fundsWithSharesPct.length : 1
     const aggregateLiquidAPY = totalTimeWeightedFundSize > 0 && avgDaysActive > 0
       ? (totalGainUsd / totalTimeWeightedFundSize) * (365 / avgDaysActive)
@@ -151,7 +188,7 @@ export function Dashboard() {
       closedFunds,
       funds: fundsWithSharesPct
     }
-  })() : metrics
+  }, [metrics, filterPlatform])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -166,6 +203,9 @@ export function Dashboard() {
     return (value * 100).toFixed(2) + '%'
   }
 
+  // Show welcome panel if no funds and not loading
+  const showWelcome = !fundsLoading && funds && funds.length === 0
+
   return (
     <div className="space-y-3 sm:space-y-4">
       {/* Header */}
@@ -175,6 +215,7 @@ export function Dashboard() {
             <h1 className="text-lg xs:text-xl sm:text-2xl font-bold text-white leading-tight">
               Dashboard
               {showTestData && <span className="ml-1.5 xs:ml-2 text-amber-400 text-[10px] xs:text-xs sm:text-sm font-normal">(Test)</span>}
+              {!connected && <span className="ml-1.5 xs:ml-2 text-red-400 text-[10px] xs:text-xs sm:text-sm font-normal">(Offline)</span>}
             </h1>
             <p className="text-[10px] xs:text-[11px] sm:text-sm text-slate-400 mt-0.5 leading-tight">
               {filteredMetrics?.activeFunds ?? 0} active • {filteredMetrics?.closedFunds ?? 0} closed
@@ -197,7 +238,7 @@ export function Dashboard() {
             </button>
           </div>
         </div>
-        {/* Secondary Controls - Improved mobile responsive layout */}
+        {/* Secondary Controls */}
         <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 overflow-x-auto scrollbar-hide -mx-2 px-2 sm:mx-0 sm:px-0 sm:overflow-visible pb-1 sm:pb-0">
           <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 flex-shrink-0">
             <button
@@ -241,30 +282,38 @@ export function Dashboard() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-12 xs:py-16 sm:py-20">
-          <div className="animate-spin rounded-full h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 border-b-2 border-mint-400"></div>
-        </div>
-      ) : funds.length === 0 ? (
+      {showWelcome ? (
         <WelcomePanel
           onCreateFund={() => setShowCreateModal(true)}
           onImport={() => setShowImportModal(true)}
         />
       ) : (
         <>
-          {/* Aggregate Metrics Panel */}
-          {filteredMetrics && <AggregatePanel metrics={filteredMetrics} />}
+          {/* Aggregate Metrics Panel - shows skeleton while loading */}
+          {metricsLoading ? (
+            <MetricsPanelSkeleton />
+          ) : filteredMetrics ? (
+            <AggregatePanel metrics={filteredMetrics} />
+          ) : null}
 
-          {/* Portfolio Charts - loads data lazily */}
+          {/* Portfolio Charts - shows data as it arrives via WebSocket */}
           {showCharts && (
-            <LazyPortfolioCharts
-              showTestData={showTestData}
-              filterPlatform={filterPlatform}
-            />
+            historyLoading ? (
+              <ChartsSkeleton />
+            ) : filteredHistory && filteredHistory.currentAllocations.length > 0 ? (
+              <PortfolioCharts
+                timeSeries={filteredHistory.timeSeries}
+                allocations={filteredHistory.currentAllocations}
+                totals={filteredHistory.totals}
+                aggregateTotals={filteredHistory.aggregateTotals}
+              />
+            ) : null
           )}
 
-          {/* Funds List/Grid */}
-          {viewMode === 'table' ? (
+          {/* Funds List/Grid - shows skeleton while loading */}
+          {fundsLoading ? (
+            <FundCardsSkeleton />
+          ) : viewMode === 'table' ? (
             <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0 scrollbar-thin scroll-fade-right">
               <table className="w-full text-left text-[10px] xs:text-xs sm:text-sm min-w-[260px]">
                 <thead>
@@ -352,7 +401,7 @@ export function Dashboard() {
       {showCreateModal && (
         <CreateFundModal
           onClose={() => setShowCreateModal(false)}
-          onCreated={loadData}
+          onCreated={refresh}
         />
       )}
 
@@ -360,9 +409,47 @@ export function Dashboard() {
       {showImportModal && (
         <ImportWizard
           onClose={() => setShowImportModal(false)}
-          onImported={loadData}
+          onImported={refresh}
         />
       )}
+    </div>
+  )
+}
+
+// Charts skeleton component
+function ChartsSkeleton() {
+  return (
+    <div className="space-y-1.5 xs:space-y-2 sm:space-y-3">
+      {/* Pie Charts Row */}
+      <div className="relative">
+        <div className="grid grid-cols-3 gap-1 xs:gap-1.5 sm:gap-2">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="bg-slate-800 rounded-lg p-1.5 sm:p-2 border border-slate-700 animate-pulse">
+              <div className="h-2 w-24 bg-slate-700 rounded mb-1" />
+              <div className="flex items-start gap-2">
+                <div className="w-[100px] h-[100px] bg-slate-700/50 rounded-full flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  {[1, 2, 3].map(j => (
+                    <div key={j} className="h-4 bg-slate-700 rounded" />
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Time Series Rows */}
+      {[1, 2, 3].map(row => (
+        <div key={row} className="grid grid-cols-2 sm:grid-cols-3 gap-1 xs:gap-1.5 sm:gap-2">
+          {[1, 2, 3].slice(0, row === 1 ? 3 : 2).map(i => (
+            <div key={i} className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 animate-pulse">
+              <div className="h-2 w-20 bg-slate-700 rounded mb-1" />
+              <div className="h-[80px] sm:h-[100px] bg-slate-700/50 rounded" />
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   )
 }

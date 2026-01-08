@@ -1,5 +1,6 @@
 import express from 'express'
 import cors from 'cors'
+import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,10 +12,12 @@ import { importRouter } from './routes/import.js'
 import { backupRouter } from './routes/backup.js'
 import { derivativesRouter } from './routes/derivatives.js'
 import { errorHandler } from './middleware/error-handler.js'
+import { initWebSocket } from './services/websocket.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const app: ReturnType<typeof express> = express()
+const server = createServer(app)
 const PORT = process.env['PORT'] ?? 5551
 
 app.use(cors())
@@ -45,8 +48,12 @@ app.get('/api/version', async (_req, res) => {
 // Error handling
 app.use(errorHandler)
 
-app.listen(PORT, () => {
+// Initialize WebSocket server
+initWebSocket(server)
+
+server.listen(PORT, () => {
   console.log(`EscapeMint API running on http://localhost:${String(PORT)}`)
+  console.log(`WebSocket available at ws://localhost:${String(PORT)}/ws`)
 })
 
-export { app }
+export { app, server }
