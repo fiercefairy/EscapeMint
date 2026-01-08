@@ -402,6 +402,7 @@ export interface TimeSeriesPoint {
   liquidAPY: number
   totalGainUsd: number
   totalGainPct: number
+  fundBreakdown: Record<string, number>  // Per-fund breakdown of fund sizes
 }
 
 export interface AllocationData {

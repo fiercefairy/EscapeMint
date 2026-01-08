@@ -512,6 +512,162 @@ function StackedAreaChart({ data }: { data: TimeSeriesPoint[] }) {
   )
 }
 
+// Stacked Area Chart showing individual fund contributions to Total Fund Size
+function FundsStackedAreaChart({ data, allocations }: {
+  data: TimeSeriesPoint[]
+  allocations: AllocationData[]
+}) {
+  const ref = useRef<SVGSVGElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+
+  // Get fund IDs from allocations (sorted by fundSize descending for consistent stacking)
+  const sortedAllocations = [...allocations].sort((a, b) => b.fundSize - a.fundSize)
+  const fundIds = sortedAllocations.map(a => a.id)
+  const fundLabels = sortedAllocations.reduce((acc, a) => {
+    acc[a.id] = `${a.platform}-${a.ticker}`
+    return acc
+  }, {} as Record<string, string>)
+
+  useEffect(() => {
+    if (!ref.current || data.length === 0 || fundIds.length === 0) return
+
+    const svg = d3.select(ref.current)
+    svg.selectAll('*').remove()
+
+    const margin = { top: 10, right: 10, bottom: 20, left: 45 }
+    const width = ref.current.clientWidth - margin.left - margin.right
+    const height = 120 - margin.top - margin.bottom
+
+    const g = svg
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`)
+
+    // Transform data for D3 stack
+    const stackData = data.map(d => ({
+      date: new Date(d.date),
+      ...d.fundBreakdown
+    }))
+
+    const x = d3.scaleTime()
+      .domain(d3.extent(stackData, d => d.date) as [Date, Date])
+      .range([0, width])
+
+    // Create stack generator
+    const stack = d3.stack<typeof stackData[0]>()
+      .keys(fundIds)
+      .value((d, key) => (d[key] as number) ?? 0)
+
+    const stackedData = stack(stackData)
+
+    const yMax = d3.max(stackedData, layer => d3.max(layer, d => d[1])) ?? 0
+
+    const y = d3.scaleLinear()
+      .domain([0, yMax * 1.05])
+      .range([height, 0])
+
+    const area = d3.area<d3.SeriesPoint<typeof stackData[0]>>()
+      .x(d => x(d.data.date))
+      .y0(d => y(d[0]))
+      .y1(d => y(d[1]))
+      .curve(d3.curveMonotoneX)
+
+    // Draw stacked areas
+    g.selectAll('path.fund-area')
+      .data(stackedData)
+      .enter()
+      .append('path')
+      .attr('class', 'fund-area')
+      .attr('fill', (_, i) => COLORS[i % COLORS.length] ?? '#666')
+      .attr('d', area)
+
+    // Tooltip and mouse tracking
+    const tooltip = d3.select(tooltipRef.current)
+    const bisect = d3.bisector<typeof stackData[0], Date>(d => d.date).left
+
+    g.append('rect')
+      .attr('width', width)
+      .attr('height', height)
+      .attr('fill', 'transparent')
+      .attr('cursor', 'crosshair')
+      .on('mouseover', () => tooltip.style('opacity', 1))
+      .on('mousemove', function(event) {
+        const [mx] = d3.pointer(event)
+        const date = x.invert(mx)
+        const i = bisect(stackData, date, 1)
+        const d0 = stackData[i - 1]
+        const d1 = stackData[i]
+        if (!d0 || !d1) return
+        const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
+
+        // Build tooltip with all fund values
+        const total = fundIds.reduce((sum, id) => sum + ((d[id] as number) ?? 0), 0)
+        const lines = fundIds
+          .map((id, idx) => {
+            const val = (d[id] as number) ?? 0
+            if (val === 0) return null
+            const color = COLORS[idx % COLORS.length]
+            return `<span style="color:${color}">${fundLabels[id]}: ${formatCurrencyCompact(val)}</span>`
+          })
+          .filter(Boolean)
+          .join('<br/>')
+
+        tooltip
+          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/>${lines}<br/><strong>Total: ${formatCurrencyCompact(total)}</strong>`)
+          .style('left', (event.pageX + 10) + 'px')
+          .style('top', (event.pageY - 10) + 'px')
+      })
+      .on('mouseout', () => tooltip.style('opacity', 0))
+
+    // X axis
+    g.append('g')
+      .attr('transform', `translate(0,${height})`)
+      .call(d3.axisBottom(x).ticks(3).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
+      .selectAll('text')
+      .attr('fill', '#64748b')
+      .attr('font-size', '8px')
+
+    // Y axis
+    g.append('g')
+      .call(d3.axisLeft(y).ticks(3).tickFormat(d => formatCurrencyCompact(d as number)))
+      .selectAll('text')
+      .attr('fill', '#64748b')
+      .attr('font-size', '8px')
+
+    svg.selectAll('.domain').attr('stroke', '#334155')
+    svg.selectAll('.tick line').attr('stroke', '#334155')
+
+  }, [data, fundIds, fundLabels])
+
+  // Show top 5 funds in legend
+  const legendFunds = sortedAllocations.slice(0, 5)
+
+  return (
+    <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
+      <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white mb-0.5">Total Fund Size</h3>
+      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+      <div
+        ref={tooltipRef}
+        className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[250px]"
+        style={{ opacity: 0 }}
+      />
+      <div className="flex flex-wrap gap-1 xs:gap-1.5 sm:gap-2 mt-0.5 justify-center text-[6px] xs:text-[7px] sm:text-[8px] md:text-[9px]">
+        {legendFunds.map((fund, i) => (
+          <span key={fund.id} className="flex items-center gap-0.5 text-slate-400">
+            <span
+              className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full"
+              style={{ backgroundColor: COLORS[i % COLORS.length] }}
+            />
+            {fund.platform}-{fund.ticker}
+          </span>
+        ))}
+        {allocations.length > 5 && (
+          <span className="text-slate-500">+{allocations.length - 5} more</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Combined Realized + Liquid Gains Chart
 function GainsChart({ data, currentRealized, currentLiquid }: {
   data: TimeSeriesPoint[]
@@ -1150,11 +1306,9 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
 
       {/* Time Series Charts - Row 2: Fund totals */}
       <div className="grid grid-cols-2 gap-1 xs:gap-1.5 sm:gap-2">
-        <AreaChart
+        <FundsStackedAreaChart
           data={timeSeries}
-          title="Total Fund Size"
-          valueKey="totalFundSize"
-          color="#f59e0b"
+          allocations={allocations}
         />
         <AreaChart
           data={timeSeries}

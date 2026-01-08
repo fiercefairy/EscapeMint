@@ -305,6 +305,7 @@ fundsRouter.get('/history', async (req, res, next) => {
     liquidAPY: number
     totalGainUsd: number
     totalGainPct: number
+    fundBreakdown: Record<string, number>  // Per-fund breakdown of fund sizes
   }
 
   const timeSeries: TimeSeriesPoint[] = []
@@ -320,6 +321,8 @@ fundsRouter.get('/history', async (req, res, next) => {
     let totalExpenses = 0
     let totalCashInterest = 0
     let totalRealizedGain = 0
+    let totalGainUsd = 0  // Track gain per-fund (handles cash funds properly)
+    const fundBreakdown: Record<string, number> = {}
 
     for (const fund of funds) {
       // Find the latest entry on or before this date
@@ -360,6 +363,9 @@ fundsRouter.get('/history', async (req, res, next) => {
         totalRealizedGain += derivRealizedPnl + derivCumInterest
         totalCashInterest += derivCumInterest
         totalCash += Math.max(0, derivAvailableFunds)
+        fundBreakdown[fund.id] = derivValue
+        // Derivatives gain = unrealized (equity - costBasis) + realized P&L
+        totalGainUsd += (derivValue - derivCostBasis) + derivRealizedPnl
       } else {
         // For cash and trading funds, use engine's computeFundState
         const trades = entriesToTrades(entriesUpToDate)
@@ -385,12 +391,18 @@ fundsRouter.get('/history', async (req, res, next) => {
         )
 
         // Use actual_value_usd and start_input_usd from state (same as aggregate endpoint)
-        // The aggregate computes totalGainUsd = totalValue - totalStartInput at the end
         totalValue += state.actual_value_usd
         totalStartInput += state.start_input_usd
         totalRealizedGain += state.realized_gains_usd
         totalCashInterest += state.cash_interest_usd
         totalFundSize += actualFundSize
+        fundBreakdown[fund.id] = actualFundSize
+
+        // For gain calculation, match computeFundMetrics logic:
+        // Cash funds: gain = interest earned (realized only, not full balance)
+        // Trading funds: gain = actual_value - start_input (unrealized)
+        const fundGain = isCashFund ? state.realized_gains_usd : state.gain_usd
+        totalGainUsd += fundGain
 
         // Track dividends and expenses for display
         for (const entry of entriesUpToDate) {
@@ -416,28 +428,30 @@ fundsRouter.get('/history', async (req, res, next) => {
       }
     }
 
-    // Compute totalGainUsd the same way as aggregate endpoint:
-    // totalGainUsd = totalValue - totalStartInput
-    const totalGainUsd = totalValue - totalStartInput
-    const totalGainPct = totalStartInput > 0 ? totalGainUsd / totalStartInput : 0
+    // For chart display, use totalValue - totalStartInput to match aggregate endpoint
+    // This is the "liquid gain if you sold everything" metric
+    const totalGainUsdForChart = totalValue - totalStartInput
+    const totalGainPct = totalStartInput > 0 ? totalGainUsdForChart / totalStartInput : 0
 
     // Calculate days active from earliest fund start date for proper annualization
     const daysActive = earliestStartDate
       ? Math.max(1, Math.floor((new Date(date).getTime() - new Date(earliestStartDate).getTime()) / (24 * 60 * 60 * 1000)))
       : 1
 
-    // Use totalFundSize as approximation for time-weighted fund size
-    // APY = (Gain / FundSize) * (365 / daysActive)
-    const timeWeightedBase = totalFundSize > 0 ? totalFundSize : totalStartInput
+    // For APY calculation, use totalStartInput as base (cost basis of invested capital)
+    // This prevents inflated APY from cash fund balances (which have startInput = 0)
+    // Use a minimum base to prevent divide-by-small-number issues in early data
+    const apyBase = Math.max(totalStartInput, totalFundSize * 0.1)
 
-    // Realized APY: annualized return based on realized gains
-    const realizedAPY = timeWeightedBase > 0 && daysActive > 0
-      ? (totalRealizedGain / timeWeightedBase) * (365 / daysActive)
+    // Realized APY: annualized return on invested capital
+    const realizedAPY = apyBase > 0 && daysActive > 0
+      ? (totalRealizedGain / apyBase) * (365 / daysActive)
       : 0
 
-    // Liquid APY: annualized return based on total gain (realized + unrealized)
-    const liquidAPY = timeWeightedBase > 0 && daysActive > 0
-      ? (totalGainUsd / timeWeightedBase) * (365 / daysActive)
+    // Liquid APY: annualized total gain on invested capital
+    // Use per-fund accumulated gain (totalGainUsd) which handles cash funds properly
+    const liquidAPY = apyBase > 0 && daysActive > 0
+      ? (totalGainUsd / apyBase) * (365 / daysActive)
       : 0
 
     timeSeries.push({
@@ -454,8 +468,9 @@ fundsRouter.get('/history', async (req, res, next) => {
       totalRealizedGain,
       realizedAPY,
       liquidAPY,
-      totalGainUsd,
-      totalGainPct
+      totalGainUsd: totalGainUsdForChart,  // Use totalValue - totalStartInput to match aggregate
+      totalGainPct,
+      fundBreakdown
     })
   }
 
