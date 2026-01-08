@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import type { ComputedEntry } from './entriesTable'
+import { formatCurrencyCompact } from '../utils/format'
 
 interface DerivativesCapturedProfitChartProps {
   entries: ComputedEntry[]
@@ -15,16 +16,6 @@ interface ChartDataPoint {
   rebates: number
   fees: number  // Will be shown as negative
   netProfit: number
-}
-
-function formatCurrency(value: number): string {
-  if (Math.abs(value) >= 1000000) {
-    return `$${(value / 1000000).toFixed(1)}M`
-  }
-  if (Math.abs(value) >= 1000) {
-    return `$${(value / 1000).toFixed(1)}K`
-  }
-  return `$${value.toFixed(0)}`
 }
 
 // Prepare data from computed entries
@@ -175,7 +166,7 @@ export function DerivativesCapturedProfitChart({ entries, resize }: DerivativesC
 
     // Y axis
     g.append('g')
-      .call(d3.axisLeft(y).ticks(5).tickFormat(d => formatCurrency(d as number)))
+      .call(d3.axisLeft(y).ticks(5).tickFormat(d => formatCurrencyCompact(d as number)))
       .selectAll('text')
       .attr('fill', '#64748b')
       .attr('font-size', '9px')
@@ -250,7 +241,7 @@ export function DerivativesCapturedProfitChart({ entries, resize }: DerivativesC
         allSeries.forEach((s, idx) => {
           // Show fees as negative in tooltip
           const value = s.key === 'fees' ? -d.fees : d[s.key]
-          const text = `${s.label}: ${formatCurrency(value)}`
+          const text = `${s.label}: ${formatCurrencyCompact(value)}`
           const textEl = tooltipGroup.select(`.tooltip-value-${idx}`).text(text)
           const bbox = (textEl.node() as SVGTextElement).getBBox()
           maxWidth = Math.max(maxWidth, bbox.width)

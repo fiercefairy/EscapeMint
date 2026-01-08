@@ -9,6 +9,7 @@ import {
   isDerivativesFund as checkIsDerivativesFund,
   getFundTypeFeatures
 } from '@escapemint/engine'
+import { formatCurrencyCompact } from '../utils/format'
 
 interface FundChartsProps {
   entries: FundEntry[]
@@ -35,16 +36,6 @@ interface TimeSeriesPoint {
   apy: number
   marginAvailable: number
   marginBorrowed: number
-}
-
-function formatCurrency(value: number): string {
-  if (Math.abs(value) >= 1000000) {
-    return `$${(value / 1000000).toFixed(1)}M`
-  }
-  if (Math.abs(value) >= 1000) {
-    return `$${(value / 1000).toFixed(1)}K`
-  }
-  return `$${value.toFixed(0)}`
 }
 
 // Compute time series data from entries
@@ -281,7 +272,7 @@ function StackedAreaChart({
 
     // Y axis
     g.append('g')
-      .call(d3.axisLeft(y).ticks(4).tickFormat(d => formatCurrency(d as number)))
+      .call(d3.axisLeft(y).ticks(4).tickFormat(d => formatCurrencyCompact(d as number)))
       .selectAll('text')
       .attr('fill', '#64748b')
       .attr('font-size', '9px')
@@ -354,7 +345,7 @@ function StackedAreaChart({
         let maxWidth = 0
         series.forEach((s, idx) => {
           const value = d[s.key] as number
-          const text = `${s.label}: ${formatCurrency(value)}`
+          const text = `${s.label}: ${formatCurrencyCompact(value)}`
           const textEl = tooltipGroup.select(`.tooltip-value-${idx}`).text(text)
           const bbox = (textEl.node() as SVGTextElement).getBBox()
           maxWidth = Math.max(maxWidth, bbox.width)
@@ -532,7 +523,7 @@ function AreaChart({
   title,
   valueKey,
   color = '#10b981',
-  formatValue = formatCurrency,
+  formatValue = formatCurrencyCompact,
   allowNegative = false,
   bounds = {},
   onBoundsChange,
@@ -884,7 +875,7 @@ function ValueAndFundSizeChart({
 
     // Y axis
     g.append('g')
-      .call(d3.axisLeft(y).ticks(4).tickFormat(d => formatCurrency(d as number)))
+      .call(d3.axisLeft(y).ticks(4).tickFormat(d => formatCurrencyCompact(d as number)))
       .selectAll('text')
       .attr('fill', '#64748b')
       .attr('font-size', '9px')
@@ -973,10 +964,10 @@ function ValueAndFundSizeChart({
         const dateStr = d3.timeFormat('%b %d, %Y')(d.date)
         const tooltipGroup = focus.select('.tooltip-group')
         tooltipGroup.select('.tooltip-date').text(dateStr)
-        tooltipGroup.select('.tooltip-value').text(`Value: ${formatCurrency(d.value)}`)
-        tooltipGroup.select('.tooltip-invested').text(`Invested: ${formatCurrency(d.startInput)}`)
+        tooltipGroup.select('.tooltip-value').text(`Value: ${formatCurrencyCompact(d.value)}`)
+        tooltipGroup.select('.tooltip-invested').text(`Invested: ${formatCurrencyCompact(d.startInput)}`)
         if (manageCash) {
-          tooltipGroup.select('.tooltip-cash').text(`Cash: ${formatCurrency(d.cashAvailable)}`)
+          tooltipGroup.select('.tooltip-cash').text(`Cash: ${formatCurrencyCompact(d.cashAvailable)}`)
         }
 
         const tooltipWidth = 110
@@ -1131,7 +1122,7 @@ function MarginChart({
 
     // Y axis
     g.append('g')
-      .call(d3.axisLeft(y).ticks(4).tickFormat(d => formatCurrency(d as number)))
+      .call(d3.axisLeft(y).ticks(4).tickFormat(d => formatCurrencyCompact(d as number)))
       .selectAll('text')
       .attr('fill', '#64748b')
       .attr('font-size', '9px')
@@ -1203,8 +1194,8 @@ function MarginChart({
         const dateStr = d3.timeFormat('%b %d, %Y')(d.date)
         const tooltipGroup = focus.select('.tooltip-group')
         tooltipGroup.select('.tooltip-date').text(dateStr)
-        tooltipGroup.select('.tooltip-available').text(`Available: ${formatCurrency(d.marginAvailable)}`)
-        tooltipGroup.select('.tooltip-borrowed').text(`Borrowed: ${formatCurrency(d.marginBorrowed)}`)
+        tooltipGroup.select('.tooltip-available').text(`Available: ${formatCurrencyCompact(d.marginAvailable)}`)
+        tooltipGroup.select('.tooltip-borrowed').text(`Borrowed: ${formatCurrencyCompact(d.marginBorrowed)}`)
 
         const tooltipWidth = 120
         const tooltipHeight = 46

@@ -47,6 +47,25 @@ async function readPlatformsData(): Promise<Record<string, PlatformConfig>> {
   return JSON.parse(content) as Record<string, PlatformConfig>
 }
 
+/**
+ * Computes the post-action equity value for an entry.
+ * After a SELL action, the equity is reduced by the sell amount.
+ * After a full liquidation, the equity is 0.
+ */
+function computePostActionEquity(entry: FundEntry): number {
+  const action = entry.action?.toUpperCase()
+  if (action === 'SELL' || action === 'CLOSE') {
+    const sellAmount = entry.amount ?? 0
+    // Check for full liquidation: selling everything or close to it
+    if (entry.value <= sellAmount + 0.01) {
+      return 0
+    }
+    return Math.max(0, entry.value - sellAmount)
+  }
+  // For BUY/HOLD/other actions, equity stays the same at snapshot time
+  return entry.value
+}
+
 async function writePlatformsData(data: Record<string, PlatformConfig>): Promise<void> {
   const { writeFile: fsWriteFile, mkdir } = await import('node:fs/promises')
   const { dirname } = await import('node:path')
@@ -634,7 +653,10 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
 
   // Skip recommendation for cash funds - they don't need trading recommendations
   const isCashFund = fund.config.fund_type === 'cash'
-  const recommendation = isCashFund ? null : computeRecommendation(configWithActualFundSize, correctedState)
+  // For recommendation, use POST-action equity (after SELL, equity is reduced)
+  const postActionEquity = computePostActionEquity(latestEntry)
+  const stateForRecommendation = { ...correctedState, actual_value_usd: postActionEquity }
+  const recommendation = isCashFund ? null : computeRecommendation(configWithActualFundSize, stateForRecommendation)
 
   // Compute closed fund metrics if fund is closed (explicit status or legacy undefined status with zero fund size)
   let closedMetrics = null
@@ -1267,13 +1289,15 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
   let recommendation = null
   if (!isCashFund) {
     const tradesAfterAction = entriesToTrades(updated.entries)
+    // Use POST-action equity for recommendation (after SELL, equity is reduced)
+    const postActionEquity = computePostActionEquity(entry)
     const stateForRecommendation = computeFundState(
       configWithActualFundSize,
       tradesAfterAction,
       [],
       dividends,
       expenses,
-      entry.value,
+      postActionEquity,
       entry.date
     )
     const correctedStateForRec = { ...stateForRecommendation, cash_available_usd: correctedCashAvailable }

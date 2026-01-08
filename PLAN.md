@@ -67,9 +67,9 @@ See the [docs/](./docs/) folder for detailed documentation:
 - [ ] Visual regression tests for charts
 
 ### Code Quality
-- [ ] Create `Modal.tsx` wrapper component
-- [ ] Consolidate format functions in `utils/format.ts`
-- [ ] Remove unused import interfaces from `packages/web/src/api/import.ts`
+- [x] Create `Modal.tsx` wrapper component
+- [x] Consolidate format functions in `utils/format.ts` (added `formatCurrencyCompact`, `formatPercentSimple`)
+- [x] Remove unused `ScrapeEvent` type from `packages/web/src/api/import.ts`
 
 ### Known Issues to Investigate
 - Full liquidation detection logic in `funds.ts:557-558` may be fragile

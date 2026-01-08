@@ -406,170 +406,175 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           </div>
         </div>
 
-        {/* Row 2: Shares, Price, Calc Button */}
-        <div className="grid grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Shares/Units</label>
-            <input
-              type="number"
-              value={formData.shares}
-              onChange={e => setFormData(prev => ({ ...prev, shares: e.target.value }))}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-              placeholder="0"
-              step="any"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Price ($)</label>
-            <input
-              type="number"
-              value={formData.price}
-              onChange={e => setFormData(prev => ({ ...prev, price: e.target.value }))}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-              placeholder="Per unit"
-              step="any"
-              min="0"
-            />
-          </div>
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={calculatePriceEquity}
-              className="w-full px-3 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-500 transition-colors text-sm"
-              title="Calculate price from amount/shares, then equity from prior holdings"
-            >
-              Calc Price/Equity
-            </button>
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Notes</label>
-            <input
-              type="text"
-              value={formData.notes}
-              onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-              placeholder="Optional"
-            />
-          </div>
-        </div>
       </div>
 
-      {/* FUND MANAGEMENT SECTION */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-medium text-slate-300 border-b border-slate-700 pb-1">Fund Management</h3>
-
-        {/* Row 1: Fund Size + trading-specific fields */}
-        <div className="grid grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Fund Size ($)</label>
-            <input
-              type="number"
-              value={formData.fund_size}
-              onChange={e => setFormData(prev => ({ ...prev, fund_size: e.target.value }))}
-              className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-mint-500 ${
-                showFundSizeAdjustment && fundSizeAdjustment !== 0 ? 'border-mint-500' : 'border-slate-600'
-              }`}
-              placeholder="Override"
-              step="0.01"
-              min="0"
-            />
-            {showFundSizeAdjustment && fundSizeAdjustment !== 0 && (
-              <p className={`text-xs mt-1 ${fundSizeAdjustment > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {fundSizeAdjustment > 0 ? '+' : ''}{fundSizeAdjustment.toFixed(2)} adjustment
-                {baseFundSize > 0 && <span className="text-slate-500"> (base: ${baseFundSize.toFixed(2)})</span>}
-              </p>
-            )}
-          </div>
-          {/* Cash field - only show when fund manages its own cash */}
-          {manageCash ? (
+      {/* OPTIONAL FIELDS SECTION - Collapsible */}
+      <details className="group">
+        <summary className="text-sm font-medium text-slate-300 border-b border-slate-700 pb-1 cursor-pointer hover:text-slate-200 list-none flex items-center gap-2">
+          <span className="text-slate-500 group-open:rotate-90 transition-transform">▶</span>
+          Optional
+        </summary>
+        <div className="space-y-3 pt-3">
+          {/* Shares, Price, Calc Button, Notes */}
+          <div className="grid grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Cash ($)</label>
+              <label className="block text-sm text-slate-400 mb-1">Shares/Units</label>
               <input
                 type="number"
-                value={formData.cash}
-                onChange={e => setFormData(prev => ({ ...prev, cash: e.target.value }))}
+                value={formData.shares}
+                onChange={e => setFormData(prev => ({ ...prev, shares: e.target.value }))}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="Optional"
-                step="0.01"
+                placeholder="0"
+                step="any"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Price ($)</label>
+              <input
+                type="number"
+                value={formData.price}
+                onChange={e => setFormData(prev => ({ ...prev, price: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                placeholder="Per unit"
+                step="any"
                 min="0"
               />
             </div>
-          ) : (
-            <div className={isCryptoFund ? 'col-span-3' : 'col-span-2'}>
-              <div className="flex items-center h-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg">
-                <span className="text-sm text-slate-400">
-                  Cash is managed at the platform level. Use the platform's cash fund for deposits/withdrawals.
-                </span>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={calculatePriceEquity}
+                className="w-full px-3 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-500 transition-colors text-sm"
+                title="Calculate price from amount/shares, then equity from prior holdings"
+              >
+                Calc Price/Equity
+              </button>
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Notes</label>
+              <input
+                type="text"
+                value={formData.notes}
+                onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+
+          {/* Fund Size + trading-specific fields */}
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Fund Size ($)</label>
+              <input
+                type="number"
+                value={formData.fund_size}
+                onChange={e => setFormData(prev => ({ ...prev, fund_size: e.target.value }))}
+                className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-mint-500 ${
+                  showFundSizeAdjustment && fundSizeAdjustment !== 0 ? 'border-mint-500' : 'border-slate-600'
+                }`}
+                placeholder="Override"
+                step="0.01"
+                min="0"
+              />
+              {showFundSizeAdjustment && fundSizeAdjustment !== 0 && (
+                <p className={`text-xs mt-1 ${fundSizeAdjustment > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {fundSizeAdjustment > 0 ? '+' : ''}{fundSizeAdjustment.toFixed(2)} adjustment
+                  {baseFundSize > 0 && <span className="text-slate-500"> (base: ${baseFundSize.toFixed(2)})</span>}
+                </p>
+              )}
+            </div>
+            {/* Cash field - only show when fund manages its own cash */}
+            {manageCash ? (
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Cash ($)</label>
+                <input
+                  type="number"
+                  value={formData.cash}
+                  onChange={e => setFormData(prev => ({ ...prev, cash: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                  placeholder="Optional"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+            ) : (
+              <div className={isCryptoFund ? 'col-span-3' : 'col-span-2'}>
+                <div className="flex items-center h-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg">
+                  <span className="text-sm text-slate-400">
+                    Cash is managed at the platform level. Use the platform's cash fund for deposits/withdrawals.
+                  </span>
+                </div>
+              </div>
+            )}
+            {!isCryptoFund && (
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Dividend ($)</label>
+                <input
+                  type="text"
+                  value={formData.dividend}
+                  onChange={e => setFormData(prev => ({ ...prev, dividend: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                  placeholder="0 or =10+20"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Row 2: Expense, Interest, Margin Available, Margin Borrowed - only show if manageCash is true */}
+          {manageCash && (
+            <div className="grid grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Expense ($)</label>
+                <input
+                  type="number"
+                  value={formData.expense}
+                  onChange={e => setFormData(prev => ({ ...prev, expense: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                  placeholder="0"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Interest ($)</label>
+                <input
+                  type="number"
+                  value={formData.cash_interest}
+                  onChange={e => setFormData(prev => ({ ...prev, cash_interest: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                  placeholder="0"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Margin Available ($)</label>
+                <input
+                  type="number"
+                  value={formData.margin_available}
+                  onChange={e => setFormData(prev => ({ ...prev, margin_available: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                  placeholder="0"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Margin Borrowed ($)</label>
+                <input
+                  type="number"
+                  value={formData.margin_borrowed}
+                  onChange={e => setFormData(prev => ({ ...prev, margin_borrowed: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                  placeholder="0"
+                  step="0.01"
+                />
               </div>
             </div>
           )}
-          {!isCryptoFund && (
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Dividend ($)</label>
-              <input
-                type="text"
-                value={formData.dividend}
-                onChange={e => setFormData(prev => ({ ...prev, dividend: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="0 or =10+20"
-              />
-            </div>
-          )}
         </div>
-
-        {/* Row 2: Expense, Interest, Margin Available, Margin Borrowed - only show if manageCash is true */}
-        {manageCash && (
-          <div className="grid grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Expense ($)</label>
-              <input
-                type="number"
-                value={formData.expense}
-                onChange={e => setFormData(prev => ({ ...prev, expense: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Interest ($)</label>
-              <input
-                type="number"
-                value={formData.cash_interest}
-                onChange={e => setFormData(prev => ({ ...prev, cash_interest: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Margin Available ($)</label>
-              <input
-                type="number"
-                value={formData.margin_available}
-                onChange={e => setFormData(prev => ({ ...prev, margin_available: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Margin Borrowed ($)</label>
-              <input
-                type="number"
-                value={formData.margin_borrowed}
-                onChange={e => setFormData(prev => ({ ...prev, margin_borrowed: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="0"
-                step="0.01"
-              />
-            </div>
-          </div>
-        )}
-      </div>
+      </details>
     </div>
   )
 }

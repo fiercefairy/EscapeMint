@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import type { TimeSeriesPoint, AllocationData } from '../api/funds'
+import { formatCurrencyCompact, formatPercentSimple } from '../utils/format'
 
 interface PortfolioChartsProps {
   timeSeries: TimeSeriesPoint[]
@@ -18,20 +19,6 @@ const COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
   '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'
 ]
-
-function formatCurrency(value: number): string {
-  if (Math.abs(value) >= 1000000) {
-    return `$${(value / 1000000).toFixed(1)}M`
-  }
-  if (Math.abs(value) >= 1000) {
-    return `$${(value / 1000).toFixed(0)}K`
-  }
-  return `$${value.toFixed(0)}`
-}
-
-function formatPercent(value: number): string {
-  return `${(value * 100).toFixed(1)}%`
-}
 
 // Pie Chart Component
 function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: string; valueKey: 'value' | 'cash' | 'fundSize' }) {
@@ -89,7 +76,7 @@ function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: st
         const pct = (d.data.chartValue / total * 100).toFixed(1)
         tooltip
           .style('opacity', 1)
-          .html(`<strong>${d.data.ticker}</strong><br/>${formatCurrency(d.data.chartValue)}<br/>${pct}%`)
+          .html(`<strong>${d.data.ticker}</strong><br/>${formatCurrencyCompact(d.data.chartValue)}<br/>${pct}%`)
         d3.select(this).attr('opacity', 0.8)
       })
       .on('mousemove', function(event) {
@@ -144,7 +131,7 @@ function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: st
 }
 
 // Area Chart Component
-function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = formatCurrency }: {
+function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = formatCurrencyCompact }: {
   data: TimeSeriesPoint[]
   title: string
   valueKey: keyof TimeSeriesPoint
@@ -346,7 +333,7 @@ function StackedAreaChart({ data }: { data: TimeSeriesPoint[] }) {
         if (!d0 || !d1) return
         const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
         tooltip
-          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/>Cash: ${(d.cashPct * 100).toFixed(1)}% (${formatCurrency(d.cash)})<br/>Asset: ${(d.assetPct * 100).toFixed(1)}% (${formatCurrency(d.asset)})`)
+          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/>Cash: ${(d.cashPct * 100).toFixed(1)}% (${formatCurrencyCompact(d.cash)})<br/>Asset: ${(d.assetPct * 100).toFixed(1)}% (${formatCurrencyCompact(d.asset)})`)
           .style('left', (event.pageX + 10) + 'px')
           .style('top', (event.pageY - 10) + 'px')
       })
@@ -410,11 +397,11 @@ export function PortfolioCharts({ timeSeries, allocations, totals }: PortfolioCh
               <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 snap-start active:bg-slate-700/30">
                 <h3 className="text-[8px] xs:text-[9px] sm:text-xs font-medium text-white mb-0.5 truncate">Margin Access</h3>
                 <div className="text-center py-1 xs:py-1.5 sm:py-4">
-                  <p className="text-[10px] xs:text-xs sm:text-base md:text-lg font-bold text-mint-400">{formatCurrency(totals.totalCurrentMarginAccess)}</p>
+                  <p className="text-[10px] xs:text-xs sm:text-base md:text-lg font-bold text-mint-400">{formatCurrencyCompact(totals.totalCurrentMarginAccess)}</p>
                   <p className="text-[7px] xs:text-[8px] sm:text-xs text-slate-400">Available</p>
                   {totals.totalCurrentMarginBorrowed > 0 && (
                     <>
-                      <p className="text-[9px] xs:text-[10px] sm:text-sm font-medium text-red-400 mt-0.5 xs:mt-1 sm:mt-2">-{formatCurrency(totals.totalCurrentMarginBorrowed)}</p>
+                      <p className="text-[9px] xs:text-[10px] sm:text-sm font-medium text-red-400 mt-0.5 xs:mt-1 sm:mt-2">-{formatCurrencyCompact(totals.totalCurrentMarginBorrowed)}</p>
                       <p className="text-[7px] xs:text-[8px] sm:text-xs text-slate-400">Borrowed</p>
                     </>
                   )}
@@ -432,7 +419,7 @@ export function PortfolioCharts({ timeSeries, allocations, totals }: PortfolioCh
           title="All-time Fund APY"
           valueKey="realizedAPY"
           color="#10b981"
-          formatValue={formatPercent}
+          formatValue={formatPercentSimple}
         />
         <AreaChart
           data={timeSeries}

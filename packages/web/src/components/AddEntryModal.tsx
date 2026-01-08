@@ -111,15 +111,14 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
         state: response.data.state,
         recommendation: response.data.recommendation
       })
+      // Immediately notify parent to refresh entries table and header
+      onAdded()
     }
 
     setLoading(false)
   }
 
   const handleClose = () => {
-    if (result) {
-      onAdded()
-    }
     onClose()
   }
 

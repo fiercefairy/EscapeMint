@@ -60,12 +60,6 @@ export interface ScrapeErrorEvent {
   message: string
 }
 
-export type ScrapeEvent =
-  | { type: 'status'; data: ScrapeStatusEvent }
-  | { type: 'progress'; data: ScrapeProgressEvent }
-  | { type: 'complete'; data: ScrapeCompleteEvent }
-  | { type: 'error'; data: ScrapeErrorEvent }
-
 export interface ScrapeArchive {
   platform: string
   createdAt: string
@@ -304,7 +298,6 @@ export async function reclassifyArchive(platform = 'robinhood'): Promise<ApiResu
 
 /**
  * Scrape Robinhood history with real-time progress via SSE.
- * Returns an EventSource that emits ScrapeEvent objects.
  * @param full - When true, performs full sync without early exit (for complete resync)
  */
 export function scrapeRobinhoodHistoryStream(
@@ -363,7 +356,6 @@ export function scrapeRobinhoodHistoryStream(
 
 /**
  * Scrape M1 Cash history with real-time progress via SSE.
- * Returns an EventSource that emits ScrapeEvent objects.
  */
 export function scrapeM1CashHistoryStream(
   url: string = 'https://dashboard.m1.com/d/save/savings/transactions',
