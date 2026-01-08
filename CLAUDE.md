@@ -65,6 +65,7 @@ Each fund has two files in `data/funds/`:
 - API endpoints support `?include_test=true` to include test funds
 - Tests run with single Playwright worker to prevent data conflicts
 - Unit tests use Vitest with `npm test` in each package
+- commit code after each feature or bug fix
 
 ## Code Style
 
