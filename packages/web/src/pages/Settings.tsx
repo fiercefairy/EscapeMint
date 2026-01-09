@@ -75,6 +75,19 @@ export function Settings() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { settings, updateSetting } = useSettings()
   const { refresh: refreshDashboard } = useDashboard()
+  const prevTestFundsMode = useRef(settings.testFundsMode)
+
+  // Refresh dashboard when testFundsMode changes
+  useEffect(() => {
+    if (prevTestFundsMode.current !== settings.testFundsMode) {
+      prevTestFundsMode.current = settings.testFundsMode
+      // Small delay to ensure WebSocket has reconnected
+      const timer = setTimeout(() => {
+        refreshDashboard()
+      }, 200)
+      return () => clearTimeout(timer)
+    }
+  }, [settings.testFundsMode, refreshDashboard])
 
   // Load backup config and list on mount
   useEffect(() => {
