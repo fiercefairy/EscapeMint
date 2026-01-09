@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
 import type { TimeSeriesPoint, AllocationData } from '../api/funds'
 import { formatCurrencyCompact, formatPercentSimple } from '../utils/format'
@@ -263,12 +263,13 @@ function PlatformPieChart({ data, title, valueKey }: { data: AllocationData[]; t
 }
 
 // Area Chart Component
-function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = formatCurrencyCompact }: {
+function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = formatCurrencyCompact, resize }: {
   data: TimeSeriesPoint[]
   title: string
   valueKey: keyof TimeSeriesPoint
   color?: string
   formatValue?: (v: number) => string
+  resize?: number
 }) {
   const ref = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -372,7 +373,7 @@ function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = for
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
 
-  }, [data, valueKey, color, formatValue])
+  }, [data, valueKey, color, formatValue, resize])
 
   return (
     <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
@@ -388,7 +389,7 @@ function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = for
 }
 
 // Stacked Area Chart for Cash vs Asset
-function StackedAreaChart({ data }: { data: TimeSeriesPoint[] }) {
+function StackedAreaChart({ data, resize }: { data: TimeSeriesPoint[]; resize?: number }) {
   const ref = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
 
@@ -489,7 +490,7 @@ function StackedAreaChart({ data }: { data: TimeSeriesPoint[] }) {
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
 
-  }, [data])
+  }, [data, resize])
 
   return (
     <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
@@ -513,9 +514,10 @@ function StackedAreaChart({ data }: { data: TimeSeriesPoint[] }) {
 }
 
 // Stacked Area Chart showing individual fund contributions to Total Fund Size
-function FundsStackedAreaChart({ data, allocations }: {
+function FundsStackedAreaChart({ data, allocations, resize }: {
   data: TimeSeriesPoint[]
   allocations: AllocationData[]
+  resize?: number
 }) {
   const ref = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -636,7 +638,7 @@ function FundsStackedAreaChart({ data, allocations }: {
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
 
-  }, [data, fundIds, fundLabels])
+  }, [data, fundIds, fundLabels, resize])
 
   // Show top 5 funds in legend
   const legendFunds = sortedAllocations.slice(0, 5)
@@ -669,10 +671,11 @@ function FundsStackedAreaChart({ data, allocations }: {
 }
 
 // Combined Realized + Liquid Gains Chart
-function GainsChart({ data, currentRealized, currentLiquid }: {
+function GainsChart({ data, currentRealized, currentLiquid, resize }: {
   data: TimeSeriesPoint[]
   currentRealized: number
   currentLiquid: number
+  resize?: number
 }) {
   const ref = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -831,7 +834,7 @@ function GainsChart({ data, currentRealized, currentLiquid }: {
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
 
-  }, [data])
+  }, [data, resize])
 
   return (
     <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
@@ -859,10 +862,11 @@ function GainsChart({ data, currentRealized, currentLiquid }: {
 }
 
 // Combined Realized + Liquid APY Chart
-function APYChart({ data, currentRealizedAPY, currentLiquidAPY }: {
+function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
   data: TimeSeriesPoint[]
   currentRealizedAPY: number
   currentLiquidAPY: number
+  resize?: number
 }) {
   const ref = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -1019,7 +1023,7 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY }: {
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
 
-  }, [data])
+  }, [data, resize])
 
   return (
     <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
@@ -1047,10 +1051,11 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY }: {
 }
 
 // Combined Margin Access + Borrowed Chart
-function MarginChart({ data, currentAccess, currentBorrowed }: {
+function MarginChart({ data, currentAccess, currentBorrowed, resize }: {
   data: TimeSeriesPoint[]
   currentAccess: number
   currentBorrowed: number
+  resize?: number
 }) {
   const ref = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -1205,7 +1210,7 @@ function MarginChart({ data, currentAccess, currentBorrowed }: {
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
 
-  }, [data])
+  }, [data, resize])
 
   return (
     <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
@@ -1234,6 +1239,14 @@ function MarginChart({ data, currentAccess, currentBorrowed }: {
 
 export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTotals }: PortfolioChartsProps) {
   const hasMarginAccess = totals.totalCurrentMarginAccess > 0
+  const [resize, setResize] = useState(0)
+
+  // Resize handler for charts
+  useEffect(() => {
+    const handleResize = () => setResize(n => n + 1)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   // Use aggregate totals for current gain values (consistent with header metrics)
   const currentLiquidGain = aggregateTotals?.totalGainUsd ?? timeSeries[timeSeries.length - 1]?.totalGainUsd ?? 0
@@ -1289,11 +1302,13 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
           data={timeSeries}
           currentRealizedAPY={currentRealizedAPY}
           currentLiquidAPY={currentLiquidAPY}
+          resize={resize}
         />
         <GainsChart
           data={timeSeries}
           currentRealized={currentRealizedGains}
           currentLiquid={currentLiquidGain}
+          resize={resize}
         />
         <AreaChart
           data={timeSeries}
@@ -1301,6 +1316,7 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
           valueKey="totalGainPct"
           color="#8b5cf6"
           formatValue={formatPercentSimple}
+          resize={resize}
         />
       </div>
 
@@ -1309,12 +1325,14 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
         <FundsStackedAreaChart
           data={timeSeries}
           allocations={allocations}
+          resize={resize}
         />
         <AreaChart
           data={timeSeries}
           title="Fund Liquid Value"
           valueKey="totalValue"
           color="#10b981"
+          resize={resize}
         />
       </div>
 
@@ -1325,15 +1343,17 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
           title="Cash"
           valueKey="totalCash"
           color="#06b6d4"
+          resize={resize}
         />
         {hasMarginAccess && (
           <MarginChart
             data={timeSeries}
             currentAccess={totals.totalCurrentMarginAccess}
             currentBorrowed={totals.totalCurrentMarginBorrowed}
+            resize={resize}
           />
         )}
-        <StackedAreaChart data={timeSeries} />
+        <StackedAreaChart data={timeSeries} resize={resize} />
       </div>
     </div>
   )
