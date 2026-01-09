@@ -18,7 +18,7 @@
     "build": "npm run build:packages && npm run build:server && npm run build:web",
     "build:engine": "npx tsc --project packages/engine/tsconfig.json",
     "build:storage": "npx tsc --project packages/storage/tsconfig.json",
-    "build:server": "npx tsc --project packages/server/tsconfig.json",
+    "build:server": "npx tsc --project packages/server/tsconfig.json && cp -r packages/server/src/data packages/server/dist/",
     "build:web": "cd packages/web && npx vite build",
     "test": "npm run test:engine && npm run test:storage",
     "test:engine": "cd packages/engine && npm test",

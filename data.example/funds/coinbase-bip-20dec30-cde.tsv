@@ -1,9 +1,0 @@
-date	value	cash	action	amount	shares	price	dividend	expense	cash_interest	fund_size	margin_available	margin_borrowed	notes	contracts	entry_price	liquidation_price	unrealized_pnl	funding_profit	funding_loss	margin_locked	fee
-2025-09-14	0		DEPOSIT	10000									Initial margin deposit								
-2025-09-14	0		BUY	1155.9		1155.9								1							0.23
-2025-09-14	0		SELL	1158.25		1158.25								1							0.23
-2025-09-15	0		FUNDING	-0.03																	
-2025-09-18	0		INTEREST	2																	
-2025-09-19	0		BUY	1122.3		1122.3								1							0.22
-2025-09-19	0		BUY	1151.8		1151.8								1							0.23
-2025-09-19	0		BUY	1152.25		1152.25								1							0.23

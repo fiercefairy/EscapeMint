@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import { useSettings } from '../contexts/SettingsContext'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { useDashboard } from '../contexts/DashboardContext'
 
 const API_BASE = '/api/v1'
 
@@ -36,6 +37,28 @@ interface ImportResult {
   }
 }
 
+interface TestDataStatus {
+  priceDataAvailable: boolean
+  missingPriceData: string[]
+  existingTestFunds: number
+  testFundIds: string[]
+}
+
+interface TestDataGenerateResult {
+  success: boolean
+  deletedExisting: number
+  createdFunds: number
+  funds: Array<{
+    id: string
+    platform: string
+    ticker: string
+    fundType: string
+    entryCount: number
+    lastDate: string
+    lastValue: number
+  }>
+}
+
 export function Settings() {
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -45,8 +68,13 @@ export function Settings() {
   const [backupConfig, setBackupConfig] = useState<BackupConfig | null>(null)
   const [backups, setBackups] = useState<BackupInfo[]>([])
   const [restoreConfirm, setRestoreConfirm] = useState<BackupInfo | null>(null)
+  const [testDataStatus, setTestDataStatus] = useState<TestDataStatus | null>(null)
+  const [generatingTestData, setGeneratingTestData] = useState(false)
+  const [deletingTestData, setDeletingTestData] = useState(false)
+  const [testDataConfirm, setTestDataConfirm] = useState<'generate' | 'delete' | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { settings, updateSetting } = useSettings()
+  const { refresh: refreshDashboard } = useDashboard()
 
   // Load backup config and list on mount
   useEffect(() => {
@@ -69,6 +97,86 @@ export function Settings() {
 
     loadBackupInfo()
   }, [])
+
+  // Load test data status on mount
+  useEffect(() => {
+    const loadTestDataStatus = async () => {
+      const response = await fetch(`${API_BASE}/test-data/status`)
+      if (response.ok) {
+        const status: TestDataStatus = await response.json()
+        setTestDataStatus(status)
+      }
+    }
+    loadTestDataStatus()
+  }, [])
+
+  const refreshTestDataStatus = async () => {
+    const response = await fetch(`${API_BASE}/test-data/status`)
+    if (response.ok) {
+      const status: TestDataStatus = await response.json()
+      setTestDataStatus(status)
+    }
+  }
+
+  const handleGenerateTestData = async () => {
+    setGeneratingTestData(true)
+    setTestDataConfirm(null)
+
+    const response = await fetch(`${API_BASE}/test-data/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        weeklyAmount: 100,
+        initialFundSize: 10000,
+        deleteExisting: true
+      })
+    })
+
+    if (!response.ok) {
+      toast.error('Failed to generate test data')
+      setGeneratingTestData(false)
+      return
+    }
+
+    const result: TestDataGenerateResult = await response.json()
+
+    if (result.success) {
+      toast.success(`Created ${result.createdFunds} test funds with simulated DCA history`)
+      await refreshTestDataStatus()
+      refreshDashboard()
+    } else {
+      toast.error('Test data generation failed')
+    }
+
+    setGeneratingTestData(false)
+  }
+
+  const handleDeleteTestData = async () => {
+    setDeletingTestData(true)
+    setTestDataConfirm(null)
+
+    const response = await fetch(`${API_BASE}/test-data`, {
+      method: 'DELETE'
+    })
+
+    if (!response.ok) {
+      toast.error('Failed to delete test data')
+      setDeletingTestData(false)
+      return
+    }
+
+    const result = await response.json()
+
+    if (result.success) {
+      toast.success(`Deleted ${result.deletedCount} test funds`)
+      await refreshTestDataStatus()
+      refreshDashboard()
+    } else {
+      toast.error('Test data deletion failed')
+    }
+
+    setDeletingTestData(false)
+  }
 
   const handleBackup = async () => {
     setBackingUp(true)
@@ -371,6 +479,53 @@ export function Settings() {
         </label>
       </div>
 
+      {/* Test/Demo Data Section */}
+      <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
+        <h2 className="text-base font-semibold text-white mb-2">Test/Demo Data</h2>
+        <p className="text-sm text-slate-400 mb-3">
+          Generate demo funds with 5 years of simulated DCA investing using real historical prices
+          for BTC, TQQQ, and SPXL. Each fund starts with $10K and invests $100/week.
+        </p>
+
+        {testDataStatus && (
+          <div className="text-xs text-slate-500 mb-3 space-y-1">
+            {testDataStatus.existingTestFunds > 0 ? (
+              <p>
+                <span className="text-slate-400">Existing test funds:</span>{' '}
+                {testDataStatus.testFundIds.join(', ')}
+              </p>
+            ) : (
+              <p className="text-slate-400">No test funds currently loaded.</p>
+            )}
+            {!testDataStatus.priceDataAvailable && (
+              <p className="text-amber-400">
+                Missing price data: {testDataStatus.missingPriceData.join(', ')}
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => setTestDataConfirm('generate')}
+            disabled={generatingTestData || !testDataStatus?.priceDataAvailable}
+            className="px-3 py-1.5 text-sm bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors disabled:opacity-50"
+          >
+            {generatingTestData ? 'Generating...' : 'Load Test Data'}
+          </button>
+
+          {testDataStatus && testDataStatus.existingTestFunds > 0 && (
+            <button
+              onClick={() => setTestDataConfirm('delete')}
+              disabled={deletingTestData}
+              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
+            >
+              {deletingTestData ? 'Deleting...' : 'Delete Test Data'}
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Data Info */}
       <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
         <h2 className="text-base font-semibold text-white mb-2">Data Storage</h2>
@@ -393,6 +548,30 @@ export function Settings() {
           variant="danger"
           onConfirm={() => handleRestore(restoreConfirm)}
           onCancel={() => setRestoreConfirm(null)}
+        />
+      )}
+
+      {/* Test Data Generate Confirmation */}
+      {testDataConfirm === 'generate' && (
+        <ConfirmDialog
+          title="Load Test Data"
+          message={`This will create 5 demo funds simulating DCA investing over 5 years:\n\n• coinbasetest-btc (Bitcoin)\n• robinhoodtest-tqqq (3x Nasdaq ETF)\n• robinhoodtest-spxl (3x S&P 500 ETF)\n• Plus cash funds for each platform\n\n${testDataStatus?.existingTestFunds ? 'Existing test funds will be replaced.' : ''}`}
+          confirmLabel="Load Test Data"
+          variant="default"
+          onConfirm={handleGenerateTestData}
+          onCancel={() => setTestDataConfirm(null)}
+        />
+      )}
+
+      {/* Test Data Delete Confirmation */}
+      {testDataConfirm === 'delete' && (
+        <ConfirmDialog
+          title="Delete Test Data"
+          message={`This will permanently delete all ${testDataStatus?.existingTestFunds ?? 0} test funds:\n\n${testDataStatus?.testFundIds.map(id => `• ${id}`).join('\n') ?? ''}\n\nThis action cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={handleDeleteTestData}
+          onCancel={() => setTestDataConfirm(null)}
         />
       )}
     </div>

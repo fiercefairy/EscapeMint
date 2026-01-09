@@ -80,6 +80,29 @@ See the [docs/](./docs/) folder for detailed documentation:
 - [ ] Update apply endpoint to use correct action types
 - [ ] Store contracts/price properly on trade entries
 
+### Test Data Generation System (Complete)
+
+Replace static sample data with dynamic test data generation using real historical prices.
+
+**Test Funds:**
+- `coinbasetest-cash` - Cash fund for Coinbase platform
+- `coinbasetest-btc` - Bitcoin fund using BTCUSD prices
+- `robinhoodtest-cash` - Cash fund for Robinhood platform
+- `robinhoodtest-tqqq` - TQQQ 3x Nasdaq ETF fund
+- `robinhoodtest-spxl` - SPXL 3x S&P 500 ETF fund
+
+**DCA Strategy:**
+- Starting capital: $10,000 in each asset fund
+- Weekly investment: $100 every Wednesday (avoids Monday holidays)
+- Duration: 5 years of historical data
+
+**Implementation:**
+- [x] Fetch and store 5 years of weekly price data (BTCUSD, TQQQ, SPXL)
+- [x] Create test data generator utility
+- [x] Add API endpoint `POST /api/v1/test-data/generate`
+- [x] Add UI button to load test data (Settings page)
+- [x] Clear `data.example/funds/` of sample data
+
 ### Future Features (v1.1+)
 - Tax Lot Tracking (FIFO/LIFO/specific lot)
 - Benchmark Comparison (vs SPY, BTC)

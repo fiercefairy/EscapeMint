@@ -223,7 +223,9 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
     fundSize = latestEntry?.fund_size ?? cash
     currentValue = cash
   } else {
-    fundSize = latestEntry?.fund_size ?? config.fund_size_usd
+    // For trading funds with manage_cash=false, fundSize = netInvested (matches FundDetail.tsx)
+    // For trading funds with manage_cash=true, use entry's fund_size or config
+    fundSize = !manageCash ? netInvested : (latestEntry?.fund_size ?? config.fund_size_usd)
     // Calculate post-action value (entry.value is pre-action)
     // After a BUY, the equity value increases by the buy amount
     // After a SELL, the equity value decreases by the sell amount
