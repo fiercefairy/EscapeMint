@@ -1065,20 +1065,20 @@ export function FundDetail() {
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               {/* Breadcrumb with indicators */}
-              <div className="flex items-center gap-2 text-sm flex-wrap gap-y-1.5">
-                <Link to="/" className="text-slate-400 hover:text-white leading-tight">Dashboard</Link>
-                <span className="text-slate-600 leading-tight">/</span>
-                <Link to={`/platform/${fund.platform}`} className="text-slate-400 hover:text-white capitalize leading-tight">{fund.platform}</Link>
-                <span className="text-slate-600 leading-tight">/</span>
-                <span className="text-white font-medium uppercase leading-tight">{fund.ticker}</span>
+              <div className="flex items-baseline gap-2 text-sm flex-wrap gap-y-2">
+                <Link to="/" className="text-slate-400 hover:text-white">Dashboard</Link>
+                <span className="text-slate-600">/</span>
+                <Link to={`/platform/${fund.platform}`} className="text-slate-400 hover:text-white capitalize">{fund.platform}</Link>
+                <span className="text-slate-600">/</span>
+                <span className="text-white font-medium uppercase">{fund.ticker}</span>
                 {/* Closed Tag */}
                 {(fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)) && (
-                  <span className="px-2 py-1 text-[10px] font-medium leading-none bg-slate-700 text-slate-400 rounded inline-block align-middle">Closed</span>
+                  <span className="px-2 py-0.5 text-[10px] font-medium bg-slate-700 text-slate-400 rounded">Closed</span>
                 )}
                 {/* Audited Badge - clickable to toggle */}
                 <button
                   onClick={toggleAudited}
-                  className={`px-2 py-1 text-[10px] font-medium rounded inline-flex items-center gap-1 leading-none transition-colors align-middle ${
+                  className={`px-2 py-0.5 text-[10px] font-medium rounded inline-flex items-center gap-1 transition-colors ${
                     fund.config.audited
                       ? 'bg-green-900/50 text-green-300 border border-green-700 hover:bg-green-900/70'
                       : 'bg-slate-700/50 text-slate-500 border border-slate-600 hover:bg-slate-700 hover:text-slate-400'
@@ -1093,7 +1093,7 @@ export function FundDetail() {
                 {/* Recommendation Badge - not shown for cash funds */}
                 {state?.recommendation && features.allowsRecommendations && (
                   <span
-                    className={`px-2 py-1 text-[10px] font-bold leading-none rounded inline-block align-middle ${
+                    className={`px-2 py-0.5 text-[10px] font-bold rounded ${
                       state.recommendation.action === 'BUY'
                         ? 'bg-green-900/50 text-green-300 border border-green-700'
                         : state.recommendation.action === 'HOLD'
@@ -1107,7 +1107,7 @@ export function FundDetail() {
                 )}
                 {/* Cash/Margin Available */}
                 {state && ((state.cash_available ?? 0) > 0 || (fund.config.margin_enabled && (state.margin_available ?? 0) > 0)) && (
-                  <span className="px-2 py-1 text-[10px] font-medium leading-none rounded bg-slate-700/50 text-slate-300 border border-slate-600 inline-block align-middle">
+                  <span className="px-2 py-0.5 text-[10px] font-medium rounded bg-slate-700/50 text-slate-300 border border-slate-600">
                     {(state.cash_available ?? 0) > 0 && (
                       state.cash_source ? (
                         <Link to={`/fund/${state.cash_source}`} className="hover:text-mint-400">
