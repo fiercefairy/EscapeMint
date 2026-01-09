@@ -7,6 +7,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from 'react'
 import type { FundSummary, AggregateMetrics, HistoryResponse } from '../api/funds'
+import { useSettings } from './SettingsContext'
 
 // WebSocket URL - same host as API, /ws path
 const WS_URL = `ws://${window.location.hostname}:5551/ws`
@@ -41,6 +42,7 @@ interface DashboardProviderProps {
 }
 
 export function DashboardProvider({ children }: DashboardProviderProps) {
+  const { settings } = useSettings()
   const [state, setState] = useState<DashboardState>({
     funds: null,
     metrics: null,
@@ -82,11 +84,11 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
       }
       setState(prev => ({ ...prev, connected: true, error: null }))
 
-      // Subscribe to dashboard channel (always include all funds)
+      // Subscribe to dashboard channel with current test mode setting
       ws.send(JSON.stringify({
         type: 'subscribe',
         channel: 'dashboard',
-        includeTest: true
+        includeTest: settings.testFundsMode
       }))
     }
 
@@ -153,7 +155,7 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
         connect()
       }, 3000)
     }
-  }, [])
+  }, [settings.testFundsMode])
 
   // Refresh data
   const refresh = useCallback(() => {
@@ -168,9 +170,16 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
     }
   }, [])
 
-  // Connect on mount
+  // Connect on mount and reconnect when testFundsMode changes
   useEffect(() => {
     isUnmountingRef.current = false
+    // Reset loading states when testFundsMode changes
+    setState(prev => ({
+      ...prev,
+      fundsLoading: true,
+      metricsLoading: true,
+      historyLoading: true
+    }))
     connect()
 
     return () => {

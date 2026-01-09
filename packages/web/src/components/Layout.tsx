@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { fetchFunds, FUNDS_CHANGED_EVENT, type FundSummary } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
+import { useSettings } from '../contexts/SettingsContext'
 
 const SIDEBAR_COLLAPSED_KEY = 'escapemint-sidebar-collapsed'
 const EXPANDED_PLATFORMS_KEY = 'escapemint-expanded-platforms'
@@ -20,6 +21,7 @@ interface GroupedFunds {
 
 export function Layout() {
   const location = useLocation()
+  const { settings } = useSettings()
   const [collapsed, setCollapsed] = useState(() => {
     const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
     return saved === 'true'
@@ -46,24 +48,24 @@ export function Layout() {
     setMobileMenuOpen(false)
   }, [location.pathname])
 
-  // Load funds and platforms
+  // Load funds and platforms based on testFundsMode setting
   const loadFundsAndPlatforms = () => {
-    fetchFunds().then(result => {
+    fetchFunds(settings.testFundsMode).then(result => {
       if (result.data) setFunds(result.data)
     })
-    fetchPlatforms().then(result => {
+    fetchPlatforms(settings.testFundsMode).then(result => {
       if (result.data) setPlatforms(result.data)
     })
   }
 
-  // Fetch funds, platforms, and version on mount
+  // Fetch funds, platforms, and version on mount and when testFundsMode changes
   useEffect(() => {
     loadFundsAndPlatforms()
     fetch(`${API_BASE}/version`)
       .then(res => res.json())
       .then(data => setVersion(data.version))
       .catch(() => {})
-  }, [])
+  }, [settings.testFundsMode])
 
   // Listen for funds changed event
   useEffect(() => {
@@ -141,10 +143,10 @@ export function Layout() {
         return (
           <div key={expandKey}>
             {/* Platform Header */}
-            <div className="flex items-center mx-1">
+            <div className="flex items-baseline mx-1">
               <button
                 onClick={() => togglePlatform(expandKey)}
-                className={`flex-shrink-0 p-1.5 text-[10px] transition-colors ${
+                className={`flex-shrink-0 px-1 py-1.5 text-xs leading-none transition-colors ${
                   hasActiveFund
                     ? 'text-mint-400'
                     : 'text-slate-500 hover:text-slate-300'

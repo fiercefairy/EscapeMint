@@ -462,6 +462,36 @@ export function Settings() {
         )}
       </div>
 
+      {/* Test Funds Mode */}
+      <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
+        <h2 className="text-base font-semibold text-white mb-2">Data Mode</h2>
+        <p className="text-sm text-slate-400 mb-3">
+          Switch between viewing your real funds or test/demo funds.
+        </p>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="fundsMode"
+              checked={!settings.testFundsMode}
+              onChange={() => updateSetting('testFundsMode', false)}
+              className="w-4 h-4 border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500 focus:ring-offset-slate-800"
+            />
+            <span className="text-sm text-white">My Funds</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="fundsMode"
+              checked={settings.testFundsMode}
+              onChange={() => updateSetting('testFundsMode', true)}
+              className="w-4 h-4 border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500 focus:ring-offset-slate-800"
+            />
+            <span className="text-sm text-white">Test Funds</span>
+          </label>
+        </div>
+      </div>
+
       {/* Advanced/Beta Tools */}
       <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
         <h2 className="text-base font-semibold text-white mb-2">Advanced/Beta Tools</h2>

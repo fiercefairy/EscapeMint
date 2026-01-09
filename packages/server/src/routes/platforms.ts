@@ -67,13 +67,29 @@ async function writePlatformsData(data: PlatformsData): Promise<void> {
 }
 
 /**
- * GET /platforms - List all platforms (from file + derived from funds)
+ * Check if a platform is a test platform
  */
-platformsRouter.get('/', async (_req, res) => {
-  const funds = await readAllFunds(FUNDS_DIR).catch(() => [])
+function isTestPlatform(platformId: string): boolean {
+  return platformId === 'test' || platformId.endsWith('test')
+}
+
+/**
+ * GET /platforms - List all platforms (from file + derived from funds)
+ * Query params:
+ *   - include_test: 'true' to show ONLY test platforms, omit/false for non-test
+ */
+platformsRouter.get('/', async (req, res) => {
+  const includeTest = req.query['include_test'] === 'true'
+  const allFunds = await readAllFunds(FUNDS_DIR).catch(() => [])
   const savedData = await readPlatformsData().catch(() => ({} as PlatformsData))
 
-  // Extract unique platforms from funds
+  // Filter funds by test mode
+  const funds = allFunds.filter(f => {
+    const isTest = isTestPlatform(f.platform.toLowerCase())
+    return includeTest ? isTest : !isTest
+  })
+
+  // Extract unique platforms from filtered funds
   const fundPlatforms = new Set(funds.map(f => f.platform.toLowerCase()))
 
   // Merge: saved platforms take precedence for display name

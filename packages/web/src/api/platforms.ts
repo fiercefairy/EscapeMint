@@ -13,8 +13,9 @@ export interface Platform {
   auto_sync_cash?: boolean
 }
 
-export async function fetchPlatforms(): Promise<ApiResult<Platform[]>> {
-  return fetchJson<Platform[]>(`${API_BASE}/platforms`, undefined, 'Failed to fetch platforms')
+export async function fetchPlatforms(includeTest = false): Promise<ApiResult<Platform[]>> {
+  const url = includeTest ? `${API_BASE}/platforms?include_test=true` : `${API_BASE}/platforms`
+  return fetchJson<Platform[]>(url, undefined, 'Failed to fetch platforms')
 }
 
 export async function createPlatform(platform: { id: string; name: string; color?: string }): Promise<ApiResult<Platform>> {
