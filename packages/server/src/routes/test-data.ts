@@ -42,25 +42,19 @@ testDataRouter.get('/status', async (_req, res) => {
  * POST /test-data/generate - Generate test funds with historical DCA simulation
  *
  * Request body (optional):
- *   - weeklyAmount: number (default: 100) - Weekly DCA amount
  *   - initialFundSize: number (default: 10000) - Initial fund size
  *   - deleteExisting: boolean (default: true) - Delete existing test funds first
  */
 testDataRouter.post('/generate', async (req, res, next) => {
   const {
-    weeklyAmount = 100,
     initialFundSize = 10000,
     deleteExisting = true
   } = req.body as {
-    weeklyAmount?: number
     initialFundSize?: number
     deleteExisting?: boolean
   }
 
   // Validate inputs
-  if (typeof weeklyAmount !== 'number' || weeklyAmount < 0) {
-    return next(badRequest('weeklyAmount must be a non-negative number'))
-  }
   if (typeof initialFundSize !== 'number' || initialFundSize < 0) {
     return next(badRequest('initialFundSize must be a non-negative number'))
   }
@@ -87,7 +81,7 @@ testDataRouter.post('/generate', async (req, res, next) => {
   }
 
   // Generate new test funds
-  const funds = generateTestFunds({ weeklyAmount, initialFundSize })
+  const funds = generateTestFunds({ initialFundSize })
 
   // Write funds to disk
   for (const fund of funds) {
