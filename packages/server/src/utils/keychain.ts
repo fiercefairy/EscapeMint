@@ -54,10 +54,10 @@ export const storeApiKey = async (
 export const getApiKey = async (keyName: string): Promise<StoredCredentials | null> => {
   const command = `security find-generic-password -a "${keyName}" -s "${SERVICE_NAME}" -w`
 
-  const result = await execAsync(command).catch((error: unknown) => {
-    // Log for diagnostics but treat failures as "no credentials found"
-    // (keychain locked, key missing, or other error all return empty)
-    console.debug(`Keychain lookup failed for "${keyName}":`, error instanceof Error ? error.message : error)
+  const result = await execAsync(command).catch(() => {
+    // Treat failures as "no credentials found" (keychain locked, key missing, etc.)
+    // Don't log error details to avoid exposing sensitive information
+    console.debug(`Keychain lookup failed for "${keyName}"`)
     return { stdout: '', stderr: '' }
   })
 
