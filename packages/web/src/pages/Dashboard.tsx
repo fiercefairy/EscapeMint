@@ -125,19 +125,19 @@ export function Dashboard() {
       // Filter fundBreakdown to only include funds from selected platform
       const filteredBreakdown: Record<string, number> = {}
       let filteredTotalValue = 0
-      let originalTotalValue = 0
 
       for (const [fundId, value] of Object.entries(point.fundBreakdown)) {
-        originalTotalValue += value
         if (platformFundIds.has(fundId)) {
           filteredBreakdown[fundId] = value
           filteredTotalValue += value
         }
       }
 
-      // Calculate scaling ratio for fields we can't filter directly
-      // This is an approximation since we don't have per-fund historical data for all fields
-      const ratio = originalTotalValue > 0 ? filteredTotalValue / originalTotalValue : 0
+      // Calculate scaling ratio using server's totalValue as base
+      // This avoids issues with negative fund values skewing the ratio
+      // Clamp ratio to [0, 1] to prevent over-scaling when platform value exceeds total
+      const rawRatio = point.totalValue > 0 ? filteredTotalValue / point.totalValue : 0
+      const ratio = Math.max(0, Math.min(1, rawRatio))
 
       return {
         ...point,
@@ -196,6 +196,7 @@ export function Dashboard() {
     const totalTimeWeightedFundSize = filteredFundMetrics.reduce((sum, f) => sum + f.timeWeightedFundSize, 0)
     const totalDaysActive = filteredFundMetrics.reduce((sum, f) => sum + f.daysActive, 0)
     const totalRealizedGains = filteredFundMetrics.reduce((sum, f) => sum + f.realizedGains, 0)
+    const totalUnrealizedGains = filteredFundMetrics.reduce((sum, f) => sum + f.unrealizedGains, 0)
     const activeFunds = filteredFundMetrics.filter(f => f.status !== 'closed').length
     const closedFunds = filteredFundMetrics.filter(f => f.status === 'closed').length
 
@@ -228,6 +229,7 @@ export function Dashboard() {
 
     const totalGainUsd = totalValue - totalStartInput
     const totalGainPct = totalStartInput > 0 ? (totalValue / totalStartInput - 1) : 0
+    const unrealizedGainPct = totalStartInput > 0 ? totalUnrealizedGains / totalStartInput : 0
 
     const avgDaysActive = fundsWithSharesPct.length > 0 ? totalDaysActive / fundsWithSharesPct.length : 1
     const aggregateLiquidAPY = totalTimeWeightedFundSize > 0 && avgDaysActive > 0
@@ -242,6 +244,8 @@ export function Dashboard() {
       totalTimeWeightedFundSize,
       totalDaysActive,
       totalRealizedGains,
+      totalUnrealizedGains,
+      unrealizedGainPct,
       realizedAPY: weightedRealizedAPY,
       liquidAPY: aggregateLiquidAPY,
       projectedAnnualReturn,
