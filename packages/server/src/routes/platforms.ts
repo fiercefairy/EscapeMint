@@ -30,6 +30,10 @@ interface PlatformConfig {
   notes?: string
   /** When true, platform manages a shared cash pool via a {platform}-cash fund */
   manage_cash?: boolean
+  /** When true, trades (BUY/SELL/dividends) on trading funds auto-create corresponding entries in the cash fund.
+   *  Use this for platforms like Robinhood where cash is shared across all trading within the platform.
+   *  Defaults to true for robinhood platform. */
+  auto_sync_cash?: boolean
   /** Column order for funds table */
   funds_column_order?: string[]
   /** Visible columns for funds table */
@@ -63,13 +67,29 @@ async function writePlatformsData(data: PlatformsData): Promise<void> {
 }
 
 /**
- * GET /platforms - List all platforms (from file + derived from funds)
+ * Check if a platform is a test platform
  */
-platformsRouter.get('/', async (_req, res) => {
-  const funds = await readAllFunds(FUNDS_DIR).catch(() => [])
+function isTestPlatform(platformId: string): boolean {
+  return platformId === 'test' || platformId.endsWith('test')
+}
+
+/**
+ * GET /platforms - List all platforms (from file + derived from funds)
+ * Query params:
+ *   - include_test: 'true' to show ONLY test platforms, omit/false for non-test
+ */
+platformsRouter.get('/', async (req, res) => {
+  const includeTest = req.query['include_test'] === 'true'
+  const allFunds = await readAllFunds(FUNDS_DIR).catch(() => [])
   const savedData = await readPlatformsData().catch(() => ({} as PlatformsData))
 
-  // Extract unique platforms from funds
+  // Filter funds by test mode
+  const funds = allFunds.filter(f => {
+    const isTest = isTestPlatform(f.platform.toLowerCase())
+    return includeTest ? isTest : !isTest
+  })
+
+  // Extract unique platforms from filtered funds
   const fundPlatforms = new Set(funds.map(f => f.platform.toLowerCase()))
 
   // Merge: saved platforms take precedence for display name
@@ -285,6 +305,13 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
     liquidAPY: number
     entries: number
     audited?: string
+    // Derivatives-specific fields
+    position?: number
+    avgEntry?: number
+    marginBalance?: number
+    cumFunding?: number
+    cumRebates?: number
+    cumFees?: number
   }> = []
 
   for (const fund of platformFunds) {
@@ -341,7 +368,14 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
       realizedAPY: metrics.realizedApy,
       liquidAPY: metrics.liquidApy,
       entries: fund.entries.length,
-      ...(fund.config.audited && { audited: fund.config.audited })
+      ...(fund.config.audited && { audited: fund.config.audited }),
+      // Derivatives-specific fields
+      ...(metrics.position !== undefined && { position: metrics.position }),
+      ...(metrics.avgEntry !== undefined && { avgEntry: metrics.avgEntry }),
+      ...(metrics.marginBalance !== undefined && { marginBalance: metrics.marginBalance }),
+      ...(metrics.cumFunding !== undefined && { cumFunding: metrics.cumFunding }),
+      ...(metrics.cumRebates !== undefined && { cumRebates: metrics.cumRebates }),
+      ...(metrics.cumFees !== undefined && { cumFees: metrics.cumFees })
     })
   }
 
@@ -414,6 +448,9 @@ platformsRouter.patch('/:id/config', async (req, res, next) => {
   if (updates.notes !== undefined) {
     platformConfig.notes = updates.notes
   }
+  if (updates.auto_sync_cash !== undefined) {
+    platformConfig.auto_sync_cash = updates.auto_sync_cash
+  }
 
   data[platformId] = platformConfig
   await writePlatformsData(data)
@@ -430,9 +467,29 @@ platformsRouter.get('/:id/cash', async (req, res, next) => {
   const data = await readPlatformsData().catch(() => ({} as PlatformsData))
   const platformConfig = data[platformId]
 
+  // If platform isn't in platforms.json, check if it exists via funds
   if (!platformConfig) {
-    return next(notFound(`Platform '${platformId}' not found`))
+    const allFunds = await readAllFunds(FUNDS_DIR).catch(() => [])
+    const platformFunds = allFunds.filter(f => f.platform.toLowerCase() === platformId)
+
+    if (platformFunds.length === 0) {
+      return next(notFound(`Platform '${platformId}' not found`))
+    }
+
+    // Platform exists via funds but has no config - return cash tracking disabled
+    return res.json({
+      enabled: false,
+      cashFundId: null,
+      balance: 0,
+      marginAvailable: 0,
+      marginBorrowed: 0,
+      interestEarned: 0,
+      autoSyncCash: platformId === 'robinhood'
+    })
   }
+
+  // Determine auto_sync_cash (defaults to true for robinhood)
+  const autoSyncCash = platformConfig.auto_sync_cash ?? (platformId === 'robinhood')
 
   // Check if cash tracking is enabled
   if (!platformConfig.manage_cash) {
@@ -442,7 +499,8 @@ platformsRouter.get('/:id/cash', async (req, res, next) => {
       balance: 0,
       marginAvailable: 0,
       marginBorrowed: 0,
-      interestEarned: 0
+      interestEarned: 0,
+      autoSyncCash
     })
   }
 
@@ -464,6 +522,7 @@ platformsRouter.get('/:id/cash', async (req, res, next) => {
       marginAvailable: 0,
       marginBorrowed: 0,
       interestEarned: 0,
+      autoSyncCash,
       autoDisabled: true
     })
   }
@@ -484,7 +543,8 @@ platformsRouter.get('/:id/cash', async (req, res, next) => {
     marginAvailable,
     marginBorrowed,
     interestEarned,
-    entriesCount: cashFund.entries.length
+    entriesCount: cashFund.entries.length,
+    autoSyncCash
   })
 })
 
@@ -760,11 +820,11 @@ platformsRouter.post('/:id/enable-cash-tracking', async (req, res, next) => {
   for (const fund of platformFunds) {
     if (fund.id === cashFundId) continue
     const fundPath = join(FUNDS_DIR, `${fund.id}.tsv`)
-    // Clear cash, margin, interest and expense from all entries (now tracked in cash fund)
-    const clearedEntries = fund.entries.map(entry => {
-      const { cash, margin_available, margin_borrowed, cash_interest, expense, ...rest } = entry
-      return rest
-    })
+    // Clear cash-related fields from entries (now tracked in consolidated cash fund)
+    // Removing: cash, margin_available, margin_borrowed, cash_interest, expense
+    const clearedEntries = fund.entries.map(
+      ({ cash: _c, margin_available: _ma, margin_borrowed: _mb, cash_interest: _ci, expense: _e, ...rest }) => rest
+    )
     // Write fund with cleared entries and updated config
     await writeFund(fundPath, {
       ...fund,

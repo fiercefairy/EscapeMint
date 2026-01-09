@@ -3,8 +3,8 @@ import { join } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { platform } from 'node:os'
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
-import { chromium, type Browser, type Page } from 'playwright'
-import { readAllFunds, appendEntry, type FundEntry, type FundData } from '@escapemint/storage'
+import { chromium, type Browser, type Page, type ElementHandle } from 'playwright'
+import { readAllFunds, appendEntry, readFund, writeFund, type FundEntry, type FundData } from '@escapemint/storage'
 import { badRequest, validationError } from '../middleware/error-handler.js'
 import { PDFParse } from 'pdf-parse'
 
@@ -1114,7 +1114,14 @@ const findRobinhoodPage = async (browser: Browser): Promise<Page | null> => {
     console.log(`[Import] Context ${i}: ${pages.length} pages`)
     for (const page of pages) {
       const pageUrl = page.url()
-      if (pageUrl.includes('robinhood.com') && !pageUrl.includes('/login')) {
+      // Must start with robinhood.com domain (not just contain it in a fragment/param)
+      // Exclude Stripe iframes and other third-party pages
+      const isRobinhoodPage = (
+        pageUrl.startsWith('https://robinhood.com') ||
+        pageUrl.startsWith('http://robinhood.com')
+      ) && !pageUrl.includes('/login')
+
+      if (isRobinhoodPage) {
         console.log(`[Import] Found existing Robinhood page: ${pageUrl}`)
         return page
       }
@@ -1122,6 +1129,97 @@ const findRobinhoodPage = async (browser: Browser): Promise<Page | null> => {
   }
 
   return null
+}
+
+/**
+ * Navigate to Robinhood history page by clicking through the UI.
+ * This is a fallback when direct URL navigation doesn't work.
+ */
+const navigateRobinhoodViaUI = async (page: Page): Promise<boolean> => {
+  console.log('[Robinhood] Attempting UI navigation to history page')
+
+  // Try multiple strategies to find and click the Account link
+  const accountSelectors = [
+    'a[href="/account"]',
+    'a[href*="/account"]',
+    '[data-testid="AccountLink"]',
+    'text=Account',
+    'nav a:has-text("Account")',
+    '[aria-label="Account"]',
+    'a:has-text("Account")'
+  ]
+
+  let accountClicked = false
+  for (const selector of accountSelectors) {
+    const accountLink = await page.$(selector).catch(() => null)
+    if (accountLink) {
+      console.log(`[Robinhood] Found account link with selector: ${selector}`)
+      await accountLink.click().catch(() => null)
+      accountClicked = true
+      await page.waitForTimeout(2000)
+      break
+    }
+  }
+
+  if (!accountClicked) {
+    console.log('[Robinhood] Could not find Account link, trying direct profile icon click')
+    // Try clicking on profile/account icon (usually in top right)
+    const profileIcon = await page.$('[data-testid="ProfileIcon"], [aria-label="Profile"], svg[class*="profile"], .account-icon').catch(() => null)
+    if (profileIcon) {
+      await profileIcon.click().catch(() => null)
+      await page.waitForTimeout(2000)
+    }
+  }
+
+  // Check if we're on an account page now
+  let currentUrl = page.url()
+  console.log(`[Robinhood] After account click, URL is: ${currentUrl}`)
+
+  // If we're on an account page but not history, click History
+  if (currentUrl.includes('/account') && !currentUrl.includes('history')) {
+    const historySelectors = [
+      'a[href="/account/history"]',
+      'a[href*="history"]',
+      'text=History',
+      'a:has-text("History")',
+      '[data-testid="HistoryLink"]'
+    ]
+
+    for (const selector of historySelectors) {
+      const historyLink = await page.$(selector).catch(() => null)
+      if (historyLink) {
+        console.log(`[Robinhood] Found history link with selector: ${selector}`)
+        await historyLink.click().catch(() => null)
+        await page.waitForTimeout(2000)
+        break
+      }
+    }
+  }
+
+  // Final check
+  currentUrl = page.url()
+  console.log(`[Robinhood] Final URL after UI navigation: ${currentUrl}`)
+
+  if (currentUrl.includes('history') || currentUrl.includes('/account/')) {
+    console.log('[Robinhood] UI navigation successful')
+    return true
+  }
+
+  // Last resort: try clicking any visible "History" text on the page
+  const historyText = await page.$('text=History').catch(() => null)
+  if (historyText) {
+    console.log('[Robinhood] Clicking History text as last resort')
+    await historyText.click().catch(() => null)
+    await page.waitForTimeout(2000)
+
+    currentUrl = page.url()
+    if (currentUrl.includes('history')) {
+      return true
+    }
+  }
+
+  console.log('[Robinhood] UI navigation failed')
+  return false
 }
 
 /**
@@ -1138,123 +1236,109 @@ const createNewPage = async (browser: Browser): Promise<Page> => {
       const pageUrl = existingPage.url()
       if (!pageUrl.startsWith('chrome-extension://') && !pageUrl.startsWith('blob:') && pageUrl !== 'about:blank') {
         console.log(`[Import] Creating new page in context ${i}`)
-        return context.newPage()
+        // Add timeout to prevent hanging
+        const newPagePromise = context.newPage()
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout creating new page')), 10000)
+        )
+        const newPage = await Promise.race([newPagePromise, timeoutPromise])
+        console.log(`[Import] New page created successfully, URL: ${newPage.url()}`)
+        return newPage
       }
     }
   }
 
   // Fallback to first context
+  console.log('[Import] Using fallback context')
   const context = contexts[0]
   if (!context) {
     throw new Error('No browser context found')
   }
-  return context.newPage()
+  const newPagePromise = context.newPage()
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Timeout creating new page in fallback context')), 10000)
+  )
+  const newPage = await Promise.race([newPagePromise, timeoutPromise])
+  console.log('[Import] New page created in fallback context')
+  return newPage
 }
 
 /**
  * Scrape a single transaction from an activity item element.
  * Expands it if needed and extracts all data.
+ * @param existingIds - Set of existing transaction IDs to skip expanding for performance
+ */
+
+/**
+ * Extract all data from an activity item in a single browser evaluate call.
+ * This avoids the O(n) cost of page.$$() which creates handles for all items.
  */
 const scrapeActivityItem = async (
   page: Page,
   itemSelector: string,
-  index: number
+  index: number,
+  _existingIds?: Set<string>  // Reserved for future deduplication; kept for API stability
 ): Promise<ScrapedTransaction | null> => {
-  const items = await page.$$(itemSelector)
-  const item = items[index]
-  if (!item) return null
+  // Log timing every 100 items (use index which is 0-based)
+  const shouldLog = (index + 1) % 100 === 0
+  const timings: Record<string, number> = {}
+  const t0 = Date.now()
 
-  // Get header content
-  const headerEl = await item.$('[data-testid="rh-ExpandableItem-buttonContent"]')
-  if (!headerEl) return null
+  // Extract header data in a single evaluate - no expansion, just header info
+  const headerData = await page.evaluate(
+    ([idx, sel]) => {
+      const items = document.querySelectorAll(sel)
+      const item = items[idx]
+      if (!item) return null
 
-  // Extract title from h3
-  const titleEl = await headerEl.$('h3')
-  const title = await titleEl?.textContent() ?? ''
-  if (!title) return null
+      const header = item.querySelector('[data-testid="rh-ExpandableItem-buttonContent"]')
+      if (!header) return null
 
-  // Extract date from span (usually the second one in the header)
-  const dateSpans = await headerEl.$$('.css-16mmcnu span, header span')
+      const titleEl = header.querySelector('h3')
+      const title = titleEl?.textContent ?? ''
+      if (!title) return null
+
+      const headerText = header.textContent ?? ''
+      return { title, headerText }
+    },
+    [index, itemSelector] as [number, string]
+  )
+
+  if (!headerData) return null
+  const { title, headerText } = headerData
+  if (shouldLog) timings['getHeader'] = Date.now() - t0
+
+  // Extract date from header text
   let dateText = ''
-  for (const span of dateSpans) {
-    const text = await span.textContent() ?? ''
-    // Look for date pattern
-    if (/[A-Z][a-z]{2}\s+\d{1,2}/.test(text)) {
-      dateText = text
-      break
-    }
+  const dateMatch = headerText.match(/([A-Z][a-z]{2}\s+\d{1,2}(?:,?\s+\d{4})?)/)
+  if (dateMatch && dateMatch[1]) {
+    dateText = dateMatch[1]
   }
 
-  // Extract amount - look for the amount in the header
-  const amountEls = await headerEl.$$('h3 span, .css-5a1gnn h3')
+  // Extract amount from header text
   let amountText = ''
-  for (const el of amountEls) {
-    const text = await el.textContent() ?? ''
-    if (text.includes('$')) {
-      amountText = text
-      break
-    }
+  const amountMatch = headerText.match(/\$[\d,]+\.?\d*/)
+  if (amountMatch) {
+    amountText = amountMatch[0]
   }
 
-  // Also look for shares info in the header (e.g., "1.009998 shares at $99.01")
+  // Also look for shares info in the header
   let headerSharesText = ''
-  const headerText = await headerEl.textContent() ?? ''
-  const sharesMatch = headerText.match(/[\d.]+\s+shares?\s+at\s+\$[\d,.]+/)
+  const sharesMatch = headerText.match(/([\d.]+)\s+shares?\s+at\s+\$([\d,.]+)/)
   if (sharesMatch) {
     headerSharesText = sharesMatch[0]
   }
 
-  // Check if expanded by looking for the content div
-  const contentEl = await item.$('[data-testid="rh-ExpandableItem-content"]')
-  const isHidden = await contentEl?.evaluate(el => {
-    const parent = el.closest('[aria-hidden]')
-    return parent?.getAttribute('aria-hidden') === 'true'
-  }) ?? true
-
-  // Click to expand if not already expanded
-  if (isHidden) {
-    const button = await item.$('[data-testid="rh-ExpandableItem-button"]')
-    if (button) {
-      // Use force:true to bypass intercepting elements (sticky nav, overlays)
-      await button.click({ force: true }).catch(() => {
-        // If click fails, try scrolling the element into view first
-        return button.scrollIntoViewIfNeeded().then(() => button.click({ force: true }))
-      })
-      await page.waitForTimeout(300) // Wait for expansion animation
-    }
-  }
-
-  // Extract details from expanded content
+  // No expansion - just use header data
   const details: Record<string, string> = {}
-  const detailsEl = await item.$('[data-testid="rh-ExpandableItem-content"]')
-  if (detailsEl) {
-    // Get all cell-label elements (key-value pairs)
-    const cells = await detailsEl.$$('[data-testid="cell-label"]')
-    for (const cell of cells) {
-      const spans = await cell.$$('span div')
-      if (spans.length >= 2) {
-        const key = await spans[0]?.textContent() ?? ''
-        const valueEl = spans[spans.length - 1]
-        // Check for link in value (for Symbol)
-        const link = await valueEl?.$('a')
-        let value = ''
-        if (link) {
-          value = await link.textContent() ?? ''
-        } else {
-          value = await valueEl?.textContent() ?? ''
-        }
-        if (key && value) {
-          details[key.trim()] = value.trim()
-        }
-      }
-    }
-  }
+  if (shouldLog) timings['parseHeader'] = Date.now() - t0 - (timings['getHeader'] ?? 0)
 
   // Parse the data
   const type = determineTransactionType(title)
   const date = parseRobinhoodDate(dateText)
   const amount = parseAmount(amountText)
   const symbol = extractSymbol(title, details)
+  if (shouldLog) timings['parseData'] = Date.now() - t0 - Object.values(timings).reduce((a, b) => a + b, 0)
 
   // Get shares and price
   let shares: number | undefined
@@ -1286,14 +1370,14 @@ const scrapeActivityItem = async (
   const titleHash = title.split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0).toString(36)
   const id = `${date}-${type}-${amount.toFixed(2)}-${symbol || titleHash}`
 
+  // Slim result - only essential fields
   const result: ScrapedTransaction = {
     id,
     date,
     type,
-    title,
+    title,  // Keep for debugging/display (replaces rawText which was removed to slim payload)
     amount,
-    details,
-    rawText: headerText  // Store full text for later analysis
+    details  // Empty object now, but keep for type compatibility
   }
 
   // Only add optional properties if they have values
@@ -1301,10 +1385,11 @@ const scrapeActivityItem = async (
   if (shares) result.shares = shares
   if (pricePerShare) result.pricePerShare = pricePerShare
 
-  // Store rawHtml for 'other' type transactions for debugging
-  if (type === 'other') {
-    const html = await item.innerHTML().catch(() => '')
-    if (html) result.rawHtml = html
+  // Log timing breakdown every 100 items
+  if (shouldLog && Object.keys(timings).length > 0) {
+    const total = Object.values(timings).reduce((a, b) => a + b, 0)
+    const breakdown = Object.entries(timings).map(([k, v]) => `${k}=${v}ms`).join(', ')
+    console.log(`[Robinhood] Item #${index + 1} timing (total=${total}ms): ${breakdown}`)
   }
 
   return result
@@ -1313,93 +1398,170 @@ const scrapeActivityItem = async (
 /**
  * Scrape transaction history from a Robinhood page with progress updates.
  * Expands each item to get full details.
+ * @param fullSync - When true, disables early exit on consecutive existing transactions (for full resync)
  */
 const scrapeRobinhoodHistoryWithProgress = async (
   page: Page,
   archive: ScrapeArchive,
   onProgress: (current: number, total: number, tx: ScrapedTransaction | null) => void,
-  maxScrolls = 500  // Increased for 7+ years of history
+  fullSync = false   // When true, don't early exit on consecutive existing transactions
 ): Promise<{ newCount: number; totalScraped: number }> => {
   // Wait for activity items to load
   await page.waitForSelector('[data-testid="activity-item"], [data-testid="UnifiedTransferActivityItem"]', {
     timeout: 15000
   }).catch(() => null)
 
-  await page.waitForTimeout(2000)
+  // Wait for page to stabilize - check that items have loaded and page is ready
+  await page.waitForFunction(
+    (sel) => {
+      const items = document.querySelectorAll(sel as string)
+      // Wait until we have at least a few items loaded
+      return items.length >= 3
+    },
+    '[data-testid="activity-item"], [data-testid="UnifiedTransferActivityItem"]',
+    { timeout: 10000 }
+  ).catch(() => null)
 
   let totalScraped = 0
   let newCount = 0
-  let previousItemCount = 0
-  let noNewItemsCount = 0
+  let consecutiveExisting = 0  // Track consecutive already-scraped transactions
+  const MAX_CONSECUTIVE_EXISTING = 50  // Stop early if we've seen this many existing txns in a row
 
   const itemSelector = '[data-testid="activity-item"], [data-testid="UnifiedTransferActivityItem"]'
 
-  // Process items and scroll loop
-  for (let scroll = 0; scroll < maxScrolls; scroll++) {
-    const items = await page.$$(itemSelector)
-    const currentItemCount = items.length
+  // Build set of existing IDs for fast lookup
+  const existingIds = new Set(archive.transactions.map(t => t.id))
 
-    // Process new items
+  // Process items using index-based approach with periodic page refresh
+  // Refresh every BATCH_SIZE items to reset browser state and prevent slowdown
+  const BATCH_SIZE = 200
+  let previousItemCount = 0
+  let noNewItemsCount = 0
+  const maxScrolls = 500
+
+  // Timing diagnostics
+  let lastLogTime = Date.now()
+  let itemTimes: number[] = []
+  let batchStartCount = 0
+
+  for (let scroll = 0; scroll < maxScrolls; scroll++) {
+    // Get current item count
+    const currentItemCount = await page.evaluate(
+      (sel) => document.querySelectorAll(sel).length,
+      itemSelector
+    )
+
+    // Process new items (from previousItemCount to currentItemCount)
+    let shouldBreak = false
+    let needsRefresh = false
+
     for (let i = previousItemCount; i < currentItemCount; i++) {
-      const tx = await scrapeActivityItem(page, itemSelector, i)
+      const itemStart = Date.now()
+      const tx = await scrapeActivityItem(page, itemSelector, i, existingIds)
+
       if (tx) {
         totalScraped++
         const isNew = addToArchive(archive, tx)
         if (isNew) {
           newCount++
-          // Save incrementally every 10 new transactions
-          if (newCount % 10 === 0) {
-            await saveArchive(archive)
+          existingIds.add(tx.id)
+          consecutiveExisting = 0
+        } else {
+          consecutiveExisting++
+          if (!fullSync && consecutiveExisting >= MAX_CONSECUTIVE_EXISTING) {
+            console.log(`[Robinhood] Early exit: ${consecutiveExisting} consecutive existing transactions, stopping scrape`)
+            shouldBreak = true
+            break
           }
         }
         onProgress(totalScraped, currentItemCount, tx)
+
+        // Track timing
+        itemTimes.push(Date.now() - itemStart)
+
+        // Save and log every 100 items
+        if (totalScraped % 100 === 0) {
+          await saveArchive(archive)
+          const avg = itemTimes.reduce((a, b) => a + b, 0) / itemTimes.length
+          const max = Math.max(...itemTimes)
+          const elapsed = Date.now() - lastLogTime
+          console.log(`[Robinhood] Items ${totalScraped - 99}-${totalScraped}: avg=${avg.toFixed(0)}ms, max=${max}ms, total=${elapsed}ms, new=${newCount}`)
+          itemTimes = []
+          lastLogTime = Date.now()
+        }
+
+        // Check if we need to refresh page to reset browser state
+        if (totalScraped - batchStartCount >= BATCH_SIZE) {
+          needsRefresh = true
+          break
+        }
       }
+    }
+
+    if (shouldBreak) break
+
+    // Remove processed items from DOM in bulk to reset browser state
+    // This is faster than page refresh and doesn't require scrolling to reload
+    if (needsRefresh) {
+      console.log(`[Robinhood] Removing ${previousItemCount} processed items from DOM to reset browser state...`)
+      await saveArchive(archive)
+
+      // Remove first N items (the ones we just processed) in a single bulk operation
+      const removed = await page.evaluate(
+        ([count, sel]) => {
+          const items = document.querySelectorAll(sel)
+          let removedCount = 0
+          // Remove items from the beginning (oldest processed items)
+          for (let i = 0; i < count && i < items.length; i++) {
+            const item = items[i]
+            if (item) {
+              item.remove()
+              removedCount++
+            }
+          }
+          return removedCount
+        },
+        [previousItemCount, itemSelector] as [number, string]
+      )
+
+      console.log(`[Robinhood] Removed ${removed} items, DOM now has ${await page.evaluate((sel) => document.querySelectorAll(sel).length, itemSelector)} items`)
+
+      // Wait a moment for React to stabilize after bulk removal
+      await page.waitForTimeout(500)
+
+      // Reset counters - we now start from index 0 since we removed processed items
+      previousItemCount = 0
+      batchStartCount = totalScraped
+      noNewItemsCount = 0
+      continue
     }
 
     previousItemCount = currentItemCount
 
-    // Scroll to load more - try multiple scroll strategies
+    // Scroll to load more
     await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight)
     })
-    await page.waitForTimeout(2000)  // Increased wait time
 
-    // Try scrolling specific container if main scroll doesn't work
-    await page.evaluate(() => {
-      const scrollableContainers = document.querySelectorAll('[data-testid="activity-feed"], .ReactVirtualized__Grid, [class*="scroll"]')
-      scrollableContainers.forEach(container => {
-        if (container.scrollHeight > container.clientHeight) {
-          container.scrollTop = container.scrollHeight
-        }
-      })
-    })
-    await page.waitForTimeout(500)
+    // Wait for new items to load
+    const gotNewItems = await page.waitForFunction(
+      ([prevCount, sel]) => document.querySelectorAll(sel).length > prevCount,
+      [currentItemCount, itemSelector] as [number, string],
+      { timeout: 3000 }
+    ).then(() => true).catch(() => false)
 
-    // Check if we got new items
-    const newItems = await page.$$(itemSelector)
-    if (newItems.length === currentItemCount) {
+    if (!gotNewItems) {
       noNewItemsCount++
-      // More patient - wait for 5 consecutive scrolls with no new items
-      if (noNewItemsCount >= 5) {
-        // Try one more aggressive scroll before giving up
-        await page.evaluate(() => {
-          window.scrollBy(0, 5000)
-        })
-        await page.waitForTimeout(3000)
-        const finalCheck = await page.$$(itemSelector)
-        if (finalCheck.length === currentItemCount) {
-          // Really at the end
-          break
-        }
+      if (noNewItemsCount >= 2) {
+        console.log(`[Robinhood] No more items after ${noNewItemsCount} scroll attempts`)
+        break
       }
     } else {
       noNewItemsCount = 0
     }
 
-    // Safety limit - increased for 7+ years of history (estimate ~10 transactions/week = 3640)
-    if (totalScraped > 10000) {
-      break
-    }
+    // Safety limit
+    if (totalScraped > 10000) break
   }
 
   // Final save
@@ -1428,6 +1590,7 @@ const PLATFORM_LOGIN_URLS: Record<string, string> = {
   robinhood: 'https://robinhood.com/login',
   m1: 'https://dashboard.m1.com',
   'm1-cash': 'https://dashboard.m1.com',
+  coinbase: 'https://www.coinbase.com/signin',
   _default: 'about:blank'
 }
 
@@ -1442,7 +1605,8 @@ const getPlatformName = (platform?: string): string => {
   const normalized = platform.toLowerCase().replace(/-cash$/, '')
   const names: Record<string, string> = {
     robinhood: 'Robinhood',
-    m1: 'M1 Finance'
+    m1: 'M1 Finance',
+    coinbase: 'Coinbase'
   }
   return names[normalized] ?? platform
 }
@@ -1818,9 +1982,14 @@ importRouter.post('/archive/:platform/reclassify', async (req, res) => {
 /**
  * GET /import/robinhood/scrape-stream
  * SSE endpoint for scraping with real-time progress updates.
+ * Query params:
+ *   - url: Robinhood history page URL (required)
+ *   - platform: Platform name for archive (default: 'robinhood')
+ *   - full: When 'true', performs full sync without early exit (for complete resync)
  */
 importRouter.get('/robinhood/scrape-stream', async (req, res) => {
-  const { url, platform = 'robinhood' } = req.query as { url?: string; platform?: string }
+  const { url, platform = 'robinhood', full } = req.query as { url?: string; platform?: string; full?: string }
+  const fullSync = full === 'true'
 
   // Set up SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
@@ -1870,56 +2039,119 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
     console.log(`[Import] Using existing Robinhood page: ${page.url()}`)
     sendEvent('status', { message: 'Found logged-in Robinhood page', phase: 'navigating' })
   } else {
-    // No existing page - create new one and tell user to log in
-    console.log('[Import] No Robinhood page found, creating new one')
-    sendEvent('status', { message: 'Opening Robinhood...', phase: 'navigating' })
+    // No Robinhood page found - try to find ANY page we can use
+    console.log('[Import] No Robinhood page found, looking for any usable page...')
+    sendEvent('status', { message: 'Looking for browser page...', phase: 'navigating' })
 
-    page = await createNewPage(browser).catch((err: Error) => {
-      sendEvent('error', { message: err.message })
-      return null
-    }) as Page | null
+    // Find any existing page to reuse (avoid creating new pages which can hang)
+    const contexts = browser.contexts()
+    for (const context of contexts) {
+      const pages = context.pages()
+      for (const existingPage of pages) {
+        const pageUrl = existingPage.url()
+        // Use any non-extension page
+        if (!pageUrl.startsWith('chrome-extension://') && !pageUrl.startsWith('blob:')) {
+          console.log(`[Import] Found usable page: ${pageUrl}`)
+          page = existingPage
+          break
+        }
+      }
+      if (page) break
+    }
 
     if (!page) {
-      res.end()
-      return
+      // Last resort: try to create a new page
+      console.log('[Import] No usable page found, attempting to create new one...')
+      sendEvent('status', { message: 'Creating new browser tab...', phase: 'navigating' })
+
+      page = await createNewPage(browser).catch((err: Error) => {
+        console.log(`[Import] Failed to create new page: ${err.message}`)
+        sendEvent('error', { message: `Failed to create browser tab: ${err.message}. Please open a tab manually and try again.` })
+        return null
+      }) as Page | null
+
+      if (!page) {
+        res.end()
+        return
+      }
+      pageCreated = true
     }
 
-    pageCreated = true
-
-    // Navigate to Robinhood
-    const navResult = await page.goto('https://robinhood.com', { waitUntil: 'networkidle', timeout: 30000 }).catch((err: Error) => err)
-    if (navResult instanceof Error) {
-      sendEvent('error', { message: `Navigation failed: ${navResult.message}` })
-      await page.close().catch(() => {})
-      res.end()
-      return
-    }
-
-    await page.waitForTimeout(2000)
-
-    // Check if redirected to login
-    if (page.url().includes('/login')) {
-      console.log('[Import] Redirected to login - user needs to log in manually')
-      sendEvent('error', {
-        message: 'Please log in to Robinhood in your browser first, then navigate to the history page and try again.'
-      })
-      // Don't close the page - let user log in
-      res.end()
-      return
-    }
+    console.log(`[Robinhood] Using page: ${page.url()}`)
   }
 
-  // Navigate to history if needed
-  if (!page.url().includes('history')) {
-    sendEvent('status', { message: 'Opening history page...', phase: 'navigating' })
-    const navResult = await page.goto(url, { waitUntil: 'load', timeout: 30000 }).catch((err: Error) => err)
+  // Bring page to front
+  console.log('[Robinhood] Bringing page to front...')
+  await page.bringToFront()
+  console.log('[Robinhood] Page brought to front')
+
+  // Navigate to history page
+  const currentUrl = page.url()
+  console.log(`[Robinhood] Current page URL: ${currentUrl}`)
+  console.log(`[Robinhood] Target URL: ${url}`)
+
+  // Always navigate to the target URL if not already there
+  if (!currentUrl.includes('history')) {
+    sendEvent('status', { message: `Navigating to history page...`, phase: 'navigating' })
+
+    console.log(`[Robinhood] Navigating to: ${url}`)
+
+    // Navigate directly to history URL - use domcontentloaded for speed
+    const navResult = await page.goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000
+    }).catch((err: Error) => err)
+
     if (navResult instanceof Error) {
+      console.log(`[Robinhood] Navigation error: ${navResult.message}`)
       sendEvent('error', { message: `Navigation failed: ${navResult.message}` })
       if (pageCreated) await page.close().catch(() => {})
       res.end()
       return
     }
+
+    // Short wait for any redirects
     await page.waitForTimeout(2000)
+
+    // Check URL immediately
+    let newUrl = page.url()
+    console.log(`[Robinhood] After navigation, URL is: ${newUrl}`)
+
+    // Check if redirected to login
+    if (newUrl.includes('/login')) {
+      console.log('[Robinhood] Redirected to login - user needs to log in manually')
+      sendEvent('error', {
+        message: 'Please log in to Robinhood in your browser first, then navigate to the history page and try again.'
+      })
+      res.end()
+      return
+    }
+
+    // If we got redirected away from history, try UI navigation
+    if (!newUrl.includes('history') && !newUrl.includes('/account/')) {
+      console.log(`[Robinhood] Redirected to: ${newUrl}, trying UI navigation`)
+      sendEvent('status', { message: `Navigating via UI...`, phase: 'navigating' })
+
+      // Try clicking through the UI instead
+      const navSuccess = await navigateRobinhoodViaUI(page)
+      if (!navSuccess) {
+        const finalUrl = page.url()
+        sendEvent('error', {
+          message: `Cannot navigate to history page. Ended up at: ${finalUrl}. Please log in to Robinhood and manually navigate to Account > History, then try again.`
+        })
+        res.end()
+        return
+      }
+      newUrl = page.url()
+      console.log(`[Robinhood] After UI navigation, URL is: ${newUrl}`)
+    }
+
+    // Now wait for history items to load
+    console.log('[Robinhood] Waiting for history items to load...')
+    sendEvent('status', { message: `Loading history...`, phase: 'loading' })
+    await page.waitForSelector('[data-testid="activity-item"], [data-testid="UnifiedTransferActivityItem"]', {
+      timeout: 15000
+    }).catch(() => null)
   }
 
   // Verify we're on the history page and logged in
@@ -1941,11 +2173,14 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
   const existingCount = archive.transactions.length
 
   sendEvent('status', {
-    message: existingCount > 0
-      ? `Found ${existingCount} existing transactions. Scraping for new data...`
-      : 'Starting fresh scrape...',
+    message: fullSync
+      ? `Full sync mode: Found ${existingCount} existing transactions. Scraping ALL history...`
+      : existingCount > 0
+        ? `Found ${existingCount} existing transactions. Scraping for new data...`
+        : 'Starting fresh scrape...',
     phase: 'scraping',
-    existingCount
+    existingCount,
+    fullSync
   })
 
   // Scrape with progress updates
@@ -1965,7 +2200,8 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
           title: tx.title.substring(0, 50)
         } : null
       })
-    }
+    },
+    fullSync
   ).catch((err: Error) => {
     sendEvent('error', { message: `Scraping error: ${err.message}` })
     return null
@@ -1992,13 +2228,20 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
  * POST /import/robinhood/scrape
  * Scrape transaction history from a Robinhood URL.
  * Returns immediately with scraped data (non-streaming version for backward compatibility).
+ * Body params:
+ *   - url: Robinhood history page URL (required)
+ *   - platform: Platform name for archive (default: 'robinhood')
+ *   - cdpUrl: Chrome DevTools Protocol URL
+ *   - full: When true, performs full sync without early exit (for complete resync)
  */
 importRouter.post('/robinhood/scrape', async (req, res, next) => {
-  const { url, platform = 'robinhood', cdpUrl = DEFAULT_CDP_URL } = req.body as {
+  const { url, platform = 'robinhood', cdpUrl = DEFAULT_CDP_URL, full = false } = req.body as {
     url?: string
     platform?: string
     cdpUrl?: string
+    full?: boolean
   }
+  const fullSync = full === true
 
   if (!url) {
     return next(badRequest('url is required'))
@@ -2013,12 +2256,11 @@ importRouter.post('/robinhood/scrape', async (req, res, next) => {
   }
 
   // Connect to browser
-  let browser: Browser
   const connectResult = await connectToBrowser(cdpUrl).catch((err: Error) => err)
   if (connectResult instanceof Error) {
     return next(badRequest(`Failed to connect to browser: ${connectResult.message}`))
   }
-  browser = connectResult
+  const browser: Browser = connectResult
 
   // First, try to find an existing Robinhood page
   let page: Page | null = await findRobinhoodPage(browser)
@@ -2058,7 +2300,8 @@ importRouter.post('/robinhood/scrape', async (req, res, next) => {
   const result = await scrapeRobinhoodHistoryWithProgress(
     page,
     archive,
-    () => {} // No progress callback for non-streaming
+    () => {}, // No progress callback for non-streaming
+    fullSync
   ).catch((err: Error) => {
     return { error: err.message }
   })
@@ -2640,7 +2883,10 @@ importRouter.post('/crypto/parse-all', async (_req, res) => {
   // Sort transactions by date
   allTransactions.sort((a, b) => a.date.localeCompare(b.date))
 
-  // Build summary by symbol
+  // Load funds to check existence
+  const allFunds = await readAllFunds(FUNDS_DIR).catch(() => [] as FundData[])
+
+  // Build summary by symbol with fund existence check
   const bySymbol: Record<string, {
     buys: number
     sells: number
@@ -2648,18 +2894,23 @@ importRouter.post('/crypto/parse-all', async (_req, res) => {
     totalSold: number
     totalSpent: number
     totalReceived: number
+    fundId: string
+    fundExists: boolean
   }> = {}
 
   for (const tx of allTransactions) {
     let stats = bySymbol[tx.symbol]
     if (!stats) {
+      const fundId = buildFundId('robinhood', tx.symbol)
       stats = {
         buys: 0,
         sells: 0,
         totalBought: 0,
         totalSold: 0,
         totalSpent: 0,
-        totalReceived: 0
+        totalReceived: 0,
+        fundId,
+        fundExists: fundExists(fundId, allFunds)
       }
       bySymbol[tx.symbol] = stats
     }
@@ -3089,6 +3340,8 @@ const scrapeM1CashHistoryWithProgress = async (
   let totalScraped = 0
   let newCount = 0
   let pageNum = 0
+  let consecutiveExisting = 0  // Track consecutive already-scraped transactions
+  const MAX_CONSECUTIVE_EXISTING = 30  // Stop early if we've seen this many existing txns in a row
 
   // Process pages
   while (pageNum < maxPages) {
@@ -3097,17 +3350,31 @@ const scrapeM1CashHistoryWithProgress = async (
     // Scrape current page
     const pageTxns = await scrapeM1CashTransactionsFromPage(page)
 
+    let shouldBreak = false
     for (const tx of pageTxns) {
       totalScraped++
       const isNew = addToArchive(archive, tx)
       if (isNew) {
         newCount++
+        consecutiveExisting = 0  // Reset counter when we find a new transaction
         // Save incrementally every 10 new transactions
         if (newCount % 10 === 0) {
           await saveArchive(archive)
         }
+      } else {
+        consecutiveExisting++
+        // Early exit: if we've seen many consecutive existing transactions, we're caught up
+        if (consecutiveExisting >= MAX_CONSECUTIVE_EXISTING) {
+          console.log(`[M1 Import] Early exit: ${consecutiveExisting} consecutive existing transactions, stopping scrape`)
+          shouldBreak = true
+          break
+        }
       }
       onProgress(totalScraped, totalScraped, tx)
+    }
+
+    if (shouldBreak) {
+      break
     }
 
     // Check for Next button and click it
@@ -3688,7 +3955,7 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
 
   // Get list of existing downloaded files
   await mkdir(M1_STATEMENTS_DIR, { recursive: true })
-  let existingFiles: string[] = await readdir(M1_STATEMENTS_DIR).catch(() => [] as string[])
+  const existingFiles: string[] = await readdir(M1_STATEMENTS_DIR).catch(() => [] as string[])
 
   let totalDownloaded = 0
   let totalSkipped = 0
@@ -4353,5 +4620,1910 @@ importRouter.post('/m1-statements/apply', async (req, res, next) => {
       consolidatedEntries: applied,
       errors
     }
+  })
+})
+
+// ============================================================================
+// Coinbase Derivatives Scraping (for funding/rewards not in API)
+// ============================================================================
+
+// Types for Coinbase scraped data
+interface CoinbaseFundingEntry {
+  id: string  // unique ID based on date + amount
+  date: string  // ISO date YYYY-MM-DD
+  amount: number  // Funding amount (positive = received, negative = paid)
+  rate?: string  // Funding rate if available
+  productId?: string  // Product ID like 'BIP-20DEC30-CDE'
+}
+
+interface CoinbaseRewardEntry {
+  id: string
+  date: string  // ISO date YYYY-MM-DD
+  amount: number  // Reward amount (always positive)
+  type: 'usdc_interest' | 'staking' | 'other'
+  description?: string
+}
+
+interface CoinbaseDerivativesArchive {
+  platform: 'coinbase-btcd'
+  createdAt: string
+  updatedAt: string
+  fundingPayments: CoinbaseFundingEntry[]
+  rewards: CoinbaseRewardEntry[]
+}
+
+// ============================================================================
+// Coinbase Transactions Page Scraping Types
+// ============================================================================
+
+type CoinbaseTransactionType =
+  | 'FUNDING_LOSS' | 'FUNDING_PROFIT'
+  | 'BUY' | 'SELL'
+  | 'USDC_INTEREST' | 'REBATE'
+  | 'STAKING' | 'CARD' | 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER'
+
+interface CoinbaseScrapedTransaction {
+  id: string                    // From row id attribute (decoded)
+  date: string                  // ISO YYYY-MM-DD
+  type: CoinbaseTransactionType // Enum
+  title: string                 // Raw: "Funding deducted"
+  amount: number                // USD value (signed)
+  secondaryAmount?: string      // Raw: "-232.52 USD" or "+1 contract"
+  contracts?: number            // For perp trades
+  price?: number                // For perp trades (USD per contract)
+  symbol?: string               // BTC, USDC, etc.
+  fee?: number                  // Trading fee (from detail dialog)
+  isPerpRelated: boolean        // Filter flag
+}
+
+interface CoinbaseTransactionArchive {
+  platform: 'coinbase-transactions'
+  createdAt: string
+  updatedAt: string
+  transactions: CoinbaseScrapedTransaction[]
+}
+
+/**
+ * Determine transaction type from Coinbase title
+ */
+const determineCoinbaseTransactionType = (title: string): CoinbaseTransactionType => {
+  const upper = title.toUpperCase()
+
+  // Perp-related
+  if (upper.includes('FUNDING DEDUCTED')) return 'FUNDING_LOSS'
+  if (upper.includes('FUNDING RECEIVED')) return 'FUNDING_PROFIT'
+  if (upper.includes('BOUGHT') && upper.includes('PERP')) return 'BUY'
+  if (upper.includes('SOLD') && upper.includes('PERP')) return 'SELL'
+  if (upper.includes('TRADING REBATE')) return 'REBATE'
+
+  // Rewards/Interest
+  if (upper.includes('USDC REWARD')) return 'USDC_INTEREST'
+  if (upper.includes('REWARD')) return 'STAKING'
+
+  // Transfers
+  if (upper.includes('RECEIVED')) return 'DEPOSIT'
+  if (upper.includes('SENT')) return 'WITHDRAWAL'
+  if (upper.includes('CARD PAYMENT')) return 'CARD'
+
+  return 'OTHER'
+}
+
+/**
+ * Check if transaction type is perp-related
+ */
+const isPerpRelatedType = (type: CoinbaseTransactionType): boolean => {
+  return ['FUNDING_LOSS', 'FUNDING_PROFIT', 'BUY', 'SELL', 'REBATE', 'USDC_INTEREST'].includes(type)
+}
+
+/**
+ * Check if transaction is margin-related (USDC deposits/withdrawals for perp trading)
+ */
+const isMarginRelated = (type: CoinbaseTransactionType, title: string, symbol?: string): boolean => {
+  // USDC deposits to margin account
+  if (type === 'DEPOSIT' && (symbol === 'USDC' || title.toLowerCase().includes('usdc'))) {
+    return true
+  }
+  // USDC withdrawals from margin account
+  if (type === 'WITHDRAWAL' && (symbol === 'USDC' || title.toLowerCase().includes('usdc'))) {
+    return true
+  }
+  // "Deposited funds" is typically a margin deposit
+  if (type === 'OTHER' && title.toLowerCase().includes('deposited funds')) {
+    return true
+  }
+  return false
+}
+
+/**
+ * Parse date from Coinbase format (e.g., "Jan 6, 2026") to ISO (YYYY-MM-DD)
+ */
+const parseCoinbaseDateToISO = (dateText: string): string => {
+  const months: Record<string, string> = {
+    jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+  }
+
+  // Match "Jan 6, 2026" or "January 6, 2026"
+  const match = dateText.match(/([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/)
+  if (!match || !match[1] || !match[2] || !match[3]) {
+    console.warn(`[Coinbase] Unable to parse date: ${dateText}`)
+    return new Date().toISOString().split('T')[0] ?? new Date().toISOString().substring(0, 10)
+  }
+
+  const monthKey = match[1].toLowerCase().substring(0, 3)
+  const month = months[monthKey] ?? '01'
+  const day = match[2].padStart(2, '0')
+  const year = match[3]
+
+  return `${year}-${month}-${day}`
+}
+
+/**
+ * Parse amount string to number (handles "$1,234.56", "-$50.00", "+$10.00")
+ */
+const parseCoinbaseAmount = (amountText: string): number => {
+  const cleaned = amountText.replace(/[,$]/g, '').trim()
+  const num = parseFloat(cleaned)
+  return isNaN(num) ? 0 : num
+}
+
+/**
+ * Extract symbol from title (e.g., "Bought BTC PERP" -> "BTC")
+ */
+const extractSymbolFromTitle = (title: string): string | undefined => {
+  // Match patterns like "BTC PERP", "USDC reward", "BTC reward"
+  const perpMatch = title.match(/([A-Z]{2,5})\s+PERP/i)
+  if (perpMatch?.[1]) return perpMatch[1].toUpperCase()
+
+  const rewardMatch = title.match(/([A-Z]{2,5})\s+reward/i)
+  if (rewardMatch?.[1]) return rewardMatch[1].toUpperCase()
+
+  return undefined
+}
+
+/**
+ * Extract contracts from secondary amount (e.g., "+1 contract" -> 1)
+ */
+const extractContracts = (secondaryText: string): number | undefined => {
+  const match = secondaryText.match(/([+-]?\d+)\s*contracts?/i)
+  if (match?.[1]) return Math.abs(parseInt(match[1], 10))
+  return undefined
+}
+
+/**
+ * Load or create Coinbase transactions archive
+ */
+const loadCoinbaseTransactionsArchive = async (): Promise<CoinbaseTransactionArchive> => {
+  await mkdir(SCRAPE_ARCHIVE_DIR, { recursive: true })
+  const archivePath = join(SCRAPE_ARCHIVE_DIR, 'coinbase-transactions.json')
+
+  const content = await readFile(archivePath, 'utf-8').catch(() => null)
+  if (content) {
+    return JSON.parse(content) as CoinbaseTransactionArchive
+  }
+
+  return {
+    platform: 'coinbase-transactions',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    transactions: []
+  }
+}
+
+/**
+ * Save Coinbase transactions archive
+ */
+const saveCoinbaseTransactionsArchive = async (archive: CoinbaseTransactionArchive): Promise<void> => {
+  await mkdir(SCRAPE_ARCHIVE_DIR, { recursive: true })
+  const archivePath = join(SCRAPE_ARCHIVE_DIR, 'coinbase-transactions.json')
+  archive.updatedAt = new Date().toISOString()
+  await writeFile(archivePath, JSON.stringify(archive, null, 2), 'utf-8')
+}
+
+/**
+ * Add transaction to Coinbase archive if not already present
+ */
+const addToCoinbaseTransactionsArchive = (
+  archive: CoinbaseTransactionArchive,
+  tx: CoinbaseScrapedTransaction
+): boolean => {
+  const exists = archive.transactions.some(t => t.id === tx.id)
+  if (!exists) {
+    archive.transactions.push(tx)
+    // Sort by date descending (newest first)
+    archive.transactions.sort((a, b) => b.date.localeCompare(a.date))
+    return true
+  }
+  return false
+}
+
+/**
+ * Find Coinbase transactions page in browser
+ */
+const findCoinbaseTransactionsPage = async (browser: Browser): Promise<Page | null> => {
+  const contexts = browser.contexts()
+  console.log(`[Coinbase TX] Found ${contexts.length} browser contexts`)
+
+  for (let i = 0; i < contexts.length; i++) {
+    const context = contexts[i]!
+    const pages = context.pages()
+    for (const page of pages) {
+      const pageUrl = page.url()
+      if (pageUrl.includes('coinbase.com/transactions') &&
+          !pageUrl.includes('/signin') && !pageUrl.includes('/login')) {
+        console.log(`[Coinbase TX] Found Coinbase transactions page: ${pageUrl}`)
+        return page
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Closes any open detail dialog reliably
+ */
+const closeDetailDialog = async (page: Page): Promise<void> => {
+  const dialogSelector = '[data-testid="advanced-trade-details-body"]'
+
+  // Check if dialog is open
+  const dialog = await page.$(dialogSelector)
+  if (!dialog) return
+
+  console.log('[Coinbase TX] Closing open dialog...')
+
+  // Try close button first
+  const closeButton = await page.$('[data-testid="close-cta"]')
+  if (closeButton) {
+    await closeButton.click()
+  } else {
+    await page.keyboard.press('Escape')
+  }
+
+  // Wait for dialog to close
+  await page.waitForSelector(dialogSelector, { state: 'hidden', timeout: 3000 }).catch(() => {
+    console.warn('[Coinbase TX] Dialog did not close via button/Escape')
+  })
+
+  // Double-check and try clicking outside if still open
+  const stillOpen = await page.$(dialogSelector)
+  if (stillOpen) {
+    await page.click('body', { position: { x: 10, y: 10 } }).catch(() => null)
+    await page.waitForTimeout(500)
+    await page.waitForSelector(dialogSelector, { state: 'hidden', timeout: 2000 }).catch(() => {
+      console.error('[Coinbase TX] Dialog STILL open after all close attempts!')
+    })
+  }
+
+  await page.waitForTimeout(200)
+}
+
+/**
+ * Extract fee from transaction detail dialog.
+ * Clicks on the row to open the dialog, extracts fee info, then closes it.
+ * Returns the total fee (sum of Coinbase fee + Reg and exchange fee if present).
+ *
+ * IMPORTANT: This function re-queries the row by ID before clicking to avoid stale
+ * element handles. It also verifies the dialog content after opening to ensure we
+ * clicked on the correct row.
+ */
+const extractFeeFromDetailDialog = async (
+  page: Page,
+  rowId: string,
+  rowSelector: string,
+  expectedTitle: string
+): Promise<number | undefined> => {
+  const dialogSelector = '[data-testid="advanced-trade-details-body"]'
+
+  // First, ensure no dialog is already open
+  await closeDetailDialog(page)
+
+  // Re-query for the row by ID to get a fresh element handle
+  // This avoids stale element handles that might point to wrong content after DOM changes
+  const freshRow = await page.$(`${rowSelector}[id="${rowId}"]`)
+  if (!freshRow) {
+    console.log(`[Coinbase TX] Row with ID "${rowId.substring(0, 30)}..." no longer exists, skipping fee extraction`)
+    return undefined
+  }
+
+  // Verify the row title is still a BUY/SELL
+  const rowTitle = await freshRow.$('p[class*="headline"]').then(el => el?.textContent()).catch(() => null)
+  if (!rowTitle) {
+    console.log('[Coinbase TX] Row headline not found, skipping fee extraction')
+    return undefined
+  }
+
+  const titleUpper = rowTitle.toUpperCase()
+  if (!titleUpper.includes('BOUGHT') && !titleUpper.includes('SOLD')) {
+    console.warn(`[Coinbase TX] Row title "${rowTitle}" is not a BUY/SELL, skipping click (expected: "${expectedTitle}")`)
+    return undefined
+  }
+
+  // Extra safety: verify title matches what we expected
+  if (rowTitle.trim() !== expectedTitle.trim()) {
+    console.warn(`[Coinbase TX] Row title mismatch! Found "${rowTitle}" but expected "${expectedTitle}", skipping click`)
+    return undefined
+  }
+
+  console.log(`[Coinbase TX] Clicking on row: "${rowTitle}" (ID: ${rowId.substring(0, 20)}...)`)
+
+  // Click on the freshly queried row
+  await freshRow.click()
+
+  // Wait for the detail dialog to appear
+  const dialog = await page.waitForSelector(dialogSelector, {
+    timeout: 5000
+  }).catch(() => null)
+
+  if (!dialog) {
+    console.log('[Coinbase TX] Could not open detail dialog for fee extraction')
+    return undefined
+  }
+
+  // Small delay to ensure dialog is fully rendered
+  await page.waitForTimeout(500)
+
+  // CRITICAL: Verify the dialog is for a BUY/SELL, not a Funding entry
+  // The dialog title should contain "Bought" or "Sold"
+  const dialogTitle = await page.$eval(
+    '[data-testid="advanced-trade-details-body"] [class*="headline"]',
+    el => el.textContent
+  ).catch(() => null)
+
+  if (dialogTitle) {
+    const dialogTitleUpper = dialogTitle.toUpperCase()
+    if (!dialogTitleUpper.includes('BOUGHT') && !dialogTitleUpper.includes('SOLD')) {
+      console.error(`[Coinbase TX] WRONG DIALOG OPENED! Dialog title: "${dialogTitle}", expected BUY/SELL. Closing immediately.`)
+      await closeDetailDialog(page)
+      return undefined
+    }
+    console.log(`[Coinbase TX] Dialog title verified: "${dialogTitle}"`)
+  }
+
+  let totalFee = 0
+
+  // Find all base-row elements that might contain fee info
+  const feeRows = await page.$$('[data-testid="base-row"]')
+
+  for (const feeRow of feeRows) {
+    const rowText = await feeRow.textContent()
+    if (!rowText) continue
+
+    const lowerText = rowText.toLowerCase()
+
+    // Check if this row contains fee information
+    // Look for: "Coinbase fee", "Reg and exchange fee", or just "Fee"
+    if (lowerText.includes('fee')) {
+      // Extract the dollar amount from this row
+      // The format is typically: "Coinbase fee$0.68" or "Fee$8.45"
+      const dollarMatch = rowText.match(/\$([0-9,.]+)/)
+      if (dollarMatch && dollarMatch[1]) {
+        const feeValue = parseFloat(dollarMatch[1].replace(/,/g, ''))
+        if (!isNaN(feeValue)) {
+          totalFee += feeValue
+        }
+      }
+    }
+  }
+
+  // Close the dialog
+  await closeDetailDialog(page)
+
+  return totalFee > 0 ? totalFee : undefined
+}
+
+/**
+ * Parse a single Coinbase transaction row
+ */
+const parseCoinbaseTransactionRow = async (
+  row: ElementHandle<Element>
+): Promise<CoinbaseScrapedTransaction | null> => {
+  // Get row ID (base64 encoded transaction ID)
+  const rowId = await row.getAttribute('id')
+  if (!rowId) return null
+
+  // Decode the ID (it's typically base64)
+  const idMatch = rowId.match(/id="([^"]+)"/) || [null, rowId]
+  const decodedId = idMatch[1] ?? rowId
+
+  // Get all cells
+  const cells = await row.$$('td')
+  if (cells.length < 3) return null
+
+  // First cell: title (headline)
+  const firstCell = cells[0]
+  if (!firstCell) return null
+
+  // Find headline element - look for paragraph with headline class
+  const headlineEl = await firstCell.$('p[class*="headline"]')
+  const title = (await headlineEl?.textContent() ?? '').trim()
+  if (!title) return null
+
+  // Second cell: amounts
+  const secondCell = cells[1]
+  if (!secondCell) return null
+
+  const amountParagraphs = await secondCell.$$('p')
+  const primaryAmountText = await amountParagraphs[0]?.textContent() ?? ''
+  const secondaryAmountText = await amountParagraphs[1]?.textContent() ?? ''
+
+  // Third cell: date
+  const thirdCell = cells[2]
+  if (!thirdCell) return null
+
+  const dateEl = await thirdCell.$('p')
+  const dateText = await dateEl?.textContent() ?? ''
+
+  // Parse the data
+  const type = determineCoinbaseTransactionType(title)
+  const amount = parseCoinbaseAmount(primaryAmountText)
+  const date = parseCoinbaseDateToISO(dateText)
+  const symbol = extractSymbolFromTitle(title)
+  const contracts = extractContracts(secondaryAmountText)
+
+  // Calculate price for trades
+  let price: number | undefined
+  if (contracts && contracts > 0 && Math.abs(amount) > 0) {
+    price = Math.abs(amount) / contracts
+  }
+
+  const result: CoinbaseScrapedTransaction = {
+    id: decodedId,
+    date,
+    type,
+    title,
+    amount,
+    isPerpRelated: isPerpRelatedType(type) || isMarginRelated(type, title, symbol)
+  }
+
+  // Add optional properties only if they have values
+  if (secondaryAmountText) result.secondaryAmount = secondaryAmountText
+  if (contracts !== undefined) result.contracts = contracts
+  if (price !== undefined) result.price = price
+  if (symbol) result.symbol = symbol
+
+  return result
+}
+
+/**
+ * Scrape Coinbase transactions with progress updates
+ */
+const scrapeCoinbaseTransactionsWithProgress = async (
+  page: Page,
+  archive: CoinbaseTransactionArchive,
+  onProgress: (current: number, total: number, tx: CoinbaseScrapedTransaction | null) => void,
+  stopDate?: string,
+  maxScrolls = 500,
+  onNewTransaction?: (tx: CoinbaseScrapedTransaction) => Promise<void>
+): Promise<{ newCount: number; totalScraped: number; stoppedAtDate: boolean }> => {
+  // Wait for transaction rows to load
+  await page.waitForSelector('tr[data-testid="transaction-history-row"]', {
+    timeout: 15000
+  }).catch(() => null)
+
+  await page.waitForTimeout(2000)
+
+  let totalScraped = 0
+  let newCount = 0
+  let previousItemCount = 0
+  let noNewItemsCount = 0
+  let stoppedAtDate = false
+  let consecutiveExisting = 0  // Track consecutive already-scraped transactions
+  const MAX_CONSECUTIVE_EXISTING = 50  // Stop early if we've seen this many existing txns in a row
+
+  const rowSelector = 'tr[data-testid="transaction-history-row"]'
+
+  // Helper to close any open dialog - uses the shared closeDetailDialog function
+  const closeAnyOpenDialog = async () => {
+    await closeDetailDialog(page)
+  }
+
+  // Track processed row IDs to avoid reprocessing after DOM changes
+  const processedRowIds = new Set<string>()
+
+  // Process items and scroll loop
+  for (let scroll = 0; scroll < maxScrolls; scroll++) {
+    // Ensure no dialog is open before processing rows
+    await closeAnyOpenDialog()
+
+    // Keep processing rows until we've handled all visible ones
+    let madeProgress = true
+    while (madeProgress) {
+      madeProgress = false
+
+      // Re-fetch rows each iteration since DOM may have changed
+      const rows = await page.$$(rowSelector)
+
+      for (const row of rows) {
+        // Get the row ID to check if we've already processed it
+        const rowId = await row.getAttribute('id')
+        if (!rowId || processedRowIds.has(rowId)) continue
+
+        // Safety check: close any dialog that might have been opened unexpectedly
+        await closeAnyOpenDialog()
+
+        const tx = await parseCoinbaseTransactionRow(row)
+        if (!tx) {
+          // Mark as processed even if we couldn't parse it
+          processedRowIds.add(rowId)
+          continue
+        }
+
+        // Mark as processed
+        processedRowIds.add(rowId)
+        madeProgress = true
+
+        // Check if we've reached the stop date
+        if (stopDate && tx.date < stopDate) {
+          console.log(`[Coinbase TX] Reached stop date ${stopDate}, stopping at ${tx.date}`)
+          stoppedAtDate = true
+          await saveCoinbaseTransactionsArchive(archive)
+          return { newCount, totalScraped, stoppedAtDate }
+        }
+
+        // Check if this is a new transaction before extracting fees (expensive operation)
+        const existsInArchive = archive.transactions.some(t => t.id === tx.id)
+
+        // For BUY/SELL transactions, extract fee from detail dialog (only for new transactions)
+        // Double-check title contains "Bought" or "Sold" to avoid clicking on funding/other entries
+        const titleUpper = tx.title.toUpperCase()
+        const isBuySellTitle = titleUpper.includes('BOUGHT') || titleUpper.includes('SOLD')
+
+        let didExtractFee = false
+        if (!existsInArchive && (tx.type === 'BUY' || tx.type === 'SELL') && isBuySellTitle) {
+          console.log(`[Coinbase TX] Extracting fee for: "${tx.title}" (type: ${tx.type}, rowId: ${rowId.substring(0, 20)}...)`)
+          // Pass rowId and rowSelector so the function can re-query the row by ID
+          // This ensures we click on the correct row even if DOM shifted
+          const fee = await extractFeeFromDetailDialog(page, rowId, rowSelector, tx.title)
+          if (fee !== undefined) {
+            tx.fee = fee
+            console.log(`[Coinbase TX] Extracted fee $${fee.toFixed(2)} for ${tx.type} ${tx.contracts} contracts`)
+          }
+          didExtractFee = true
+        } else if (!existsInArchive && (tx.type === 'BUY' || tx.type === 'SELL') && !isBuySellTitle) {
+          // Log a warning if type detection is wrong
+          console.warn(`[Coinbase TX] Skipping fee extraction - type is ${tx.type} but title is "${tx.title}"`)
+        }
+
+        totalScraped++
+        const isNew = addToCoinbaseTransactionsArchive(archive, tx)
+        if (isNew) {
+          newCount++
+          consecutiveExisting = 0  // Reset counter when we find a new transaction
+          // Save incrementally every 10 new transactions
+          if (newCount % 10 === 0) {
+            await saveCoinbaseTransactionsArchive(archive)
+          }
+          // Call real-time apply callback if provided
+          if (onNewTransaction) {
+            await onNewTransaction(tx)
+          }
+        } else {
+          consecutiveExisting++
+          // Early exit: if we've seen many consecutive existing transactions, we're caught up
+          if (consecutiveExisting >= MAX_CONSECUTIVE_EXISTING) {
+            console.log(`[Coinbase TX] Early exit: ${consecutiveExisting} consecutive existing transactions, stopping scrape`)
+            await saveCoinbaseTransactionsArchive(archive)
+            return { newCount, totalScraped, stoppedAtDate: false }
+          }
+        }
+        onProgress(totalScraped, rows.length, tx)
+
+        // After opening a dialog for fee extraction, break and re-fetch rows since DOM may have shifted
+        if (didExtractFee) {
+          break
+        }
+      }
+    }
+
+    // Ensure no dialog is open before scrolling
+    await closeAnyOpenDialog()
+
+    // Scroll to load more
+    await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight)
+    })
+    await page.waitForTimeout(2000)
+
+    // Try scrolling specific container if main scroll doesn't work
+    await page.evaluate(() => {
+      const scrollableContainers = document.querySelectorAll('[class*="scroll"], [style*="overflow"]')
+      scrollableContainers.forEach(container => {
+        if (container instanceof HTMLElement && container.scrollHeight > container.clientHeight) {
+          container.scrollTop = container.scrollHeight
+        }
+      })
+    })
+    await page.waitForTimeout(500)
+
+    // Check if we got new items
+    const newRows = await page.$$(rowSelector)
+    const currentRowCount = newRows.length
+    if (currentRowCount === previousItemCount) {
+      noNewItemsCount++
+      // Wait for 5 consecutive scrolls with no new items
+      if (noNewItemsCount >= 5) {
+        // Try one more aggressive scroll before giving up
+        await page.evaluate(() => {
+          window.scrollBy(0, 5000)
+        })
+        await page.waitForTimeout(3000)
+        const finalCheck = await page.$$(rowSelector)
+        if (finalCheck.length === currentRowCount) {
+          console.log(`[Coinbase TX] End of list detected after ${totalScraped} transactions`)
+          break
+        }
+        // Aggressive scroll loaded more items - reset counter to continue normal scrolling
+        console.log(`[Coinbase TX] Aggressive scroll loaded ${finalCheck.length - currentRowCount} more items`)
+        noNewItemsCount = 0
+      }
+    } else {
+      noNewItemsCount = 0
+    }
+    previousItemCount = currentRowCount
+
+    // Safety limit
+    if (totalScraped > 10000) {
+      break
+    }
+  }
+
+  // Final save
+  await saveCoinbaseTransactionsArchive(archive)
+
+  return { newCount, totalScraped, stoppedAtDate }
+}
+
+/**
+ * Load or create Coinbase derivatives archive
+ */
+const loadCoinbaseArchive = async (): Promise<CoinbaseDerivativesArchive> => {
+  await mkdir(SCRAPE_ARCHIVE_DIR, { recursive: true })
+  const archivePath = join(SCRAPE_ARCHIVE_DIR, 'coinbase-btcd.json')
+
+  const content = await readFile(archivePath, 'utf-8').catch(() => null)
+  if (content) {
+    return JSON.parse(content) as CoinbaseDerivativesArchive
+  }
+
+  return {
+    platform: 'coinbase-btcd',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    fundingPayments: [],
+    rewards: []
+  }
+}
+
+/**
+ * Save Coinbase derivatives archive
+ */
+const saveCoinbaseArchive = async (archive: CoinbaseDerivativesArchive): Promise<void> => {
+  await mkdir(SCRAPE_ARCHIVE_DIR, { recursive: true })
+  const archivePath = join(SCRAPE_ARCHIVE_DIR, 'coinbase-btcd.json')
+  archive.updatedAt = new Date().toISOString()
+  await writeFile(archivePath, JSON.stringify(archive, null, 2), 'utf-8')
+}
+
+/**
+ * Generate unique ID for funding entry
+ */
+const generateFundingId = (date: string, amount: number): string => {
+  return `funding-${date}-${amount.toFixed(2).replace(/[-.]/g, '_')}`
+}
+
+/**
+ * Generate unique ID for reward entry
+ */
+const generateRewardId = (date: string, amount: number, type: string): string => {
+  return `reward-${date}-${type}-${amount.toFixed(2).replace(/[-.]/g, '_')}`
+}
+
+/**
+ * Add funding entry to archive if not already present
+ */
+const addFundingToArchive = (archive: CoinbaseDerivativesArchive, entry: CoinbaseFundingEntry): boolean => {
+  const exists = archive.fundingPayments.some(f => f.id === entry.id)
+  if (!exists) {
+    archive.fundingPayments.push(entry)
+    // Sort by date descending
+    archive.fundingPayments.sort((a, b) => b.date.localeCompare(a.date))
+    return true
+  }
+  return false
+}
+
+/**
+ * Add reward entry to archive if not already present
+ */
+const addRewardToArchive = (archive: CoinbaseDerivativesArchive, entry: CoinbaseRewardEntry): boolean => {
+  const exists = archive.rewards.some(r => r.id === entry.id)
+  if (!exists) {
+    archive.rewards.push(entry)
+    // Sort by date descending
+    archive.rewards.sort((a, b) => b.date.localeCompare(a.date))
+    return true
+  }
+  return false
+}
+
+/**
+ * Find Coinbase perpetual futures page in browser
+ */
+const findCoinbaseFuturesPage = async (browser: Browser): Promise<Page | null> => {
+  const contexts = browser.contexts()
+  console.log(`[Coinbase] Found ${contexts.length} browser contexts`)
+
+  for (let i = 0; i < contexts.length; i++) {
+    const context = contexts[i]!
+    const pages = context.pages()
+    for (const page of pages) {
+      const pageUrl = page.url()
+      // Look for perpetual futures or portfolio pages
+      if (pageUrl.includes('coinbase.com') &&
+          (pageUrl.includes('perpetual') || pageUrl.includes('portfolio') || pageUrl.includes('intx')) &&
+          !pageUrl.includes('/signin') && !pageUrl.includes('/login')) {
+        console.log(`[Coinbase] Found Coinbase page: ${pageUrl}`)
+        return page
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Find Coinbase rewards/interest page
+ */
+const findCoinbaseRewardsPage = async (browser: Browser): Promise<Page | null> => {
+  const contexts = browser.contexts()
+
+  for (let i = 0; i < contexts.length; i++) {
+    const context = contexts[i]!
+    const pages = context.pages()
+    for (const page of pages) {
+      const pageUrl = page.url()
+      if (pageUrl.includes('coinbase.com') &&
+          (pageUrl.includes('rewards') || pageUrl.includes('earn')) &&
+          !pageUrl.includes('/signin') && !pageUrl.includes('/login')) {
+        console.log(`[Coinbase] Found Coinbase rewards page: ${pageUrl}`)
+        return page
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * GET /import/coinbase-btcd/archive
+ * Get the Coinbase derivatives scrape archive with summary.
+ */
+importRouter.get('/coinbase-btcd/archive', async (_req, res) => {
+  const archive = await loadCoinbaseArchive()
+
+  // Calculate summary
+  let totalFundingProfit = 0
+  let totalFundingLoss = 0
+  let totalRewards = 0
+
+  for (const funding of archive.fundingPayments) {
+    if (funding.amount >= 0) {
+      totalFundingProfit += funding.amount
+    } else {
+      totalFundingLoss += Math.abs(funding.amount)
+    }
+  }
+
+  for (const reward of archive.rewards) {
+    totalRewards += reward.amount
+  }
+
+  res.json({
+    platform: archive.platform,
+    createdAt: archive.createdAt,
+    updatedAt: archive.updatedAt,
+    summary: {
+      fundingPaymentCount: archive.fundingPayments.length,
+      rewardCount: archive.rewards.length,
+      totalFundingProfit,
+      totalFundingLoss,
+      netFunding: totalFundingProfit - totalFundingLoss,
+      totalRewards
+    },
+    fundingPayments: archive.fundingPayments,
+    rewards: archive.rewards
+  })
+})
+
+/**
+ * POST /import/coinbase-btcd/funding/manual
+ * Add manual funding entry (for funding not captured by API or scraping).
+ *
+ * Body: { date: string, amount: number, productId?: string }
+ */
+importRouter.post('/coinbase-btcd/funding/manual', async (req, res) => {
+  const { date, amount, productId } = req.body as {
+    date?: string
+    amount?: number
+    productId?: string
+  }
+
+  if (!date || amount === undefined) {
+    res.status(400).json({ error: 'Missing required fields: date, amount' })
+    return
+  }
+
+  // Validate date format
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' })
+    return
+  }
+
+  const archive = await loadCoinbaseArchive()
+
+  const entry: CoinbaseFundingEntry = {
+    id: generateFundingId(date, amount),
+    date,
+    amount,
+    productId: productId ?? 'BIP-20DEC30-CDE'
+  }
+
+  const added = addFundingToArchive(archive, entry)
+
+  if (added) {
+    await saveCoinbaseArchive(archive)
+    res.json({
+      success: true,
+      message: `Added funding entry for ${date}: ${amount >= 0 ? '+' : ''}${amount.toFixed(2)}`,
+      entry
+    })
+  } else {
+    res.json({
+      success: false,
+      message: `Funding entry already exists for ${date} with amount ${amount}`,
+      entry
+    })
+  }
+})
+
+/**
+ * POST /import/coinbase-btcd/rewards/manual
+ * Add manual reward entry (USDC interest, etc.).
+ *
+ * Body: { date: string, amount: number, type?: string, description?: string }
+ */
+importRouter.post('/coinbase-btcd/rewards/manual', async (req, res) => {
+  const { date, amount, type, description } = req.body as {
+    date?: string
+    amount?: number
+    type?: 'usdc_interest' | 'staking' | 'other'
+    description?: string
+  }
+
+  if (!date || amount === undefined) {
+    res.status(400).json({ error: 'Missing required fields: date, amount' })
+    return
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' })
+    return
+  }
+
+  const archive = await loadCoinbaseArchive()
+
+  const rewardType = type ?? 'usdc_interest'
+  const entry: CoinbaseRewardEntry = {
+    id: generateRewardId(date, amount, rewardType),
+    date,
+    amount,
+    type: rewardType,
+    ...(description && { description })
+  }
+
+  const added = addRewardToArchive(archive, entry)
+
+  if (added) {
+    await saveCoinbaseArchive(archive)
+    res.json({
+      success: true,
+      message: `Added reward entry for ${date}: +${amount.toFixed(2)}`,
+      entry
+    })
+  } else {
+    res.json({
+      success: false,
+      message: `Reward entry already exists for ${date}`,
+      entry
+    })
+  }
+})
+
+/**
+ * POST /import/coinbase-btcd/funding/bulk
+ * Import funding entries in bulk from JSON format (like funding-manual.json).
+ *
+ * Body: { entries: Record<string, number> }  // { "YYYY-MM-DD": amount, ... }
+ */
+importRouter.post('/coinbase-btcd/funding/bulk', async (req, res) => {
+  const { entries, productId } = req.body as {
+    entries?: Record<string, number>
+    productId?: string
+  }
+
+  if (!entries || typeof entries !== 'object') {
+    res.status(400).json({ error: 'Missing required field: entries (object of date -> amount)' })
+    return
+  }
+
+  const archive = await loadCoinbaseArchive()
+  let added = 0
+  let skipped = 0
+
+  for (const [date, amount] of Object.entries(entries)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      console.log(`[Coinbase] Skipping invalid date format: ${date}`)
+      skipped++
+      continue
+    }
+
+    const entry: CoinbaseFundingEntry = {
+      id: generateFundingId(date, amount),
+      date,
+      amount,
+      productId: productId ?? 'BIP-20DEC30-CDE'
+    }
+
+    if (addFundingToArchive(archive, entry)) {
+      added++
+    } else {
+      skipped++
+    }
+  }
+
+  await saveCoinbaseArchive(archive)
+
+  res.json({
+    success: true,
+    message: `Imported ${added} funding entries, ${skipped} skipped (duplicates or invalid)`,
+    added,
+    skipped,
+    total: archive.fundingPayments.length
+  })
+})
+
+/**
+ * POST /import/coinbase-btcd/rewards/bulk
+ * Import reward entries in bulk from JSON format (like rewards-manual.json).
+ *
+ * Body: { entries: Record<string, number>, type?: string }
+ */
+importRouter.post('/coinbase-btcd/rewards/bulk', async (req, res) => {
+  const { entries, type } = req.body as {
+    entries?: Record<string, number>
+    type?: 'usdc_interest' | 'staking' | 'other'
+  }
+
+  if (!entries || typeof entries !== 'object') {
+    res.status(400).json({ error: 'Missing required field: entries (object of date -> amount)' })
+    return
+  }
+
+  const archive = await loadCoinbaseArchive()
+  let added = 0
+  let skipped = 0
+  const rewardType = type ?? 'usdc_interest'
+
+  for (const [date, amount] of Object.entries(entries)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      console.log(`[Coinbase] Skipping invalid date format: ${date}`)
+      skipped++
+      continue
+    }
+
+    const entry: CoinbaseRewardEntry = {
+      id: generateRewardId(date, amount, rewardType),
+      date,
+      amount,
+      type: rewardType
+    }
+
+    if (addRewardToArchive(archive, entry)) {
+      added++
+    } else {
+      skipped++
+    }
+  }
+
+  await saveCoinbaseArchive(archive)
+
+  res.json({
+    success: true,
+    message: `Imported ${added} reward entries, ${skipped} skipped (duplicates or invalid)`,
+    added,
+    skipped,
+    total: archive.rewards.length
+  })
+})
+
+/**
+ * GET /import/browser/status/coinbase
+ * Check if Coinbase is open and logged in the browser.
+ */
+importRouter.get('/browser/status/coinbase', async (_req, res) => {
+  const browser = await connectToBrowser().catch(() => null)
+
+  if (!browser) {
+    res.json({
+      browserConnected: false,
+      coinbaseFound: false,
+      loggedIn: false,
+      message: 'Browser not connected. Launch browser first.'
+    })
+    return
+  }
+
+  const futuresPage = await findCoinbaseFuturesPage(browser)
+
+  if (!futuresPage) {
+    res.json({
+      browserConnected: true,
+      coinbaseFound: false,
+      loggedIn: false,
+      message: 'No Coinbase perpetual futures page found. Navigate to coinbase.com/portfolio/perpetual-futures and log in.'
+    })
+    return
+  }
+
+  // Check if logged in by looking for user-specific elements
+  const isLoggedIn = await futuresPage.evaluate(() => {
+    // Look for signs of being logged in
+    const hasPortfolio = document.querySelector('[data-testid="portfolio"]') !== null
+    const hasBalance = document.body.innerText.includes('Total Balance') ||
+                       document.body.innerText.includes('Portfolio Value') ||
+                       document.body.innerText.includes('USDC')
+    const hasSignInPrompt = document.body.innerText.includes('Sign in') &&
+                           !document.body.innerText.includes('Signed in')
+    return (hasPortfolio || hasBalance) && !hasSignInPrompt
+  }).catch(() => false)
+
+  res.json({
+    browserConnected: true,
+    coinbaseFound: true,
+    loggedIn: isLoggedIn,
+    currentUrl: futuresPage.url(),
+    message: isLoggedIn
+      ? 'Coinbase is connected and logged in'
+      : 'Coinbase page found but may not be logged in'
+  })
+})
+
+/**
+ * POST /import/scrape/coinbase/funding
+ * Scrape funding payments from Coinbase perpetual futures UI.
+ * Note: Scraping may not capture all data - use API where possible.
+ *
+ * This is a placeholder for future implementation.
+ * The Coinbase API (fetchFundingPayments) is the preferred method.
+ */
+importRouter.post('/scrape/coinbase/funding', async (_req, res, next) => {
+  const browser = await connectToBrowser().catch((err: Error) => {
+    return next(badRequest(`Failed to connect to browser: ${err.message}`))
+  })
+
+  if (!browser || !(browser instanceof Object && 'contexts' in browser)) {
+    return next(badRequest('Browser connection failed'))
+  }
+
+  const page = await findCoinbaseFuturesPage(browser as Browser)
+  if (!page) {
+    res.status(400).json({
+      error: 'Coinbase perpetual futures page not found',
+      hint: 'Navigate to coinbase.com/portfolio/perpetual-futures and log in first'
+    })
+    return
+  }
+
+  // For now, return guidance since Coinbase API is the better source
+  res.json({
+    message: 'Coinbase funding scraping not yet implemented',
+    hint: 'Use the API endpoints at /api/v1/derivatives/funding/:productId for funding data. The API provides more reliable data than UI scraping.',
+    alternatives: [
+      'POST /api/v1/import/coinbase-btcd/funding/manual - Add individual entries',
+      'POST /api/v1/import/coinbase-btcd/funding/bulk - Import from JSON',
+      'GET /api/v1/derivatives/funding/:productId - Fetch from Coinbase API'
+    ]
+  })
+})
+
+/**
+ * POST /import/scrape/coinbase/rewards
+ * Scrape USDC rewards/interest from Coinbase UI.
+ *
+ * This is a placeholder for future implementation.
+ */
+importRouter.post('/scrape/coinbase/rewards', async (_req, res, next) => {
+  const browser = await connectToBrowser().catch((err: Error) => {
+    return next(badRequest(`Failed to connect to browser: ${err.message}`))
+  })
+
+  if (!browser || !(browser instanceof Object && 'contexts' in browser)) {
+    return next(badRequest('Browser connection failed'))
+  }
+
+  const page = await findCoinbaseRewardsPage(browser as Browser)
+  if (!page) {
+    res.status(400).json({
+      error: 'Coinbase rewards page not found',
+      hint: 'Navigate to coinbase.com rewards or earnings page and log in first'
+    })
+    return
+  }
+
+  // For now, return guidance
+  res.json({
+    message: 'Coinbase rewards scraping not yet implemented',
+    hint: 'Use manual entry endpoints for now. USDC interest is typically paid weekly.',
+    alternatives: [
+      'POST /api/v1/import/coinbase-btcd/rewards/manual - Add individual entries',
+      'POST /api/v1/import/coinbase-btcd/rewards/bulk - Import from JSON'
+    ]
+  })
+})
+
+/**
+ * DELETE /import/coinbase-btcd/funding/:date
+ * Delete a funding entry by date and amount.
+ *
+ * Query: { amount: number }
+ */
+importRouter.delete('/coinbase-btcd/funding/:date', async (req, res) => {
+  const date = req.params['date']
+  const amount = parseFloat(req.query['amount'] as string)
+
+  if (!date) {
+    res.status(400).json({ error: 'Missing date parameter' })
+    return
+  }
+
+  if (isNaN(amount)) {
+    res.status(400).json({ error: 'Missing or invalid amount query parameter' })
+    return
+  }
+
+  const archive = await loadCoinbaseArchive()
+  const id = generateFundingId(date, amount)
+  const index = archive.fundingPayments.findIndex(f => f.id === id)
+
+  if (index === -1) {
+    res.status(404).json({ error: `Funding entry not found for ${date} with amount ${amount}` })
+    return
+  }
+
+  archive.fundingPayments.splice(index, 1)
+  await saveCoinbaseArchive(archive)
+
+  res.json({
+    success: true,
+    message: `Deleted funding entry for ${date}`,
+    remaining: archive.fundingPayments.length
+  })
+})
+
+/**
+ * DELETE /import/coinbase-btcd/rewards/:date
+ * Delete a reward entry by date.
+ *
+ * Query: { amount: number, type?: string }
+ */
+importRouter.delete('/coinbase-btcd/rewards/:date', async (req, res) => {
+  const date = req.params['date']
+  const amount = parseFloat(req.query['amount'] as string)
+  const type = (req.query['type'] as string) ?? 'usdc_interest'
+
+  if (!date) {
+    res.status(400).json({ error: 'Missing date parameter' })
+    return
+  }
+
+  if (isNaN(amount)) {
+    res.status(400).json({ error: 'Missing or invalid amount query parameter' })
+    return
+  }
+
+  const archive = await loadCoinbaseArchive()
+  const id = generateRewardId(date, amount, type)
+  const index = archive.rewards.findIndex(r => r.id === id)
+
+  if (index === -1) {
+    res.status(404).json({ error: `Reward entry not found for ${date} with amount ${amount}` })
+    return
+  }
+
+  archive.rewards.splice(index, 1)
+  await saveCoinbaseArchive(archive)
+
+  res.json({
+    success: true,
+    message: `Deleted reward entry for ${date}`,
+    remaining: archive.rewards.length
+  })
+})
+
+// ============================================================================
+// Coinbase Transactions Page Scraping Endpoints
+// ============================================================================
+
+/**
+ * GET /import/coinbase/transactions/archive
+ * Get the Coinbase transactions scrape archive with summary.
+ */
+importRouter.get('/coinbase/transactions/archive', async (_req, res) => {
+  const archive = await loadCoinbaseTransactionsArchive()
+
+  // Calculate summary
+  let fundingProfit = 0
+  let fundingLoss = 0
+  let usdcInterest = 0
+  let rebates = 0
+  let perpTradeCount = 0
+  let nonPerpCount = 0
+
+  for (const tx of archive.transactions) {
+    if (tx.type === 'FUNDING_PROFIT') fundingProfit += tx.amount
+    else if (tx.type === 'FUNDING_LOSS') fundingLoss += Math.abs(tx.amount)
+    else if (tx.type === 'USDC_INTEREST') usdcInterest += tx.amount
+    else if (tx.type === 'REBATE') rebates += tx.amount
+    else if (tx.type === 'BUY' || tx.type === 'SELL') perpTradeCount++
+
+    if (tx.isPerpRelated) continue
+    nonPerpCount++
+  }
+
+  res.json({
+    platform: archive.platform,
+    createdAt: archive.createdAt,
+    updatedAt: archive.updatedAt,
+    summary: {
+      totalTransactions: archive.transactions.length,
+      perpRelatedCount: archive.transactions.length - nonPerpCount,
+      nonPerpCount,
+      fundingProfit,
+      fundingLoss,
+      netFunding: fundingProfit - fundingLoss,
+      usdcInterest,
+      rebates,
+      perpTradeCount
+    },
+    transactions: archive.transactions
+  })
+})
+
+/**
+ * Convert a single Coinbase transaction to fund entries
+ */
+const coinbaseTxToFundEntries = (tx: CoinbaseScrapedTransaction): FundEntry[] => {
+  const entries: FundEntry[] = []
+
+  switch (tx.type) {
+    case 'DEPOSIT':
+      entries.push({
+        date: tx.date,
+        value: 0,
+        action: 'DEPOSIT',
+        amount: tx.amount
+      })
+      break
+
+    case 'WITHDRAWAL':
+      entries.push({
+        date: tx.date,
+        value: 0,
+        action: 'WITHDRAW',
+        amount: Math.abs(tx.amount)
+      })
+      break
+
+    case 'OTHER':
+      // Handle "Deposited funds" as margin deposit
+      if (tx.title.toLowerCase().includes('deposited funds')) {
+        entries.push({
+          date: tx.date,
+          value: 0,
+          action: 'DEPOSIT',
+          amount: tx.amount
+        })
+      }
+      break
+
+    case 'FUNDING_PROFIT':
+    case 'FUNDING_LOSS':
+      entries.push({
+        date: tx.date,
+        value: 0,
+        action: 'FUNDING',
+        amount: tx.amount  // Can be positive (profit) or negative (loss)
+      })
+      break
+
+    case 'USDC_INTEREST':
+      entries.push({
+        date: tx.date,
+        value: 0,
+        action: 'INTEREST',
+        amount: tx.amount
+      })
+      break
+
+    case 'REBATE':
+      entries.push({
+        date: tx.date,
+        value: 0,
+        action: 'REBATE',
+        amount: tx.amount
+      })
+      break
+
+    case 'BUY':
+    case 'SELL': {
+      const entry: FundEntry = {
+        date: tx.date,
+        value: 0,
+        action: tx.type,
+        amount: Math.abs(tx.amount)
+      }
+      if (tx.contracts !== undefined) {
+        entry.contracts = tx.contracts
+      }
+      if (tx.price !== undefined) {
+        entry.price = tx.price
+      }
+      // Add fee directly to the BUY/SELL entry
+      if (tx.fee !== undefined && tx.fee > 0) {
+        entry.fee = tx.fee
+      }
+      entries.push(entry)
+      break
+    }
+  }
+
+  return entries
+}
+
+/**
+ * Sort fund entries by date and action priority
+ */
+const sortFundEntries = (entries: FundEntry[]): FundEntry[] => {
+  const actionOrder: Record<string, number> = {
+    'DEPOSIT': 1,
+    'WITHDRAW': 2,
+    'INTEREST': 3,
+    'REBATE': 4,
+    'BUY': 5,
+    'SELL': 6,
+    'FEE': 7,  // Fee comes after the trade it's associated with
+    'FUNDING': 8,
+    'HOLD': 9
+  }
+
+  return [...entries].sort((a, b) => {
+    const dateCompare = a.date.localeCompare(b.date)
+    if (dateCompare !== 0) return dateCompare
+
+    const aAction = a.action ?? 'HOLD'
+    const bAction = b.action ?? 'HOLD'
+    const aPriority = actionOrder[aAction] ?? 99
+    const bPriority = actionOrder[bAction] ?? 99
+    return aPriority - bPriority
+  })
+}
+
+/**
+ * GET /import/coinbase/transactions/scrape-stream
+ * Stream Coinbase transactions scraping progress via SSE.
+ *
+ * Query params:
+ *   - stopDate: ISO date to stop scraping at (default: scrape all)
+ *   - fundId: Fund ID to get start date from and apply transactions to after scraping
+ *   - clearFundEntries: If true, clear fund entries immediately before scraping
+ */
+importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
+  const { stopDate: stopDateParam, fundId, clearFundEntries } = req.query as {
+    stopDate?: string
+    fundId?: string
+    clearFundEntries?: string
+  }
+
+  // Set up SSE
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+
+  const sendEvent = (event: string, data: Record<string, unknown>) => {
+    res.write(`event: ${event}\n`)
+    res.write(`data: ${JSON.stringify(data)}\n\n`)
+  }
+
+  sendEvent('status', { message: 'Connecting to browser...', phase: 'connecting' })
+
+  // Connect to browser
+  const browser = await connectToBrowser().catch((err: Error) => {
+    sendEvent('error', { message: `Failed to connect: ${err.message}` })
+    return null
+  })
+
+  if (!browser) {
+    res.end()
+    return
+  }
+
+  sendEvent('status', { message: 'Looking for Coinbase transactions page...', phase: 'navigating' })
+
+  // Try to find existing transactions page
+  let page = await findCoinbaseTransactionsPage(browser)
+  let pageCreated = false
+
+  if (page) {
+    console.log(`[Coinbase TX] Using existing transactions page: ${page.url()}`)
+    sendEvent('status', { message: 'Found Coinbase transactions page', phase: 'navigating' })
+  } else {
+    // No existing page - create new one
+    console.log('[Coinbase TX] No transactions page found, creating new one')
+    sendEvent('status', { message: 'Opening Coinbase transactions...', phase: 'navigating' })
+
+    page = await createNewPage(browser).catch((err: Error) => {
+      sendEvent('error', { message: err.message })
+      return null
+    }) as Page | null
+
+    if (!page) {
+      res.end()
+      return
+    }
+
+    pageCreated = true
+
+    // Navigate to Coinbase transactions
+    const navResult = await page.goto('https://www.coinbase.com/transactions', {
+      waitUntil: 'networkidle',
+      timeout: 30000
+    }).catch((err: Error) => err)
+
+    if (navResult instanceof Error) {
+      sendEvent('error', { message: `Navigation failed: ${navResult.message}` })
+      await page.close().catch(() => {})
+      res.end()
+      return
+    }
+
+    await page.waitForTimeout(2000)
+
+    // Check if redirected to login
+    if (page.url().includes('/signin') || page.url().includes('/login')) {
+      console.log('[Coinbase TX] Redirected to login - user needs to log in manually')
+      sendEvent('error', {
+        message: 'Please log in to Coinbase in your browser first, then navigate to the transactions page and try again.'
+      })
+      res.end()
+      return
+    }
+  }
+
+  // Determine stop date
+  let stopDate = stopDateParam
+
+  // If fundId provided, try to get fund start date
+  if (fundId && !stopDate) {
+    sendEvent('status', { message: 'Loading fund configuration...', phase: 'loading' })
+
+    // Try to get fund start date from fund config
+    const fundConfigPath = join(process.cwd(), '..', '..', 'data', 'funds', fundId, 'fund.json')
+    const fundContent = await readFile(fundConfigPath, 'utf-8').catch(() => null)
+    if (fundContent) {
+      const fundConfig = JSON.parse(fundContent)
+      if (fundConfig.start_date) {
+        stopDate = fundConfig.start_date
+        console.log(`[Coinbase TX] Using fund start date as stop date: ${stopDate}`)
+      }
+    }
+  }
+
+  sendEvent('status', {
+    message: stopDate
+      ? `Scraping transactions until ${stopDate}...`
+      : 'Scraping all transactions...',
+    phase: 'loading',
+    stopDate
+  })
+
+  // Set up fund for clearing and batch apply
+  let fund: FundData | null = null
+  let fundPath: string | null = null
+  const shouldClearFund = clearFundEntries === 'true' && fundId
+  const shouldApplyToFund = fundId !== undefined
+  let entriesApplied = 0
+
+  if (fundId && shouldClearFund) {
+    fundPath = join(FUNDS_DIR, `${fundId}.tsv`)
+    fund = await readFund(fundPath).catch(() => null)
+
+    if (fund) {
+      // Clear fund entries immediately
+      const previousCount = fund.entries.length
+      fund.entries = []
+      await writeFund(fundPath, fund)
+      sendEvent('status', {
+        message: `Cleared ${previousCount} existing entries from fund`,
+        phase: 'loading',
+        cleared: previousCount
+      })
+      console.log(`[Coinbase TX] Cleared ${previousCount} entries from fund ${fundId}`)
+    } else {
+      console.warn(`[Coinbase TX] Could not load fund ${fundId}`)
+    }
+  }
+
+  // Load existing archive
+  const archive = await loadCoinbaseTransactionsArchive()
+  const existingCount = archive.transactions.length
+
+  sendEvent('status', {
+    message: existingCount > 0
+      ? `Found ${existingCount} existing transactions. Scraping for new data...`
+      : 'Starting fresh scrape...',
+    phase: 'scraping',
+    existingCount
+  })
+
+  // Scrape with progress updates (no real-time apply - we'll batch apply at the end)
+  const result = await scrapeCoinbaseTransactionsWithProgress(
+    page,
+    archive,
+    (current, total, tx) => {
+      sendEvent('progress', {
+        current,
+        total,
+        newCount: archive.transactions.length - existingCount,
+        entriesApplied: 0, // Will be set after batch apply
+        lastTransaction: tx ? {
+          date: tx.date,
+          type: tx.type,
+          symbol: tx.symbol,
+          amount: tx.amount,
+          title: tx.title.substring(0, 50),
+          isPerpRelated: tx.isPerpRelated
+        } : null
+      })
+    },
+    stopDate,
+    500,
+    undefined // No real-time apply callback
+  ).catch((err: Error) => {
+    sendEvent('error', { message: `Scraping error: ${err.message}` })
+    return null
+  })
+
+  // Batch apply all perp-related transactions to fund after scraping completes
+  if (result && shouldApplyToFund && fundId) {
+    sendEvent('status', {
+      message: 'Applying transactions to fund...',
+      phase: 'applying'
+    })
+
+    // Re-load the fund (it was cleared earlier)
+    fundPath = join(FUNDS_DIR, `${fundId}.tsv`)
+    fund = await readFund(fundPath).catch(() => null)
+
+    if (fund) {
+      // Convert all perp-related transactions to fund entries
+      const perpTxns = archive.transactions.filter(t => t.isPerpRelated)
+      const allEntries: FundEntry[] = []
+
+      // Add initial deposit from config if set (for derivatives funds)
+      const initialDeposit = (fund.config as { initial_deposit?: number }).initial_deposit
+      if (initialDeposit && initialDeposit > 0) {
+        allEntries.push({
+          date: fund.config.start_date,
+          value: 0,
+          action: 'DEPOSIT',
+          amount: initialDeposit,
+          notes: 'Initial margin deposit'
+        })
+      }
+
+      for (const tx of perpTxns) {
+        const entries = coinbaseTxToFundEntries(tx)
+        allEntries.push(...entries)
+      }
+
+      // Sort all entries properly and add to fund
+      fund.entries = sortFundEntries(allEntries)
+      entriesApplied = fund.entries.length
+
+      await writeFund(fundPath, fund)
+      console.log(`[Coinbase TX] Batch applied ${entriesApplied} entries to fund ${fundId}`)
+
+      sendEvent('applied', { entriesApplied, lastDate: fund.entries[fund.entries.length - 1]?.date || '' })
+    }
+  }
+
+  // Only close the page if we created it
+  if (pageCreated) await page.close().catch(() => {})
+
+  if (result) {
+    // Calculate summary of scraped data
+    const perpTxns = archive.transactions.filter(t => t.isPerpRelated)
+
+    const message = entriesApplied > 0
+      ? `Scraped ${result.totalScraped} transactions, applied ${entriesApplied} entries to fund`
+      : result.newCount > 0
+        ? `Scraped ${result.totalScraped} transactions, ${result.newCount} new (${perpTxns.length} perp-related)`
+        : `Scraped ${result.totalScraped} transactions, all already in archive`
+
+    sendEvent('complete', {
+      totalScraped: result.totalScraped,
+      newCount: result.newCount,
+      archiveTotal: archive.transactions.length,
+      perpRelatedCount: perpTxns.length,
+      stoppedAtDate: result.stoppedAtDate,
+      entriesApplied,
+      message
+    })
+  }
+
+  res.end()
+})
+
+/**
+ * DELETE /import/coinbase/transactions/archive
+ * Clear the Coinbase transactions archive.
+ */
+importRouter.delete('/coinbase/transactions/archive', async (_req, res) => {
+  const archive: CoinbaseTransactionArchive = {
+    platform: 'coinbase-transactions',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    transactions: []
+  }
+  await saveCoinbaseTransactionsArchive(archive)
+
+  res.json({
+    success: true,
+    message: 'Coinbase transactions archive cleared'
+  })
+})
+
+/**
+ * POST /import/coinbase/transactions/apply
+ * Apply selected Coinbase transactions to a fund.
+ */
+importRouter.post('/coinbase/transactions/apply', async (req, res) => {
+  const { fundId, transactionIds, selectedTypes, clearBeforeImport } = req.body as {
+    fundId: string
+    transactionIds: string[]
+    selectedTypes: string[]
+    clearBeforeImport: boolean
+  }
+
+  if (!fundId) {
+    res.status(400).json({ error: 'Missing fundId' })
+    return
+  }
+
+  if (!transactionIds || transactionIds.length === 0) {
+    res.status(400).json({ error: 'No transactions to import' })
+    return
+  }
+
+  // Load the fund
+  const fundPath = join(FUNDS_DIR, `${fundId}.tsv`)
+  const fund = await readFund(fundPath).catch(() => null)
+  if (!fund) {
+    res.status(404).json({ error: `Fund not found: ${fundId}` })
+    return
+  }
+
+  // Load the archive
+  const archive = await loadCoinbaseTransactionsArchive()
+  if (archive.transactions.length === 0) {
+    res.status(400).json({ error: 'No transactions in archive' })
+    return
+  }
+
+  // Get selected transactions
+  const selectedTxIds = new Set(transactionIds)
+  const selectedTxTypes = new Set(selectedTypes)
+  const selectedTxs = archive.transactions.filter(tx =>
+    selectedTxIds.has(tx.id) &&
+    selectedTxTypes.has(tx.type) &&
+    tx.isPerpRelated
+  )
+
+  if (selectedTxs.length === 0) {
+    res.status(400).json({ error: 'No matching transactions found' })
+    return
+  }
+
+  // Clear existing entries if requested
+  if (clearBeforeImport) {
+    fund.entries = []
+
+    // Add initial deposit from config if set (for derivatives funds)
+    const initialDeposit = (fund.config as { initial_deposit?: number }).initial_deposit
+    if (initialDeposit && initialDeposit > 0) {
+      fund.entries.push({
+        date: fund.config.start_date,
+        value: 0,
+        action: 'DEPOSIT',
+        amount: initialDeposit,
+        notes: 'Initial margin deposit'
+      })
+    }
+  }
+
+  // Get existing entry dates to check for duplicates
+  const existingDates = new Set(fund.entries.map(e => e.date))
+
+  // Group transactions by date and aggregate by type
+  const txByDate = new Map<string, {
+    deposits: number     // Margin deposits (USDC)
+    withdrawals: number  // Margin withdrawals (USDC)
+    funding: number      // Net funding (profit - loss)
+    interest: number     // USDC interest
+    rebate: number       // Trading rebates
+    trades: { type: string; amount: number; contracts?: number; price?: number; fee?: number }[]
+  }>()
+
+  for (const tx of selectedTxs) {
+    if (!txByDate.has(tx.date)) {
+      txByDate.set(tx.date, { deposits: 0, withdrawals: 0, funding: 0, interest: 0, rebate: 0, trades: [] })
+    }
+    const day = txByDate.get(tx.date)!
+
+    if (tx.type === 'DEPOSIT') {
+      day.deposits += tx.amount
+    } else if (tx.type === 'WITHDRAWAL') {
+      day.withdrawals += Math.abs(tx.amount)  // Store as positive
+    } else if (tx.type === 'OTHER' && tx.title.toLowerCase().includes('deposited funds')) {
+      // "Deposited funds" is a margin deposit
+      day.deposits += tx.amount
+    } else if (tx.type === 'FUNDING_PROFIT') {
+      day.funding += tx.amount
+    } else if (tx.type === 'FUNDING_LOSS') {
+      day.funding += tx.amount // Already negative
+    } else if (tx.type === 'USDC_INTEREST') {
+      day.interest += tx.amount
+    } else if (tx.type === 'REBATE') {
+      day.rebate += tx.amount
+    } else if (tx.type === 'BUY' || tx.type === 'SELL') {
+      const tradeEntry: { type: string; amount: number; contracts?: number; price?: number; fee?: number } = {
+        type: tx.type,
+        amount: tx.amount
+      }
+      if (tx.contracts !== undefined) {
+        tradeEntry.contracts = tx.contracts
+      }
+      if (tx.price !== undefined) {
+        tradeEntry.price = tx.price
+      }
+      if (tx.fee !== undefined) {
+        tradeEntry.fee = tx.fee
+      }
+      day.trades.push(tradeEntry)
+    }
+  }
+
+  // Convert to fund entries - use derivatives-specific action types
+  let applied = 0
+  let skipped = 0
+  const newEntries: FundEntry[] = []
+
+  for (const [date, day] of txByDate) {
+    // Skip dates that already have entries (unless cleared)
+    if (!clearBeforeImport && existingDates.has(date)) {
+      skipped++
+      continue
+    }
+
+    // Create separate entries for each type of transaction using derivatives actions
+
+    // DEPOSIT entry (margin deposits)
+    if (day.deposits > 0) {
+      newEntries.push({
+        date,
+        value: 0,
+        action: 'DEPOSIT',
+        amount: day.deposits
+      })
+      applied++
+    }
+
+    // WITHDRAW entry (margin withdrawals)
+    if (day.withdrawals > 0) {
+      newEntries.push({
+        date,
+        value: 0,
+        action: 'WITHDRAW',
+        amount: day.withdrawals
+      })
+      applied++
+    }
+
+    // FUNDING entry (combines profit and loss for the day)
+    if (day.funding !== 0) {
+      newEntries.push({
+        date,
+        value: 0,
+        action: 'FUNDING',
+        amount: day.funding  // Can be positive or negative
+      })
+      applied++
+    }
+
+    // INTEREST entry (USDC rewards)
+    if (day.interest !== 0) {
+      newEntries.push({
+        date,
+        value: 0,
+        action: 'INTEREST',
+        amount: day.interest
+      })
+      applied++
+    }
+
+    // REBATE entry (trading rebates)
+    if (day.rebate !== 0) {
+      newEntries.push({
+        date,
+        value: 0,
+        action: 'REBATE',
+        amount: day.rebate
+      })
+      applied++
+    }
+
+    // Trade entries (BUY/SELL)
+    for (const trade of day.trades) {
+      const entry: FundEntry = {
+        date,
+        value: 0,
+        action: trade.type as 'BUY' | 'SELL',
+        amount: Math.abs(trade.amount)
+      }
+      // Use contracts field for derivatives (not shares)
+      if (trade.contracts !== undefined) {
+        entry.contracts = trade.contracts
+      }
+      // Store entry price
+      if (trade.price !== undefined) {
+        entry.price = trade.price
+      }
+      // Add fee directly to the BUY/SELL entry
+      if (trade.fee !== undefined && trade.fee > 0) {
+        entry.fee = trade.fee
+      }
+      newEntries.push(entry)
+      applied++
+    }
+  }
+
+  // Add new entries to fund
+  fund.entries.push(...newEntries)
+
+  // Sort entries by date and action priority
+  fund.entries = sortFundEntries(fund.entries)
+
+  // Save the fund
+  await writeFund(fundPath, fund)
+
+  console.log(`[Coinbase Import] Applied ${applied} entries to ${fundId}, skipped ${skipped} duplicates`)
+
+  res.json({
+    success: true,
+    applied,
+    skipped,
+    message: `Imported ${applied} entries to ${fundId}`
   })
 })

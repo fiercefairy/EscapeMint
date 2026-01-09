@@ -8,8 +8,14 @@ import { EditEntryModal } from '../components/EditEntryModal'
 import { EditFundPanel } from '../components/EditFundPanel'
 import { FundCharts } from '../components/FundCharts'
 import { ChartSettings } from '../components/ChartSettings'
+import { SIDEBAR_TOGGLED_EVENT } from '../components/Layout'
 import { EntriesTable, type ComputedEntry, type ColumnId } from '../components/entriesTable'
 import { formatCurrency, formatPercent } from '../utils/format'
+import {
+  isCashFund as checkIsCashFund,
+  isDerivativesFund as checkIsDerivativesFund,
+  getFundTypeFeatures
+} from '@escapemint/engine'
 
 // Chart data point for P&L and APY charts
 interface ChartDataPoint {
@@ -39,11 +45,20 @@ export function FundDetail() {
   const [pnlBounds, setPnlBounds] = useState<ChartBounds>({})
   const [chartsCollapsed, setChartsCollapsed] = useState(false)
 
-  // Resize handler for charts
+  // Derived state using centralized fund type helpers
+  const isDerivativesFund = checkIsDerivativesFund(fund?.config.fund_type)
+  const isCashFund = checkIsCashFund(fund?.config.fund_type)
+  const features = fund ? getFundTypeFeatures(fund.config.fund_type ?? 'stock') : getFundTypeFeatures('stock')
+
+  // Resize handler for charts - listens for window resize and sidebar toggle
   useEffect(() => {
     const handleResize = () => setChartResize(n => n + 1)
     window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    window.addEventListener(SIDEBAR_TOGGLED_EVENT, handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener(SIDEBAR_TOGGLED_EVENT, handleResize)
+    }
   }, [])
 
   // Sync chart bounds and collapsed state from fund config when fund loads
@@ -52,7 +67,7 @@ export function FundDetail() {
     setApyBounds(fund.config.chart_bounds?.apy ?? {})
     setPnlBounds(fund.config.chart_bounds?.pnl ?? {})
     setChartsCollapsed(fund.config.charts_collapsed ?? false)
-  }, [fund?.id])
+  }, [fund])
 
   // Update APY chart bounds
   const updateApyBounds = useCallback(async (bounds: ChartBounds) => {
@@ -99,24 +114,23 @@ export function FundDetail() {
   // Toggle audited status
   const toggleAudited = useCallback(async () => {
     if (!id || !fund) return
-    const newAuditedValue: string = fund.config.audited ? '' : new Date().toISOString().split('T')[0]
+    const newAuditedValue: string = fund.config.audited ? '' : new Date().toISOString().split('T')[0]!
     const result = await updateFundConfig(id, { audited: newAuditedValue })
     if (result.error) {
       toast.error(result.error)
     } else {
       setFund(prev => {
         if (!prev) return null
-        const updatedConfig = { ...prev.config, audited: newAuditedValue }
-        return { ...prev, config: updatedConfig }
+        return { ...prev, config: { ...prev.config, audited: newAuditedValue } }
       })
       toast.success(newAuditedValue ? 'Fund marked as audited' : 'Audit status cleared')
     }
   }, [id, fund])
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (showLoading = true) => {
     if (!id) return
 
-    setLoading(true)
+    if (showLoading) setLoading(true)
 
     const [fundResult, stateResult] = await Promise.all([
       fetchFund(id),
@@ -133,7 +147,7 @@ export function FundDetail() {
       setState(stateResult.data)
     }
 
-    setLoading(false)
+    if (showLoading) setLoading(false)
   }, [id])
 
   // Handle inline fund updates from edit/delete operations
@@ -171,6 +185,10 @@ export function FundDetail() {
       new Date(a.date).getTime() - new Date(b.date).getTime()
     )
 
+    // For derivatives funds, use server-computed state if available
+    const isDerivativesFund = checkIsDerivativesFund(fund.config.fund_type)
+    const derivativesState = state?.derivativesEntriesState
+
     let totalBuys = 0
     let totalSells = 0 // For invested calculation (accumulate mode: only liquidations)
     let cumSellProceeds = 0 // For APY calculation (all sell amounts)
@@ -195,7 +213,7 @@ export function FundDetail() {
       const entryDate = new Date(entry.date)
 
       // For cash fund TWAB: add previous balance * days since last entry
-      if (fund.config.fund_type === 'cash' && index > 0) {
+      if (checkIsCashFund(fund.config.fund_type) && index > 0) {
         const daysSinceLast = Math.max(0, (entryDate.getTime() - lastEntryDate.getTime()) / (1000 * 60 * 60 * 24))
         twabNumerator += lastCashBalance * daysSinceLast
       }
@@ -225,7 +243,7 @@ export function FundDetail() {
       // For cash funds, fund_size IS the cash balance (no separate investment pool)
       // For non-cash managing trading funds, fund_size = invested amount (calculated after buy/sell processing below)
       // For cash managing trading funds, fund_size = base + deposits - withdrawals + dividends + interest - expenses
-      const isCashFundType = fund.config.fund_type === 'cash'
+      const isCashFundType = checkIsCashFund(fund.config.fund_type)
       const expenseFromFund = fund.config.expense_from_fund !== false
       let calculatedFundSize: number
       if (isCashFundType) {
@@ -356,12 +374,12 @@ export function FundDetail() {
       const unrealized = postActionValue - costBasis
 
       // APY calculation depends on fund type
-      const isCashFund = fund.config.fund_type === 'cash'
+      const localIsCashFund = checkIsCashFund(fund.config.fund_type)
 
       // Realized gain calculation differs by fund type
       // For cash funds: only interest - expenses (no dividends or extractions apply)
       // For trading funds: interest + dividends + extracted profits - expenses
-      const realized = isCashFund
+      const realized = localIsCashFund
         ? cumCashInterest - cumExpenses
         : cumCashInterest + cumDividends + cumExtracted - cumExpenses
 
@@ -370,7 +388,7 @@ export function FundDetail() {
       let realizedApy = 0
       let liquidApy = 0
 
-      if (isCashFund) {
+      if (localIsCashFund) {
         // Cash fund APY: based on interest earned minus expenses
         // Use Time-Weighted Average Balance (TWAB) as denominator for accurate APY
         if (Math.abs(realized) < 0.01 || isFirstEntry) {
@@ -409,12 +427,13 @@ export function FundDetail() {
 
       // If value is 0 (closed fund), preserve the last valid APYs
       // But NOT for cash funds - a $0 pre-action value before DEPOSIT is normal
-      if (!isCashFund && entry.value === 0 && lastApy !== 0) {
+      if (!localIsCashFund && entry.value === 0 && lastApy !== 0) {
         realizedApy = lastApy // For closed funds, realized = liquid
         liquidApy = lastApy
       }
 
-      return {
+      // Base computed entry
+      const baseEntry = {
         ...entry,
         originalIndex: entry._originalIndex,
         fundSize,
@@ -432,10 +451,105 @@ export function FundDetail() {
         liquidPnl,
         realizedApy,
         liquidApy,
-        hasIntegrityIssue
+        hasIntegrityIssue,
+        // Derivatives fields (populated when isDerivativesFund)
+        derivPosition: undefined as number | undefined,
+        derivAvgEntry: undefined as number | undefined,
+        derivMarginBalance: undefined as number | undefined,
+        derivCostBasis: undefined as number | undefined,
+        derivUnrealized: undefined as number | undefined,
+        derivRealized: undefined as number | undefined,
+        derivEquity: undefined as number | undefined,
+        derivCumFunding: undefined as number | undefined,
+        derivCumInterest: undefined as number | undefined,
+        derivCumRebates: undefined as number | undefined,
+        derivCumFees: undefined as number | undefined,
+        derivNotionalValue: undefined as number | undefined,
+        derivInitialMargin: undefined as number | undefined,
+        derivMarginLocked: undefined as number | undefined,
+        derivMaintenanceMargin: undefined as number | undefined,
+        derivAvailableFunds: undefined as number | undefined,
+        derivMarginRatio: undefined as number | undefined,
+        derivLeverage: undefined as number | undefined,
+        derivLiquidationPrice: undefined as number | undefined,
+        derivMarginHealth: undefined as number | undefined,
+        derivDistanceToLiq: undefined as number | undefined
       }
+
+      // For derivatives funds, merge server-computed state
+      if (isDerivativesFund && derivativesState && derivativesState[index]) {
+        const derivState = derivativesState[index]
+
+        // Derivatives Liquid P&L = Realized + Unrealized + Funding + Interest + Rebates
+        const derivLiquidPnl = derivState.realizedPnl + derivState.unrealizedPnl +
+          derivState.cumFunding + derivState.cumInterest + derivState.cumRebates
+
+        // For derivatives APY, we need to use margin deposits as the denominator
+        // marginBalance includes: deposits + all income/expenses + realized P&L - withdrawals
+        // So the "invested" amount is roughly marginBalance - all gains
+        // A simpler approach: use the first entry's margin balance as the starting capital
+        // Or use marginBalance - liquidPnl as the "cost basis" (capital deployed)
+        const derivCapitalBase = derivState.marginBalance - derivLiquidPnl
+        const derivDenominator = derivCapitalBase > 0 ? derivCapitalBase : derivState.marginBalance
+
+        // Calculate derivatives-specific APY
+        let derivRealizedApy = 0
+        let derivLiquidApy = 0
+        if (!isFirstEntry && daysElapsed > 0 && derivDenominator > 0) {
+          // Realized APY: based on realized gains relative to capital
+          const realizedPlusFunding = derivState.realizedPnl + derivState.cumFunding +
+            derivState.cumInterest + derivState.cumRebates
+          const realizedReturnPct = realizedPlusFunding / derivDenominator
+          const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
+          derivRealizedApy = Math.pow(1 + clampedRealizedPct, 365 / daysElapsed) - 1
+          derivRealizedApy = Math.max(-0.99, Math.min(derivRealizedApy, 10))
+
+          // Liquid APY: based on total P&L (including unrealized) relative to capital
+          const liquidReturnPct = derivLiquidPnl / derivDenominator
+          const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
+          derivLiquidApy = Math.pow(1 + clampedLiquidPct, 365 / daysElapsed) - 1
+          derivLiquidApy = Math.max(-0.99, Math.min(derivLiquidApy, 10))
+        }
+
+        return {
+          ...baseEntry,
+          // Override with derivatives-specific computed values
+          derivPosition: derivState.position,
+          derivAvgEntry: derivState.avgEntry,
+          derivMarginBalance: derivState.marginBalance,
+          derivCostBasis: derivState.costBasis,
+          derivUnrealized: derivState.unrealizedPnl,
+          derivRealized: derivState.realizedPnl,
+          derivEquity: derivState.equity,
+          derivCumFunding: derivState.cumFunding,
+          derivCumInterest: derivState.cumInterest,
+          derivCumRebates: derivState.cumRebates,
+          derivCumFees: derivState.cumFees,
+          // Margin tracking
+          derivNotionalValue: derivState.notionalValue,
+          derivInitialMargin: derivState.initialMargin,
+          derivMarginLocked: derivState.marginLocked,
+          derivMaintenanceMargin: derivState.maintenanceMargin,
+          derivAvailableFunds: derivState.availableFunds,
+          derivMarginRatio: derivState.marginRatio,
+          derivLeverage: derivState.leverage,
+          // Liquidation tracking
+          derivLiquidationPrice: derivState.liquidationPrice,
+          derivMarginHealth: derivState.marginHealth,
+          derivDistanceToLiq: derivState.distanceToLiquidation,
+          // Also use derivatives values for fundSize and P&L
+          fundSize: derivState.marginBalance + derivState.unrealizedPnl,  // Account value = cash + unrealized
+          realized: derivState.realizedPnl,
+          unrealized: derivState.unrealizedPnl,
+          liquidPnl: derivLiquidPnl,
+          realizedApy: derivRealizedApy,
+          liquidApy: derivLiquidApy
+        }
+      }
+
+      return baseEntry
     })
-  }, [fund])
+  }, [fund, state])
 
   // Get the latest entry for displaying current metrics
   const latestEntry = useMemo(() => {
@@ -967,7 +1081,7 @@ export function FundDetail() {
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               {/* Breadcrumb with indicators */}
-              <div className="flex items-center gap-2 text-sm flex-wrap">
+              <div className="flex items-center gap-2 text-sm flex-wrap gap-y-2">
                 <Link to="/" className="text-slate-400 hover:text-white">Dashboard</Link>
                 <span className="text-slate-600">/</span>
                 <Link to={`/platform/${fund.platform}`} className="text-slate-400 hover:text-white capitalize">{fund.platform}</Link>
@@ -975,12 +1089,12 @@ export function FundDetail() {
                 <span className="text-white font-medium uppercase">{fund.ticker}</span>
                 {/* Closed Tag */}
                 {(fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)) && (
-                  <span className="px-2 py-0.5 text-[10px] font-medium bg-slate-700 text-slate-400 rounded">Closed</span>
+                  <span className="px-2 py-0.5 text-[10px] leading-[18px] font-medium bg-slate-700 text-slate-400 rounded">Closed</span>
                 )}
                 {/* Audited Badge - clickable to toggle */}
                 <button
                   onClick={toggleAudited}
-                  className={`px-2 py-0.5 text-[10px] font-medium rounded flex items-center gap-1 transition-colors ${
+                  className={`px-2 py-0.5 text-[10px] leading-[18px] font-medium rounded inline-flex items-center gap-1 transition-colors ${
                     fund.config.audited
                       ? 'bg-green-900/50 text-green-300 border border-green-700 hover:bg-green-900/70'
                       : 'bg-slate-700/50 text-slate-500 border border-slate-600 hover:bg-slate-700 hover:text-slate-400'
@@ -992,10 +1106,10 @@ export function FundDetail() {
                   </svg>
                   {fund.config.audited ? 'Audited' : 'Audit'}
                 </button>
-                {/* Recommendation Badge */}
-                {state?.recommendation && (
+                {/* Recommendation Badge - not shown for cash funds */}
+                {state?.recommendation && features.allowsRecommendations && (
                   <span
-                    className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+                    className={`px-2 py-0.5 text-[10px] leading-[18px] font-bold rounded ${
                       state.recommendation.action === 'BUY'
                         ? 'bg-green-900/50 text-green-300 border border-green-700'
                         : state.recommendation.action === 'HOLD'
@@ -1009,7 +1123,7 @@ export function FundDetail() {
                 )}
                 {/* Cash/Margin Available */}
                 {state && ((state.cash_available ?? 0) > 0 || (fund.config.margin_enabled && (state.margin_available ?? 0) > 0)) && (
-                  <span className="px-2 py-0.5 text-[10px] font-medium rounded bg-slate-700/50 text-slate-300 border border-slate-600">
+                  <span className="px-2 py-0.5 text-[10px] leading-[18px] font-medium rounded bg-slate-700/50 text-slate-300 border border-slate-600">
                     {(state.cash_available ?? 0) > 0 && (
                       state.cash_source ? (
                         <Link to={`/fund/${state.cash_source}`} className="hover:text-mint-400">
@@ -1026,11 +1140,11 @@ export function FundDetail() {
               </div>
               {/* Config Details Row - different for cash vs trading funds */}
               <div className="flex items-center gap-3 mt-2 text-xs text-slate-400 flex-wrap">
-                {fund.config.fund_type === 'cash' ? (
+                {isCashFund ? (
                   // Cash fund: simplified config
                   <>
                     <span title="Fund Type">
-                      <span className="text-slate-500">Type:</span> <span className="text-blue-300">Cash</span>
+                      <span className="text-slate-500">Type:</span> <span className={features.textColorClass}>{features.label}</span>
                     </span>
                     <span className="text-slate-600">|</span>
                     <span title="Cash Balance">
@@ -1045,7 +1159,7 @@ export function FundDetail() {
                   // Trading fund (stock/crypto): full trading config
                   <>
                     <span title="Fund Type">
-                      <span className="text-slate-500">Type:</span> <span className={fund.config.fund_type === 'crypto' ? 'text-yellow-300' : 'text-green-300'}>{fund.config.fund_type === 'crypto' ? 'Crypto' : 'Stock'}</span>
+                      <span className="text-slate-500">Type:</span> <span className={features.textColorClass}>{features.label}</span>
                     </span>
                     <span className="text-slate-600">|</span>
                     <span title="Mode">
@@ -1155,7 +1269,88 @@ export function FundDetail() {
                     </div>
                   ) : (fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)) ? (
                     <p className="text-slate-400 text-sm">This fund is closed. Historical data preserved below.</p>
-                  ) : latestEntry && fund.config.fund_type === 'cash' ? (
+                  ) : latestEntry && isDerivativesFund ? (
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-[10px] text-slate-400">Position</p>
+                        <p className="font-medium text-white">{latestEntry.derivPosition ?? 0} contracts</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Avg Entry</p>
+                        <p className="font-medium text-white">{formatCurrency(latestEntry.derivAvgEntry ?? 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Margin Balance</p>
+                        <p className="font-medium text-blue-400">{formatCurrency(latestEntry.derivMarginBalance ?? 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Cost Basis</p>
+                        <p className="font-medium text-white">{formatCurrency(latestEntry.derivCostBasis ?? 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Equity</p>
+                        <p className="font-medium text-mint-400">{formatCurrency(latestEntry.derivEquity ?? 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Unrealized</p>
+                        <p className={`font-medium ${(latestEntry.derivUnrealized ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatCurrency(latestEntry.derivUnrealized ?? 0)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Realized</p>
+                        <p className={`font-medium ${(latestEntry.derivRealized ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatCurrency(latestEntry.derivRealized ?? 0)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Liquid P&L</p>
+                        <p className={`font-medium ${latestEntry.liquidPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {formatCurrency(latestEntry.liquidPnl)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Margin Locked</p>
+                        <p className="font-medium text-amber-400">{formatCurrency(latestEntry.derivMarginLocked ?? 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Leverage</p>
+                        <p className={`font-medium ${
+                          (latestEntry.derivLeverage ?? 0) < 3 ? 'text-green-400'
+                          : (latestEntry.derivLeverage ?? 0) < 5 ? 'text-amber-400'
+                          : 'text-red-400'
+                        }`}>
+                          {latestEntry.derivLeverage !== undefined && latestEntry.derivLeverage > 0
+                            ? `${latestEntry.derivLeverage.toFixed(2)}x`
+                            : '-'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Liq Price</p>
+                        <p className={`font-medium ${
+                          latestEntry.derivLiquidationPrice !== undefined && latestEntry.derivLiquidationPrice < 0
+                            ? 'text-green-400'  // Negative = over-collateralized
+                            : 'text-orange-400'
+                        }`}>
+                          {latestEntry.derivLiquidationPrice !== undefined
+                            ? `$${latestEntry.derivLiquidationPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                            : '-'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Dist to Liq</p>
+                        <p className={`font-medium ${
+                          (latestEntry.derivDistanceToLiq ?? 0) > 0.5 ? 'text-green-400'
+                          : (latestEntry.derivDistanceToLiq ?? 0) > 0.25 ? 'text-amber-400'
+                          : 'text-red-400'
+                        }`}>
+                          {latestEntry.derivDistanceToLiq !== undefined && latestEntry.derivDistanceToLiq > 0
+                            ? `${(latestEntry.derivDistanceToLiq * 100).toFixed(1)}%`
+                            : '-'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : latestEntry && isCashFund ? (
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div>
                         <p className="text-[10px] text-slate-400">Cash Balance</p>
@@ -1296,7 +1491,13 @@ export function FundDetail() {
               </div>
 
               {/* Fund Analysis Charts */}
-              <FundCharts entries={fund.entries} config={fund.config} fundId={fund.id} />
+              <FundCharts
+                entries={fund.entries}
+                config={fund.config}
+                fundId={fund.id}
+                computedEntries={isDerivativesFund ? computedEntries as ComputedEntry[] : undefined}
+                resize={chartResize}
+              />
             </div>
           )}
         </div>
@@ -1329,6 +1530,9 @@ export function FundDetail() {
           onEdit={(index, entry, calculatedFundSize) => setEditingEntry({ index, entry, calculatedFundSize })}
           onAddEntry={() => setShowAddEntry(true)}
           onReload={loadData}
+          showCoinbaseUpdate={isDerivativesFund}
+          lastEntryDate={fund.entries.length > 0 ? fund.entries[fund.entries.length - 1]?.date : undefined}
+          fundStartDate={fund.config.start_date}
         />
 
         {/* Take Action Modal */}
@@ -1336,7 +1540,7 @@ export function FundDetail() {
           <AddEntryModal
             fundId={fund.id}
             fundTicker={fund.ticker}
-            currentRecommendation={state?.recommendation}
+            currentRecommendation={features.allowsRecommendations ? state?.recommendation : undefined}
             existingEntries={fund.entries}
             targetApy={fund.config.target_apy}
             minProfitUsd={fund.config.min_profit_usd}
@@ -1346,7 +1550,7 @@ export function FundDetail() {
               setShowAddEntry(false)
               if (isAdding) navigate(`/fund/${fund.id}`, { replace: true })
             }}
-            onAdded={loadData}
+            onAdded={() => loadData(false)}
           />
         )}
 

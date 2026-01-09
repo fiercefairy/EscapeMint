@@ -53,7 +53,7 @@ module.exports = {
       }
     },
     {
-      name: 'escapemint-web',
+      name: 'escapemint-ui',
       cwd: './packages/web',
       script: 'npx',
       args: 'vite --host',

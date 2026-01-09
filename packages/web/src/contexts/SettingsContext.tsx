@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 
 interface Settings {
   advancedTools: boolean
+  testFundsMode: boolean
 }
 
 interface SettingsContextValue {
@@ -10,7 +11,8 @@ interface SettingsContextValue {
 }
 
 const defaultSettings: Settings = {
-  advancedTools: false
+  advancedTools: false,
+  testFundsMode: false
 }
 
 const STORAGE_KEY = 'escapemint-settings'

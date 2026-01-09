@@ -7,8 +7,9 @@ export type FundStatus = 'active' | 'closed'
  * - 'cash': Platform cash pools (DEPOSIT/WITHDRAW only, no dividends)
  * - 'stock': Stock/ETF trading (full features including dividends)
  * - 'crypto': Cryptocurrency trading (no dividends, has staking rewards via interest)
+ * - 'derivatives': Futures/perpetuals trading (FIFO cost basis, margin, liquidation tracking)
  */
-export type FundType = 'cash' | 'stock' | 'crypto'
+export type FundType = 'cash' | 'stock' | 'crypto' | 'derivatives'
 
 export interface SubFundConfig {
   /**
@@ -158,6 +159,47 @@ export interface SubFundConfig {
    * Null/undefined means not audited.
    */
   audited?: string
+
+  // ============================================
+  // Derivatives-specific configuration fields
+  // ============================================
+
+  /**
+   * Coinbase product ID for the futures contract.
+   * Examples: 'BIP-20DEC30-CDE' (micro BTC), 'BTC-PERP-INTX' (standard)
+   */
+  product_id?: string
+
+  /**
+   * Initial margin rate for opening positions (e.g., 0.20 for 20%).
+   * Defaults to 0.20 for Coinbase BTC futures.
+   */
+  initial_margin_rate?: number
+
+  /**
+   * Maintenance margin rate for liquidation calculation (e.g., 0.05 for 5%).
+   * Defaults to 0.05 for Coinbase.
+   */
+  maintenance_margin_rate?: number
+
+  /**
+   * Contract multiplier - BTC amount per contract.
+   * 0.01 for BIP micro-futures, 1.0 for standard BTC-PERP.
+   */
+  contract_multiplier?: number
+
+  /**
+   * Reference name for stored API credentials in macOS Keychain.
+   * Used to fetch Coinbase API key/secret for this fund.
+   */
+  api_key_name?: string
+
+  /**
+   * Liquidation mode threshold - target gain percentage before recommending liquidation.
+   * Similar to min_profit_usd but percentage-based for derivatives.
+   * E.g., 0.30 means recommend closing when 30% above cost basis.
+   */
+  liquidation_threshold_pct?: number
 }
 
 /**

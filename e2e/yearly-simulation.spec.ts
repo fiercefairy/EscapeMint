@@ -6,90 +6,25 @@ import {
   getFundStateViaAPI,
   getFundViaAPI,
   generateTestConfig,
-  generateRandomTicker,
   addDays,
   daysBetween,
   computeStartInput,
   computeExpectedTarget,
   type FundEntry
 } from './test-utils'
-
-const TEST_PLATFORM = 'test'
-
-// Market simulation helpers
-interface MarketScenario {
-  name: string
-  weeklyReturns: number[] // 52 weekly return percentages
-}
-
-function generateBullMarket(): number[] {
-  // Steady growth with occasional small dips
-  const returns: number[] = []
-  for (let i = 0; i < 52; i++) {
-    const baseReturn = 0.005 + Math.random() * 0.015 // 0.5% to 2% weekly
-    const noise = (Math.random() - 0.5) * 0.01 // +/- 0.5%
-    returns.push(baseReturn + noise)
-  }
-  return returns
-}
-
-function generateBearMarket(): number[] {
-  // Steady decline with occasional small rallies
-  const returns: number[] = []
-  for (let i = 0; i < 52; i++) {
-    const baseReturn = -0.02 + Math.random() * 0.015 // -2% to -0.5% weekly
-    const noise = (Math.random() - 0.3) * 0.02 // More noise
-    returns.push(baseReturn + noise)
-  }
-  return returns
-}
-
-function generateVolatileMarket(): number[] {
-  // High volatility with both large gains and losses
-  const returns: number[] = []
-  for (let i = 0; i < 52; i++) {
-    const direction = Math.random() > 0.5 ? 1 : -1
-    const magnitude = 0.02 + Math.random() * 0.05 // 2% to 7% swings
-    returns.push(direction * magnitude)
-  }
-  return returns
-}
-
-function generateSidewaysMarket(): number[] {
-  // Small fluctuations around zero
-  const returns: number[] = []
-  for (let i = 0; i < 52; i++) {
-    const baseReturn = (Math.random() - 0.5) * 0.02 // +/- 1%
-    returns.push(baseReturn)
-  }
-  return returns
-}
-
-function generateCrashAndRecovery(): number[] {
-  const returns: number[] = []
-  // First 13 weeks: normal growth
-  for (let i = 0; i < 13; i++) {
-    returns.push(0.01 + Math.random() * 0.01)
-  }
-  // Weeks 14-17: crash
-  for (let i = 0; i < 4; i++) {
-    returns.push(-0.10 - Math.random() * 0.05) // -10% to -15% per week
-  }
-  // Weeks 18-26: slow recovery
-  for (let i = 0; i < 9; i++) {
-    returns.push(0.02 + Math.random() * 0.02)
-  }
-  // Weeks 27-52: continued growth
-  for (let i = 0; i < 26; i++) {
-    returns.push(0.015 + Math.random() * 0.01)
-  }
-  return returns
-}
+import { TEST_PLATFORM, TEST_TICKERS } from './test-fixtures'
+import {
+  getBullMarketReturns,
+  getBearMarketReturns,
+  getVolatileMarketReturns,
+  getCrashRecoveryReturns,
+  getSteadyGrowthReturns
+} from './test-historical-data'
 
 test.describe('Yearly Fund Simulations', () => {
   test.describe('Bull Market Scenario', () => {
     test('fund grows correctly over 52 weeks with DCA', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.BULL_MARKET
       const config = generateTestConfig({
         fund_size_usd: 50000,
         target_apy: 0.25,
@@ -101,7 +36,7 @@ test.describe('Yearly Fund Simulations', () => {
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
-      const returns = generateBullMarket()
+      const returns = getBullMarketReturns()
 
       let currentValue = 0
       let currentDate = '2024-01-01'
@@ -173,7 +108,7 @@ test.describe('Yearly Fund Simulations', () => {
 
   test.describe('Bear Market Scenario', () => {
     test('fund uses increasing DCA amounts during losses', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.BEAR_MARKET
       const config = generateTestConfig({
         fund_size_usd: 100000,
         target_apy: 0.20,
@@ -186,7 +121,7 @@ test.describe('Yearly Fund Simulations', () => {
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
-      const returns = generateBearMarket()
+      const returns = getBearMarketReturns()
 
       let currentValue = 0
       let currentDate = '2024-01-01'
@@ -241,7 +176,7 @@ test.describe('Yearly Fund Simulations', () => {
 
   test.describe('Volatile Market Scenario', () => {
     test('fund handles frequent buy/sell switches', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.VOLATILE
       const config = generateTestConfig({
         fund_size_usd: 50000,
         target_apy: 0.15,
@@ -253,7 +188,7 @@ test.describe('Yearly Fund Simulations', () => {
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
-      const returns = generateVolatileMarket()
+      const returns = getVolatileMarketReturns()
 
       let currentValue = 1000
       let currentDate = '2024-01-01'
@@ -321,7 +256,7 @@ test.describe('Yearly Fund Simulations', () => {
 
   test.describe('Crash and Recovery Scenario', () => {
     test('fund increases DCA during crash and captures recovery', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.CRASH_RECOVERY
       const config = generateTestConfig({
         fund_size_usd: 100000,
         target_apy: 0.20,
@@ -334,7 +269,7 @@ test.describe('Yearly Fund Simulations', () => {
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
-      const returns = generateCrashAndRecovery()
+      const returns = getCrashRecoveryReturns()
 
       let currentValue = 2000
       let currentDate = '2024-01-01'
@@ -412,7 +347,7 @@ test.describe('Yearly Fund Simulations', () => {
 
   test.describe('Fund with Dividends and Interest', () => {
     test('quarterly dividends and monthly interest accumulate correctly', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.DIVIDENDS_INTEREST
       const config = generateTestConfig({
         fund_size_usd: 50000,
         target_apy: 0.20,
@@ -506,7 +441,7 @@ test.describe('Yearly Fund Simulations', () => {
 
   test.describe('Full Fund Lifecycle', () => {
     test('create, grow, partially liquidate, and track correctly', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.LIFECYCLE
       const config = generateTestConfig({
         fund_size_usd: 25000,
         target_apy: 0.25,
@@ -565,10 +500,11 @@ test.describe('Yearly Fund Simulations', () => {
         await addEntryViaAPI(page, fund.id, entry)
       }
 
-      // Phase 2: Consolidation (26 weeks with smaller moves)
+      // Phase 2: Consolidation (26 weeks with smaller moves) - use deterministic returns
+      const consolidationReturns = getSteadyGrowthReturns()
       for (let week = 27; week <= 52; week++) {
         currentDate = addDays(currentDate, 7)
-        currentValue = currentValue * (1 + (Math.random() - 0.4) * 0.02)
+        currentValue = currentValue * (1 + consolidationReturns[week - 27] * 0.5) // Scale down for consolidation
 
         const stateResult = await getFundStateViaAPI(page, fund.id)
         const rec = stateResult.recommendation
@@ -627,7 +563,7 @@ test.describe('Yearly Fund Simulations', () => {
 
   test.describe('Mathematical Invariants', () => {
     test('cash + invested equals fund_size (with manage_cash=true)', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.INVARIANT_CASH
       const fundSize = 20000
       const config = generateTestConfig({
         fund_size_usd: fundSize,
@@ -679,7 +615,7 @@ test.describe('Yearly Fund Simulations', () => {
     })
 
     test('gain_pct equals (actual - invested) / invested', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.INVARIANT_GAIN
       const config = generateTestConfig({
         fund_size_usd: 10000,
         start_date: '2024-01-01'
@@ -716,7 +652,7 @@ test.describe('Yearly Fund Simulations', () => {
     })
 
     test('start_input never goes negative', async ({ page }) => {
-      const ticker = generateRandomTicker()
+      const ticker = TEST_TICKERS.SIMULATION.INVARIANT_POSITIVE
       const config = generateTestConfig({
         fund_size_usd: 10000,
         min_profit_usd: 10,

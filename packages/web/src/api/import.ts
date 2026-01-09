@@ -60,12 +60,6 @@ export interface ScrapeErrorEvent {
   message: string
 }
 
-export type ScrapeEvent =
-  | { type: 'status'; data: ScrapeStatusEvent }
-  | { type: 'progress'; data: ScrapeProgressEvent }
-  | { type: 'complete'; data: ScrapeCompleteEvent }
-  | { type: 'error'; data: ScrapeErrorEvent }
-
 export interface ScrapeArchive {
   platform: string
   createdAt: string
@@ -304,7 +298,7 @@ export async function reclassifyArchive(platform = 'robinhood'): Promise<ApiResu
 
 /**
  * Scrape Robinhood history with real-time progress via SSE.
- * Returns an EventSource that emits ScrapeEvent objects.
+ * @param full - When true, performs full sync without early exit (for complete resync)
  */
 export function scrapeRobinhoodHistoryStream(
   url: string,
@@ -314,11 +308,13 @@ export function scrapeRobinhoodHistoryStream(
     onProgress?: (data: ScrapeProgressEvent) => void
     onComplete?: (data: ScrapeCompleteEvent) => void
     onError?: (data: ScrapeErrorEvent) => void
-  }
+  },
+  full = false
 ): { close: () => void } {
   const encodedUrl = encodeURIComponent(url)
+  const fullParam = full ? '&full=true' : ''
   const eventSource = new EventSource(
-    `${API_BASE}/import/robinhood/scrape-stream?url=${encodedUrl}&platform=${platform}`
+    `${API_BASE}/import/robinhood/scrape-stream?url=${encodedUrl}&platform=${platform}${fullParam}`
   )
 
   eventSource.addEventListener('status', (e: MessageEvent) => {
@@ -360,7 +356,6 @@ export function scrapeRobinhoodHistoryStream(
 
 /**
  * Scrape M1 Cash history with real-time progress via SSE.
- * Returns an EventSource that emits ScrapeEvent objects.
  */
 export function scrapeM1CashHistoryStream(
   url: string = 'https://dashboard.m1.com/d/save/savings/transactions',
@@ -473,7 +468,23 @@ export interface CryptoParseAllResponse {
     totalSold: number
     totalSpent: number
     totalReceived: number
+    fundId: string
+    fundExists: boolean
   }>
+  errors?: string[]
+}
+
+export interface CryptoImportResult {
+  success: boolean
+  fundId: string
+  symbol: string
+  mode: 'append' | 'replace'
+  consolidate: boolean
+  startDate: string | null
+  imported: number
+  consolidated: number
+  skippedSells: number
+  finalShares: number
   errors?: string[]
 }
 
@@ -519,6 +530,23 @@ export async function parseAllCryptoStatements(): Promise<ApiResult<CryptoParseA
     `${API_BASE}/import/crypto/parse-all`,
     {},
     'Failed to parse PDFs'
+  )
+}
+
+/**
+ * Import crypto transactions for a specific symbol into a fund.
+ */
+export async function importCryptoToFund(params: {
+  fundId: string
+  symbol: string
+  mode?: 'append' | 'replace'
+  consolidate?: boolean
+  startDate?: string
+}): Promise<ApiResult<CryptoImportResult>> {
+  return postJson<CryptoImportResult>(
+    `${API_BASE}/import/crypto/import-to-fund`,
+    params,
+    'Failed to import crypto transactions'
   )
 }
 
@@ -723,6 +751,177 @@ export function downloadM1StatementsStream(
   eventSource.addEventListener('error', (e: MessageEvent) => {
     if (e.data) {
       const data = JSON.parse(e.data)
+      callbacks.onError?.(data)
+    } else {
+      callbacks.onError?.({ message: 'Connection lost' })
+    }
+    eventSource.close()
+  })
+
+  eventSource.onerror = () => {
+    callbacks.onError?.({ message: 'Connection error' })
+    eventSource.close()
+  }
+
+  return {
+    close: () => eventSource.close()
+  }
+}
+
+// ============================================================================
+// Coinbase Transactions Scraping API
+// ============================================================================
+
+export type CoinbaseTransactionType =
+  | 'FUNDING_LOSS' | 'FUNDING_PROFIT'
+  | 'BUY' | 'SELL'
+  | 'USDC_INTEREST' | 'REBATE'
+  | 'STAKING' | 'CARD' | 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER'
+
+export interface CoinbaseScrapedTransaction {
+  id: string
+  date: string
+  type: CoinbaseTransactionType
+  title: string
+  amount: number
+  secondaryAmount?: string
+  contracts?: number
+  price?: number
+  symbol?: string
+  isPerpRelated: boolean
+}
+
+export interface CoinbaseTransactionArchive {
+  platform: 'coinbase-transactions'
+  createdAt: string
+  updatedAt: string
+  summary: {
+    totalTransactions: number
+    perpRelatedCount: number
+    nonPerpCount: number
+    fundingProfit: number
+    fundingLoss: number
+    netFunding: number
+    usdcInterest: number
+    rebates: number
+    perpTradeCount: number
+  }
+  transactions: CoinbaseScrapedTransaction[]
+}
+
+export interface CoinbaseScrapeStatusEvent {
+  message: string
+  phase: 'connecting' | 'navigating' | 'loading' | 'scraping'
+  existingCount?: number
+  stopDate?: string
+  cleared?: number  // Number of entries cleared (when clearFundEntries is used)
+}
+
+export interface CoinbaseScrapeProgressEvent {
+  current: number
+  total: number
+  newCount: number
+  entriesApplied?: number
+  lastTransaction: {
+    date: string
+    type: CoinbaseTransactionType
+    symbol?: string
+    amount: number
+    title: string
+    isPerpRelated: boolean
+  } | null
+}
+
+export interface CoinbaseScrapeCompleteEvent {
+  totalScraped: number
+  newCount: number
+  archiveTotal: number
+  perpRelatedCount: number
+  stoppedAtDate: boolean
+  entriesApplied?: number  // Number of entries applied after batch processing
+  message: string
+}
+
+/**
+ * Get Coinbase transactions scrape archive with summary.
+ */
+export async function getCoinbaseTransactionsArchive(): Promise<ApiResult<CoinbaseTransactionArchive>> {
+  return fetchJson<CoinbaseTransactionArchive>(
+    `${API_BASE}/import/coinbase/transactions/archive`,
+    undefined,
+    'Failed to get Coinbase transactions archive'
+  )
+}
+
+/**
+ * Clear the Coinbase transactions archive.
+ */
+export async function clearCoinbaseTransactionsArchive(): Promise<ApiResult<{ success: boolean; message: string }>> {
+  const response = await fetch(`${API_BASE}/import/coinbase/transactions/archive`, {
+    method: 'DELETE',
+    credentials: 'include'
+  })
+  if (!response.ok) {
+    return { error: 'Failed to clear Coinbase transactions archive' }
+  }
+  return { data: await response.json() }
+}
+
+/**
+ * Scrape Coinbase transactions page with real-time progress via SSE.
+ * After scraping completes, all transactions are batch-applied to the fund.
+ *
+ * @param options.stopDate - ISO date to stop scraping at
+ * @param options.fundId - Fund ID to apply transactions to after scraping
+ * @param options.clearFundEntries - If true, clear fund entries immediately before scraping
+ */
+export function scrapeCoinbaseTransactionsStream(
+  options: {
+    stopDate?: string | undefined
+    fundId?: string | undefined
+    clearFundEntries?: boolean | undefined
+  } = {},
+  callbacks: {
+    onStatus?: (data: CoinbaseScrapeStatusEvent) => void
+    onProgress?: (data: CoinbaseScrapeProgressEvent) => void
+    onComplete?: (data: CoinbaseScrapeCompleteEvent) => void
+    onError?: (data: ScrapeErrorEvent) => void
+    onApplied?: (data: { entriesApplied: number; lastDate: string }) => void
+  }
+): { close: () => void } {
+  const params = new URLSearchParams()
+  if (options.stopDate) params.set('stopDate', options.stopDate)
+  if (options.fundId) params.set('fundId', options.fundId)
+  if (options.clearFundEntries) params.set('clearFundEntries', 'true')
+
+  const eventSource = new EventSource(
+    `${API_BASE}/import/coinbase/transactions/scrape-stream?${params.toString()}`
+  )
+
+  eventSource.addEventListener('status', (e: MessageEvent) => {
+    const data = JSON.parse(e.data) as CoinbaseScrapeStatusEvent
+    callbacks.onStatus?.(data)
+  })
+
+  eventSource.addEventListener('progress', (e: MessageEvent) => {
+    const data = JSON.parse(e.data) as CoinbaseScrapeProgressEvent
+    callbacks.onProgress?.(data)
+  })
+
+  eventSource.addEventListener('applied', (e: MessageEvent) => {
+    const data = JSON.parse(e.data) as { entriesApplied: number; lastDate: string }
+    callbacks.onApplied?.(data)
+  })
+
+  eventSource.addEventListener('complete', (e: MessageEvent) => {
+    const data = JSON.parse(e.data) as CoinbaseScrapeCompleteEvent
+    callbacks.onComplete?.(data)
+    eventSource.close()
+  })
+
+  eventSource.addEventListener('error', (e: MessageEvent) => {
+    if (e.data) {
+      const data = JSON.parse(e.data) as ScrapeErrorEvent
       callbacks.onError?.(data)
     } else {
       callbacks.onError?.({ message: 'Connection lost' })

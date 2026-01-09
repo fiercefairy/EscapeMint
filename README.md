@@ -2,9 +2,13 @@
 
 A local-first, open-source capital allocation engine for rules-based fund management.
 
+> **Disclaimer**: This software is provided "as is" without warranty of any kind. Use at your own risk. While I use this tool to manage my own investments, you should thoroughly review and test the code for your own needs. This is not financial advice, and the authors are not responsible for any financial losses that may result from using this software.
+
 ## Overview
 
 EscapeMint helps you manage investments across multiple accounts (Robinhood, Coinbase, M1, etc.) using deterministic, rules-based DCA (Dollar Cost Averaging) logic. It advises buy/sell actions based on your target growth expectations, automatically adjusting DCA amounts based on asset performance.
+
+![Dashboard](docs/screenshots/dashboard.png)
 
 ## Features
 
@@ -16,11 +20,25 @@ EscapeMint helps you manage investments across multiple accounts (Robinhood, Coi
 - **Local-First**: Runs entirely on your machine, no cloud dependencies
 - **No External Data**: Manual equity snapshots, no brokerage API required
 
+## Supported Platforms
+
+EscapeMint has specific fund type handling for the following brokerages:
+
+| Platform | Fund Types | Features |
+|----------|-----------|----------|
+| **[Robinhood](https://join.robinhood.com/adame110/)** | Stock, Crypto | DCA, cash interest, margin tracking |
+| **[M1 Finance](https://m1.finance/eFfGPAapZMyF)** | Stock | DCA, dividend reinvestment |
+| **[Coinbase](https://advanced.coinbase.com/join/XWJ3U4F)** | Crypto, Derivatives | Spot trading, perpetual futures |
+| **[Crypto.com](https://crypto.com/app/iwmcxzu8n5)** | Crypto | Spot trading |
+
+*The referral links above support the project. You can also use EscapeMint with any brokerage - just create a custom platform name.*
+
 ## Quick Start
 
 ### Prerequisites
 
 - Node.js 20+ ([download](https://nodejs.org/))
+- pnpm ([install](https://pnpm.io/installation)) - `npm install -g pnpm`
 
 ### Installation
 
@@ -29,11 +47,17 @@ EscapeMint helps you manage investments across multiple accounts (Robinhood, Coi
 git clone https://github.com/atomantic/escapemint.git
 cd escapemint
 
-# Install dependencies, build packages, and set up data
-npm run setup
+# Install dependencies
+pnpm install
+
+# Build packages
+pnpm run build:packages
+
+# Copy example data to get started (optional - creates sample funds)
+pnpm run setup:data
 
 # Start the development servers
-npm run dev
+pnpm run dev
 ```
 
 The app will be available at:
@@ -47,12 +71,12 @@ Press `Ctrl+C` to exit the logs view. The servers will continue running in the b
 The app uses PM2 for process management with automatic restart on file changes:
 
 ```bash
-npm run dev          # Start both frontend and API servers
-npm run dev:stop     # Stop all servers
-npm run dev:restart  # Restart all servers
-npm run dev:status   # Check server status
-npm run dev:logs     # View logs (Ctrl+C to exit)
-npm run stop         # Stop all servers
+pnpm run dev          # Start both frontend and API servers
+pnpm run dev:stop     # Stop all servers
+pnpm run dev:restart  # Restart all servers
+pnpm run dev:status   # Check server status
+pnpm run dev:logs     # View logs (Ctrl+C to exit)
+pnpm run stop         # Stop all servers
 ```
 
 ## How It Works
@@ -140,13 +164,14 @@ escapemint/
 ## Scripts
 
 ```bash
-npm run setup        # Install deps + initialize data
-npm run dev          # Start development servers (PM2)
-npm run dev:stop     # Stop development servers
-npm run build        # Build all packages
-npm run test         # Run all tests
-npm run lint         # Lint code
-npm run typecheck    # Type check
+pnpm install         # Install dependencies
+pnpm run build       # Build all packages
+pnpm run dev         # Start development servers (PM2)
+pnpm run dev:stop    # Stop development servers
+pnpm run test        # Run all tests
+pnpm run test:e2e    # Run end-to-end tests
+pnpm run lint        # Lint code
+pnpm run typecheck   # Type check
 ```
 
 ## Data Storage
@@ -200,21 +225,90 @@ TargetDiff = ActualValue - ExpectedTarget
 - **No telemetry**: Zero analytics or tracking
 - **You own your data**: Plain-text TSV files, fully portable
 
+## Backup & Restore
+
+Your fund data is stored in plain TSV and JSON files in the `data/funds/` directory. To backup:
+
+```bash
+# Create a backup
+cp -r data data.backup
+
+# Or backup to a cloud-synced folder
+cp -r data ~/iCloud/EscapeMint-backup
+```
+
+To restore:
+```bash
+# Stop the servers first
+pnpm run dev:stop
+
+# Restore from backup
+rm -rf data
+cp -r data.backup data
+
+# Restart servers
+pnpm run dev
+```
+
+## Screenshots
+
+### Dashboard
+The main dashboard shows all platforms with aggregate metrics, allocation charts, APY/gain tracking, fund size history, and cash vs asset breakdown.
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Dashboard - Platform Filter
+Filter the dashboard to view metrics for a single platform with platform-specific allocation and performance charts.
+
+![Dashboard Platform Filter](docs/screenshots/dashboard-platform.png)
+
+### Platform View
+View all funds within a platform with P&L summary, dividends, expenses, and detailed fund table.
+
+![Platform View](docs/screenshots/platform.png)
+
+### Fund - Accumulate Mode
+Track funds in accumulate mode with profit extraction. Shows value & allocation over time and captured profit chart.
+
+![Fund Accumulate](docs/screenshots/fund-accumulate.png)
+
+### Fund - Liquidate Mode
+Track funds in liquidate mode with dividend tracking and extracted profits visualization.
+
+![Fund Liquidate](docs/screenshots/fund-liquidate.png)
+
+### Fund - Cash Tracking
+Track cash funds with interest earned, expenses, and balance over time with APY calculation.
+
+![Fund Cash](docs/screenshots/fund-cash.png)
+
+## Documentation
+
+For detailed documentation, see the [docs/](./docs/) folder:
+
+- [Investment Strategy](./docs/investment-strategy.md) - DCA methodology and tiered buying
+- [Fund Management](./docs/fund-management.md) - Position and cash tracking
+- [Configuration Guide](./docs/configuration.md) - All configuration options
+- [Data Format](./docs/data-format.md) - TSV file structure reference
+- [System Architecture](./docs/architecture.md) - Package structure and data flow
+- [Derivatives](./docs/derivatives.md) - Perpetual futures data model
+
 ## Development
 
 ### Building from Source
 
 ```bash
-npm run build        # Build all packages
-npm run build:web    # Build frontend only
-npm run build:server # Build API only
+pnpm run build        # Build all packages
+pnpm run build:web    # Build frontend only
+pnpm run build:server # Build API only
 ```
 
 ### Running Tests
 
 ```bash
-npm run test         # Run all tests
-npm run test:engine  # Test calculation engine only
+pnpm run test         # Run all tests
+pnpm run test:engine  # Test calculation engine only
+pnpm run test:e2e     # Run Playwright end-to-end tests
 ```
 
 ## License

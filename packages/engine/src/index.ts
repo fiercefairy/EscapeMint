@@ -7,6 +7,19 @@ export {
   computeFundState,
   computeClosedFundMetrics
 } from './expected-equity.js'
+export {
+  processTrade,
+  calculateLiquidationPrice,
+  calculateEquityAtPrice,
+  calculateSafeLimitOrders,
+  mergeFundingData,
+  calculateDailyPnL,
+  processTradeHistory,
+  computeDerivativesState,
+  computeDerivativesEntriesState,
+  formatPositionSummary
+} from './derivatives-calculations.js'
+export type { DerivativesEntryState } from './derivatives-calculations.js'
 export { computeLimit, computeRecommendation } from './recommendation.js'
 export { formatCurrency, formatPercent, summarizeFundState } from './explainer.js'
 export {
@@ -19,6 +32,7 @@ export {
 export type {
   ActionType,
   FundStatus,
+  FundType,
   SubFundConfig,
   Trade,
   CashFlow,
@@ -31,6 +45,40 @@ export type {
   ClosedFundMetrics
 } from './types.js'
 export type {
+  CostBasisLot,
+  DerivativesPosition,
+  FundingPayment,
+  RewardPayment,
+  ProcessedTrade,
+  DailyPnL,
+  SuggestedOrder,
+  OrderLadder,
+  CoinbasePosition,
+  CoinbaseFill,
+  CoinbaseFundingPayment,
+  ApiKeyReference,
+  SyncResult
+} from './derivatives-types.js'
+export type {
   FundMetrics,
   AggregateMetrics
 } from './aggregate.js'
+export {
+  FUND_TYPE_DEFAULTS,
+  FUND_TYPE_FEATURES,
+  ALLOWED_ACTIONS,
+  isCashFund,
+  isDerivativesFund,
+  isTradingFund,
+  getFundTypeFeatures,
+  getFundTypeDefaults,
+  getAllowedActions,
+  isValidAction,
+  applyFundTypeDefaults
+} from './fund-type-config.js'
+export type {
+  FundTypeFeatures,
+  CashFundAction,
+  TradingFundAction,
+  DerivativesFundAction
+} from './fund-type-config.js'

@@ -84,8 +84,9 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     }
   }, [preview])
 
-  // Fetch preview when equity value changes
+  // Fetch preview when equity value changes (skip for cash funds - no recommendations)
   useEffect(() => {
+    if (fundType === 'cash') return
     const value = parseFloat(formData.value)
     if (!isNaN(value) && value >= 0) {
       const timeoutId = setTimeout(() => {
@@ -93,13 +94,13 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
       }, 300)
       return () => clearTimeout(timeoutId)
     }
-  }, [formData.value, formData.date, fetchPreview])
+  }, [formData.value, formData.date, fetchPreview, fundType])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
-    const entry = buildEntryFromForm(formData)
+    const entry = buildEntryFromForm(formData, fundType)
     const response = await addFundEntry(fundId, entry)
 
     if (response.error) {
@@ -110,15 +111,14 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
         state: response.data.state,
         recommendation: response.data.recommendation
       })
+      // Immediately notify parent to refresh entries table and header
+      onAdded()
     }
 
     setLoading(false)
   }
 
   const handleClose = () => {
-    if (result) {
-      onAdded()
-    }
     onClose()
   }
 
@@ -194,8 +194,8 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
         <h2 className="text-xl font-bold text-white mb-2">Take Action</h2>
         <p className="text-slate-400 text-sm mb-4">Record activity for {fundTicker.toUpperCase()}</p>
 
-        {/* Live Recommendation Banner */}
-        {formData.value && (
+        {/* Live Recommendation Banner - not shown for cash funds */}
+        {formData.value && fundType !== 'cash' && (
           <div className={`rounded-lg p-3 mb-4 ${
             previewLoading
               ? 'bg-slate-700/50 border border-slate-600'
@@ -357,7 +357,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
             </button>
             <button
               type="submit"
-              disabled={loading || (!formData.action && fundType !== 'cash') || (fundType === 'cash' && !formData.deposit && !formData.withdrawal && !formData.cash_interest && !formData.value)}
+              disabled={loading || (!formData.action && fundType !== 'cash') || (fundType === 'cash' && !formData.amount && !formData.cash_interest && !formData.value)}
               className="flex-1 px-4 py-2 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors disabled:opacity-50"
             >
               {loading ? 'Recording...' : 'Record Action'}

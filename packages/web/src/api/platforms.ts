@@ -9,10 +9,13 @@ export interface Platform {
   name: string
   color?: string
   manage_cash?: boolean
+  /** When true, trades auto-create entries in the cash fund */
+  auto_sync_cash?: boolean
 }
 
-export async function fetchPlatforms(): Promise<ApiResult<Platform[]>> {
-  return fetchJson<Platform[]>(`${API_BASE}/platforms`, undefined, 'Failed to fetch platforms')
+export async function fetchPlatforms(includeTest = false): Promise<ApiResult<Platform[]>> {
+  const url = includeTest ? `${API_BASE}/platforms?include_test=true` : `${API_BASE}/platforms`
+  return fetchJson<Platform[]>(url, undefined, 'Failed to fetch platforms')
 }
 
 export async function createPlatform(platform: { id: string; name: string; color?: string }): Promise<ApiResult<Platform>> {
@@ -51,6 +54,13 @@ export interface PlatformFundMetrics {
   liquidAPY: number
   entries: number
   audited?: string
+  // Derivatives-specific fields
+  position?: number
+  avgEntry?: number
+  marginBalance?: number
+  cumFunding?: number
+  cumRebates?: number
+  cumFees?: number
 }
 
 export interface CashInterestHistory {
@@ -96,6 +106,8 @@ export interface PlatformCashStatus {
   marginBorrowed: number
   interestEarned: number
   entriesCount?: number
+  /** When true, trades auto-create entries in the cash fund */
+  autoSyncCash?: boolean
   error?: string
 }
 
@@ -145,6 +157,8 @@ export interface PlatformConfigUpdate {
   color?: string
   url?: string
   notes?: string
+  /** When true, trades auto-create entries in the cash fund */
+  auto_sync_cash?: boolean
 }
 
 export async function updatePlatformConfig(platformId: string, config: PlatformConfigUpdate): Promise<ApiResult<{ success: boolean }>> {

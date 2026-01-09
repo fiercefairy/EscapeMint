@@ -34,14 +34,14 @@ export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existing
   }, [entry.fund_size, calculatedFundSize, entry.notes, entry.dividend, entry.expense, entry.cash_interest])
 
   const [formData, setFormData] = useState<EntryFormData>(() =>
-    createFormDataFromEntry(entry, calculatedFundSize)
+    createFormDataFromEntry(entry, calculatedFundSize, fundType)
   )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
-    const updatedEntry = buildEntryFromForm(formData) as FundEntry
+    const updatedEntry = buildEntryFromForm(formData, fundType) as FundEntry
     const response = await updateFundEntry(fundId, entryIndex, updatedEntry)
 
     if (response.error) {

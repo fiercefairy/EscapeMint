@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { updatePlatformConfig, type PlatformFundMetrics } from '../../api/platforms'
@@ -23,7 +23,7 @@ export function FundsTable({
   const navigate = useNavigate()
   const [showColumnMenu, setShowColumnMenu] = useState(false)
   // Get valid column IDs from the current column definitions
-  const validColumnIds = new Set(ALL_FUND_COLUMNS.map(c => c.id))
+  const validColumnIds = useMemo(() => new Set(ALL_FUND_COLUMNS.map(c => c.id)), [])
 
   const [visibleColumns, setVisibleColumns] = useState<Set<FundColumnId>>(() => {
     if (savedVisibleColumns) {
@@ -67,7 +67,7 @@ export function FundsTable({
     } else {
       setVisibleColumns(getDefaultFundColumns())
     }
-  }, [savedColumnOrder, savedVisibleColumns])
+  }, [savedColumnOrder, savedVisibleColumns, validColumnIds])
 
   // Close column menu on outside click
   useEffect(() => {
@@ -257,6 +257,27 @@ export function FundsTable({
             {fund.audited ? '✓' : '○'}
           </button>
         )
+      // Derivatives-specific columns
+      case 'position':
+        return fund.position !== undefined
+          ? <span className="text-cyan-400">{formatNumber(fund.position)}</span>
+          : <span className="text-slate-600">-</span>
+      case 'avgEntry':
+        return fund.avgEntry !== undefined
+          ? <span className="text-white">{formatCurrency(fund.avgEntry)}</span>
+          : <span className="text-slate-600">-</span>
+      case 'marginBalance':
+        return fund.marginBalance !== undefined
+          ? <span className="text-blue-400">{formatCurrency(fund.marginBalance)}</span>
+          : <span className="text-slate-600">-</span>
+      case 'cumFunding':
+        return fund.cumFunding !== undefined
+          ? <span className={fund.cumFunding >= 0 ? 'text-green-400' : 'text-red-400'}>{formatCurrencyPrecise(fund.cumFunding)}</span>
+          : <span className="text-slate-600">-</span>
+      case 'cumFees':
+        return fund.cumFees !== undefined
+          ? <span className="text-orange-400">{formatCurrencyPrecise(fund.cumFees)}</span>
+          : <span className="text-slate-600">-</span>
       default:
         return null
     }

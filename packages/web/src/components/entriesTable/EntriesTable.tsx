@@ -3,6 +3,8 @@ import { toast } from 'sonner'
 import { updateFundConfig, updateFundEntry, recalculateFund, interpolateColumn, type FundEntry, type FundType, type InterpolatableColumn } from '../../api/funds'
 import { getColumnsForFundType, getDefaultColumns, getDefaultColumnOrder, type ColumnId, type ComputedEntry } from './types'
 import { PasteColumnModal } from './PasteColumnModal'
+import { CoinbaseUpdateButton } from '../CoinbaseUpdateButton'
+import { CoinbaseImportButton } from '../CoinbaseImportButton'
 import { useSettings } from '../../contexts/SettingsContext'
 
 export interface EntriesTableProps {
@@ -15,6 +17,10 @@ export interface EntriesTableProps {
   onEdit: (index: number, entry: FundEntry, calculatedFundSize: number) => void
   onAddEntry: () => void
   onReload: () => void
+  // Optional: for derivatives funds with Coinbase update support
+  showCoinbaseUpdate?: boolean
+  lastEntryDate?: string | undefined
+  fundStartDate?: string | undefined
 }
 
 export function EntriesTable({
@@ -26,7 +32,10 @@ export function EntriesTable({
   fundType = 'stock',
   onEdit,
   onAddEntry,
-  onReload
+  onReload,
+  showCoinbaseUpdate = false,
+  lastEntryDate,
+  fundStartDate
 }: EntriesTableProps) {
   // Get columns available for this fund type
   const availableColumns = useMemo(() => getColumnsForFundType(fundType), [fundType])
@@ -36,7 +45,7 @@ export function EntriesTable({
   const [showPasteModal, setShowPasteModal] = useState(false)
   const [recalculating, setRecalculating] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnId>>(() =>
-    savedVisibleColumns ? new Set(savedVisibleColumns) : getDefaultColumns(fundType)
+    savedVisibleColumns && savedVisibleColumns.length > 0 ? new Set(savedVisibleColumns) : getDefaultColumns(fundType)
   )
   const [columnOrder, setColumnOrder] = useState<ColumnId[]>(() => {
     if (savedColumnOrder && savedColumnOrder.length > 0) {
@@ -163,13 +172,9 @@ export function EntriesTable({
 
   const sortedEntries = useMemo(() => {
     if (computedEntries.length === 0) return []
-    const sorted = [...computedEntries]
-    sorted.sort((a, b) => {
-      const dateA = new Date(a.date).getTime()
-      const dateB = new Date(b.date).getTime()
-      return sortOrder === 'asc' ? dateA - dateB : dateB - dateA
-    })
-    return sorted
+    // TSV is already in chronological order (oldest first)
+    // Just reverse for "newest first" display, or use as-is for "oldest first"
+    return sortOrder === 'asc' ? computedEntries : [...computedEntries].reverse()
   }, [computedEntries, sortOrder])
 
   const toggleSort = () => {
@@ -375,6 +380,25 @@ export function EntriesTable({
               </button>
             </>
           )}
+          {showCoinbaseUpdate && fundStartDate && (
+            <div className="relative">
+              <CoinbaseImportButton
+                fundId={fundId}
+                fundStartDate={fundStartDate}
+                hasEntries={entries.length > 0}
+                onComplete={onReload}
+              />
+            </div>
+          )}
+          {showCoinbaseUpdate && (
+            <div className="relative">
+              <CoinbaseUpdateButton
+                fundId={fundId}
+                lastEntryDate={lastEntryDate}
+                onComplete={onReload}
+              />
+            </div>
+          )}
           <button
             onClick={onAddEntry}
             className="px-2 py-1 text-xs bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors font-medium"
@@ -508,7 +532,7 @@ export function EntriesTable({
                           {formatCurrency(entry.value)}
                         </td>
                       )
-                    case 'action':
+                    case 'action': {
                       // Show "Close" only when it's a SELL that fully liquidated
                       // Use cumShares check if fund has share tracking, otherwise fall back to value-based check
                       const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
@@ -535,26 +559,38 @@ export function EntriesTable({
                           )}
                         </td>
                       )
-                    case 'amount':
+                    }
+                    case 'amount': {
+                      // For cash funds, amount is signed: positive=deposit, negative=withdraw
+                      const isCashFund = fundType === 'cash'
+                      const amountValue = entry.amount
+                      const colorClass = isCashFund && amountValue
+                        ? amountValue > 0 ? 'text-green-400' : 'text-red-400'
+                        : 'text-white'
+                      const displayAmount = isCashFund && amountValue
+                        ? (amountValue > 0 ? '+' : '') + formatCurrency(amountValue)
+                        : amountValue ? formatCurrency(amountValue) : '-'
                       return (
-                        <td key={col.id} className="px-2 py-1.5 text-right text-white">
-                          {entry.amount ? formatCurrency(entry.amount) : '-'}
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${colorClass}`}>
+                          {displayAmount}
                         </td>
                       )
+                    }
                     case 'shares':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
                           {entry.shares ? entry.shares.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 }) : '-'}
                         </td>
                       )
-                    case 'cumShares':
+                    case 'cumShares': {
                       const displayShares = entry.cumShares && Math.abs(entry.cumShares) < 0.00000001 ? 0 : entry.cumShares
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
                           {displayShares ? displayShares.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 }) : entry.cumShares === 0 || displayShares === 0 ? '0' : '-'}
                         </td>
                       )
-                    case 'price':
+                    }
+                    case 'price': {
                       const canCalcPrice = !entry.price && entry.amount && entry.shares && entry.shares !== 0
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
@@ -569,13 +605,14 @@ export function EntriesTable({
                           ) : '-'}
                         </td>
                       )
+                    }
                     case 'invested':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-blue-400">
                           {formatCurrency(entry.totalInvested)}
                         </td>
                       )
-                    case 'cash':
+                    case 'cash': {
                       // Prefer tracked cash from entry, fall back to calculated
                       const displayCash = entry.cash ?? entry.calculatedCash
                       return (
@@ -583,7 +620,8 @@ export function EntriesTable({
                           {formatCurrency(displayCash)}
                         </td>
                       )
-                    case 'fundSize':
+                    }
+                    case 'fundSize': {
                       // Only show "closed" for true closing entries (SELL with full liquidation)
                       // Use cumShares check if fund has share tracking, otherwise fall back to value-based check
                       const hasShareTrackingForFundSize = entry.shares !== undefined && entry.shares !== 0
@@ -601,6 +639,7 @@ export function EntriesTable({
                           )}
                         </td>
                       )
+                    }
                     case 'marginAvail':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-purple-300">
@@ -695,6 +734,118 @@ export function EntriesTable({
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-slate-400 max-w-[150px] truncate" title={entry.notes || ''}>
                           {entry.notes || '-'}
+                        </td>
+                      )
+                    // Derivatives-specific columns
+                    case 'contracts':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-white">
+                          {entry.contracts ? entry.contracts.toLocaleString() : '-'}
+                        </td>
+                      )
+                    case 'position':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-blue-400">
+                          {entry.derivPosition !== undefined ? entry.derivPosition.toLocaleString() : '-'}
+                        </td>
+                      )
+                    case 'avgEntry':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
+                          {entry.derivAvgEntry ? formatCurrency(entry.derivAvgEntry) : '-'}
+                        </td>
+                      )
+                    case 'marginBalance':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-cyan-400">
+                          {entry.derivMarginBalance !== undefined ? formatCurrency(entry.derivMarginBalance) : '-'}
+                        </td>
+                      )
+                    case 'derivEquity':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-mint-400">
+                          {entry.derivEquity !== undefined ? formatCurrency(entry.derivEquity) : '-'}
+                        </td>
+                      )
+                    case 'cumFunding':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${(entry.derivCumFunding ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {entry.derivCumFunding !== undefined ? formatCurrency(entry.derivCumFunding) : '-'}
+                        </td>
+                      )
+                    case 'cumInterest':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-yellow-400">
+                          {entry.derivCumInterest !== undefined ? formatCurrency(entry.derivCumInterest) : '-'}
+                        </td>
+                      )
+                    case 'cumRebates':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-purple-400">
+                          {entry.derivCumRebates !== undefined ? formatCurrency(entry.derivCumRebates) : '-'}
+                        </td>
+                      )
+                    case 'cumFees':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-red-400">
+                          {entry.derivCumFees !== undefined ? formatCurrency(entry.derivCumFees) : '-'}
+                        </td>
+                      )
+                    case 'fee':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-red-400">
+                          {entry.fee !== undefined && entry.fee > 0 ? formatCurrency(entry.fee) : '-'}
+                        </td>
+                      )
+                    case 'margin':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-amber-400">
+                          {entry.margin !== undefined && entry.margin > 0 ? formatCurrency(entry.margin) : '-'}
+                        </td>
+                      )
+                    case 'marginLocked':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-amber-400">
+                          {entry.derivMarginLocked !== undefined && entry.derivMarginLocked > 0 ? formatCurrency(entry.derivMarginLocked) : '-'}
+                        </td>
+                      )
+                    case 'leverage':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${
+                          entry.derivLeverage !== undefined
+                            ? entry.derivLeverage < 3 ? 'text-green-400'
+                            : entry.derivLeverage < 5 ? 'text-amber-400'
+                            : 'text-red-400'
+                            : 'text-slate-500'
+                        }`}>
+                          {entry.derivLeverage !== undefined && entry.derivLeverage > 0 ? `${entry.derivLeverage.toFixed(2)}x` : '-'}
+                        </td>
+                      )
+                    case 'liquidationPrice':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${
+                          entry.derivLiquidationPrice !== undefined
+                            ? entry.derivLiquidationPrice < 0 ? 'text-green-400'  // Negative = over-collateralized
+                            : 'text-orange-400'
+                            : 'text-slate-500'
+                        }`}>
+                          {entry.derivLiquidationPrice !== undefined
+                            ? formatCurrency(entry.derivLiquidationPrice)
+                            : '-'}
+                        </td>
+                      )
+                    case 'distanceToLiq':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${
+                          entry.derivDistanceToLiq !== undefined
+                            ? entry.derivDistanceToLiq > 0.5 ? 'text-green-400'
+                            : entry.derivDistanceToLiq > 0.25 ? 'text-amber-400'
+                            : 'text-red-400'
+                            : 'text-slate-500'
+                        }`}>
+                          {entry.derivDistanceToLiq !== undefined && entry.derivDistanceToLiq > 0
+                            ? `${(entry.derivDistanceToLiq * 100).toFixed(1)}%`
+                            : '-'}
                         </td>
                       )
                     case 'edit':

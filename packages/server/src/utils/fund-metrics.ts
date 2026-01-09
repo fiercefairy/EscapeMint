@@ -1,4 +1,9 @@
 import type { FundData } from '@escapemint/storage'
+import {
+  computeDerivativesEntriesState,
+  isCashFund as checkIsCashFund,
+  isDerivativesFund as checkIsDerivativesFund
+} from '@escapemint/engine'
 
 /**
  * Computed metrics for the latest state of a fund.
@@ -29,6 +34,14 @@ export interface FundComputedMetrics {
   // Tracking
   daysActive: number
   costBasis: number
+
+  // Derivatives-specific fields (only present for derivatives funds)
+  position?: number           // Net contracts held
+  avgEntry?: number          // Average entry price
+  marginBalance?: number     // Total margin balance
+  cumFunding?: number        // Cumulative funding payments
+  cumRebates?: number        // Cumulative rebates
+  cumFees?: number           // Cumulative trading fees
 }
 
 /**
@@ -38,9 +51,66 @@ export interface FundComputedMetrics {
 export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   const entries = fund.entries
   const config = fund.config
-  const isCashFund = config.fund_type === 'cash'
+  const isCashFund = checkIsCashFund(config.fund_type)
+  const isDerivativesFund = checkIsDerivativesFund(config.fund_type)
   const isAccumulate = config.accumulate ?? false
   const manageCash = config.manage_cash !== false
+
+  // Handle derivatives funds separately
+  if (isDerivativesFund && entries.length > 0) {
+    const contractMultiplier = config.contract_multiplier ?? 0.01
+    const derivStates = computeDerivativesEntriesState(entries, contractMultiplier)
+    const lastState = derivStates[derivStates.length - 1]
+
+    if (lastState) {
+      const startDate = config.start_date ?? entries[0]?.date ?? new Date().toISOString().split('T')[0]
+      const endDate = lastState.date
+      const daysActive = Math.max(1, Math.floor(
+        (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
+      ))
+
+      const liquidPnl = lastState.unrealizedPnl + lastState.realizedPnl
+      const denominator = lastState.costBasis > 0 ? lastState.costBasis : 1
+
+      // Calculate APY
+      let realizedApy = 0
+      let liquidApy = 0
+      if (daysActive > 0 && denominator > 0) {
+        const realizedReturnPct = lastState.realizedPnl / denominator
+        const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
+        realizedApy = Math.pow(1 + clampedRealizedPct, 365 / daysActive) - 1
+
+        const liquidReturnPct = liquidPnl / denominator
+        const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
+        liquidApy = Math.pow(1 + clampedLiquidPct, 365 / daysActive) - 1
+      }
+
+      return {
+        fundSize: lastState.marginBalance,
+        currentValue: lastState.equity,
+        cash: lastState.availableFunds,  // Available funds = marginBalance - initialMargin
+        totalInvested: lastState.costBasis,
+        cumDividends: 0,
+        cumExpenses: lastState.cumFees,
+        cumCashInterest: lastState.cumInterest,
+        cumExtracted: lastState.realizedPnl,
+        unrealized: lastState.unrealizedPnl,
+        realized: lastState.realizedPnl,
+        liquidPnl,
+        realizedApy,
+        liquidApy,
+        daysActive,
+        costBasis: lastState.costBasis,
+        // Derivatives-specific fields
+        position: lastState.position,
+        avgEntry: lastState.avgEntry,
+        marginBalance: lastState.marginBalance,
+        cumFunding: lastState.cumFunding,
+        cumRebates: lastState.cumRebates,
+        cumFees: lastState.cumFees
+      }
+    }
+  }
 
   // Initialize tracking variables
   let totalBuys = 0
@@ -51,7 +121,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   let cumExpenses = 0
   let cumCashInterest = 0
   let cumExtracted = 0
-  let previousCyclesGain = 0
+  let _previousCyclesGain = 0  // Accumulated gains from previous cycles; tracked for future multi-cycle reporting
   // Track total ever invested across all cycles (for APY calculation on fully liquidated funds)
   let totalEverInvested = 0
 
@@ -97,7 +167,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
       let extracted = 0
       if (isFullLiquidation) {
         extracted = entry.amount - costBasis
-        previousCyclesGain += extracted
+        _previousCyclesGain += extracted
         costBasis = 0
         totalBuys = 0
         totalSells = 0
@@ -153,8 +223,19 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
     fundSize = latestEntry?.fund_size ?? cash
     currentValue = cash
   } else {
-    fundSize = latestEntry?.fund_size ?? config.fund_size_usd
-    currentValue = latestEntry?.value ?? 0
+    // For trading funds with manage_cash=false, fundSize = netInvested (matches FundDetail.tsx)
+    // For trading funds with manage_cash=true, use entry's fund_size or config
+    fundSize = !manageCash ? netInvested : (latestEntry?.fund_size ?? config.fund_size_usd)
+    // Calculate post-action value (entry.value is pre-action)
+    // After a BUY, the equity value increases by the buy amount
+    // After a SELL, the equity value decreases by the sell amount
+    let postActionValue = latestEntry?.value ?? 0
+    if (latestEntry?.action === 'BUY' && latestEntry?.amount) {
+      postActionValue += latestEntry.amount
+    } else if (latestEntry?.action === 'SELL' && latestEntry?.amount) {
+      postActionValue = Math.max(0, postActionValue - latestEntry.amount)
+    }
+    currentValue = postActionValue
     if (!manageCash) {
       cash = 0
     } else {

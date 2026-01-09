@@ -1,11 +1,14 @@
 import { defineConfig, devices } from '@playwright/test'
+import { createRequire } from 'module'
 
 // Import ports from ecosystem config (single source of truth)
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+const require = createRequire(import.meta.url)
 const { PORTS } = require('./ecosystem.config.cjs')
 
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: './e2e/global-setup.ts',
+  globalTeardown: './e2e/global-teardown.ts',
   fullyParallel: false, // Run tests sequentially for data integrity
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

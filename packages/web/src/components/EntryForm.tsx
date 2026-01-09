@@ -1,6 +1,10 @@
 import { useMemo, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import type { FundEntry, FundType } from '../api/funds'
+import {
+  isCashFund as checkIsCashFund,
+  getFundTypeFeatures
+} from '@escapemint/engine'
 
 export type ActionType = '' | 'BUY' | 'SELL' | 'HOLD'
 
@@ -21,6 +25,8 @@ export interface EntryFormData {
   margin_available: string
   margin_borrowed: string
   notes: string
+  // Derivatives-specific
+  margin: string  // Actual margin locked for BUY/SELL trades
 }
 
 export interface EntryFormProps {
@@ -94,7 +100,8 @@ export const parseFormulaValue = (input: string): number => {
 }
 
 export function EntryForm({ formData, setFormData, existingEntries = [], baseFundSize = 0, showFundSizeAdjustment = false, cashAvailable, marginAvailable, currentFundSize, fundType = 'stock', manageCash = true }: EntryFormProps) {
-  const isCashFund = fundType === 'cash'
+  const isCashFund = checkIsCashFund(fundType)
+  const _features = getFundTypeFeatures(fundType)
   const isCryptoFund = fundType === 'crypto'
   // Get cumulative shares from entries BEFORE the current date
   const getCumulativeShares = useCallback((beforeDate: string) => {
@@ -153,8 +160,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
 
   // Calculate fund size adjustment from deposit/withdrawal/dividend/expense/interest
   const fundSizeAdjustment = useMemo(() => {
-    const deposit = parseFloat(formData.deposit) || 0
-    const withdrawal = parseFloat(formData.withdrawal) || 0
+    const deposit = parseFormulaValue(formData.deposit)
+    const withdrawal = parseFormulaValue(formData.withdrawal)
     const dividend = parseFormulaValue(formData.dividend)
     const expense = parseFloat(formData.expense) || 0
     const cashInterest = parseFloat(formData.cash_interest) || 0
@@ -172,15 +179,15 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
   // Auto-update fund size when deposit/withdrawal changes in add mode (using currentFundSize from preview)
   useEffect(() => {
     if (!showFundSizeAdjustment && currentFundSize !== undefined && currentFundSize > 0) {
-      const deposit = parseFloat(formData.deposit) || 0
-      const withdrawal = parseFloat(formData.withdrawal) || 0
+      const deposit = parseFormulaValue(formData.deposit)
+      const withdrawal = parseFormulaValue(formData.withdrawal)
       const adjustment = deposit - withdrawal
       if (adjustment !== 0) {
         const newFundSize = currentFundSize + adjustment
         setFormData(prev => {
           // Only update if fund_size is empty or was auto-set (avoid overwriting manual entry)
           const currentVal = parseFloat(prev.fund_size) || 0
-          const expectedPrev = currentFundSize + (parseFloat(prev.deposit) || 0) - (parseFloat(prev.withdrawal) || 0)
+          const expectedPrev = currentFundSize + parseFormulaValue(prev.deposit) - parseFormulaValue(prev.withdrawal)
           if (prev.fund_size === '' || Math.abs(currentVal - expectedPrev) < 0.01) {
             return { ...prev, fund_size: newFundSize.toFixed(2) }
           }
@@ -190,16 +197,21 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
     }
   }, [formData.deposit, formData.withdrawal, currentFundSize, showFundSizeAdjustment, setFormData])
 
-  // Simplified form for cash funds
+  // Simplified form for cash funds - single Amount field with sign
   if (isCashFund) {
+    // Parse amount to show appropriate styling
+    const amountValue = parseFormulaValue(formData.amount)
+    const formatCurrency = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v)
+    const amountColorClass = amountValue > 0 ? 'border-green-500' : amountValue < 0 ? 'border-red-500' : 'border-slate-600'
+
     return (
       <div className="space-y-4">
         {/* CASH FUND ENTRY */}
         <div className="space-y-3">
           <h3 className="text-sm font-medium text-blue-400 border-b border-slate-700 pb-1">Cash Balance Entry</h3>
 
-          {/* Row 1: Date, Cash Balance, Deposit, Withdrawal */}
-          <div className="grid grid-cols-4 gap-4">
+          {/* Row 1: Date, Cash Balance, Amount */}
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm text-slate-400 mb-1">Date</label>
               <input
@@ -219,33 +231,27 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 placeholder="Current cash balance"
                 step="0.01"
-                min="0"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Deposit ($)</label>
+              <label className="block text-sm text-slate-400 mb-1">Amount ($)</label>
               <input
-                type="number"
-                value={formData.deposit}
-                onChange={e => setFormData(prev => ({ ...prev, deposit: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
+                type="text"
+                value={formData.amount}
+                onChange={e => setFormData(prev => ({ ...prev, amount: e.target.value }))}
+                className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-blue-500 ${amountColorClass}`}
+                placeholder="+100 deposit, -50 withdraw"
               />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Withdrawal ($)</label>
-              <input
-                type="number"
-                value={formData.withdrawal}
-                onChange={e => setFormData(prev => ({ ...prev, withdrawal: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
-              />
+              <p className="text-xs text-slate-500 mt-1">
+                {amountValue > 0 ? (
+                  <span className="text-green-400">Deposit: +{formatCurrency(amountValue)}</span>
+                ) : amountValue < 0 ? (
+                  <span className="text-red-400">Withdraw: {formatCurrency(amountValue)}</span>
+                ) : (
+                  'Positive = deposit, negative = withdraw'
+                )}
+              </p>
             </div>
           </div>
 
@@ -401,203 +407,247 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           </div>
         </div>
 
-        {/* Row 2: Shares, Price, Calc Button */}
-        <div className="grid grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Shares/Units</label>
-            <input
-              type="number"
-              value={formData.shares}
-              onChange={e => setFormData(prev => ({ ...prev, shares: e.target.value }))}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-              placeholder="0"
-              step="any"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Price ($)</label>
-            <input
-              type="number"
-              value={formData.price}
-              onChange={e => setFormData(prev => ({ ...prev, price: e.target.value }))}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-              placeholder="Per unit"
-              step="any"
-              min="0"
-            />
-          </div>
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={calculatePriceEquity}
-              className="w-full px-3 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-500 transition-colors text-sm"
-              title="Calculate price from amount/shares, then equity from prior holdings"
-            >
-              Calc Price/Equity
-            </button>
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Notes</label>
-            <input
-              type="text"
-              value={formData.notes}
-              onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-              placeholder="Optional"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* FUND MANAGEMENT SECTION */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-medium text-slate-300 border-b border-slate-700 pb-1">Fund Management</h3>
-
-        {/* Row 1: Fund Size + trading-specific fields */}
-        <div className="grid grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Fund Size ($)</label>
-            <input
-              type="number"
-              value={formData.fund_size}
-              onChange={e => setFormData(prev => ({ ...prev, fund_size: e.target.value }))}
-              className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-mint-500 ${
-                showFundSizeAdjustment && fundSizeAdjustment !== 0 ? 'border-mint-500' : 'border-slate-600'
-              }`}
-              placeholder="Override"
-              step="0.01"
-              min="0"
-            />
-            {showFundSizeAdjustment && fundSizeAdjustment !== 0 && (
-              <p className={`text-xs mt-1 ${fundSizeAdjustment > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {fundSizeAdjustment > 0 ? '+' : ''}{fundSizeAdjustment.toFixed(2)} adjustment
-                {baseFundSize > 0 && <span className="text-slate-500"> (base: ${baseFundSize.toFixed(2)})</span>}
+        {/* Derivatives: Margin input for BUY trades */}
+        {fundType === 'derivatives' && formData.action === 'BUY' && (
+          <div className="grid grid-cols-4 gap-4 mt-3">
+            <div className="col-span-2">
+              <label className="block text-sm text-slate-400 mb-1">Margin Locked ($)</label>
+              <input
+                type="number"
+                value={formData.margin}
+                onChange={e => setFormData(prev => ({ ...prev, margin: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                placeholder={`Default: ${((parseFloat(formData.amount) || 0) * 0.20).toFixed(2)} (20%)`}
+                step="0.01"
+                min="0"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Actual margin required by exchange (from trade confirmation)
               </p>
-            )}
-          </div>
-          {/* Cash field - only show when fund manages its own cash */}
-          {manageCash ? (
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Cash ($)</label>
-              <input
-                type="number"
-                value={formData.cash}
-                onChange={e => setFormData(prev => ({ ...prev, cash: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="Optional"
-                step="0.01"
-                min="0"
-              />
-            </div>
-          ) : (
-            <div className={isCryptoFund ? 'col-span-3' : 'col-span-2'}>
-              <div className="flex items-center h-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg">
-                <span className="text-sm text-slate-400">
-                  Cash is managed at the platform level. Use the platform's cash fund for deposits/withdrawals.
-                </span>
-              </div>
-            </div>
-          )}
-          {!isCryptoFund && (
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Dividend ($)</label>
-              <input
-                type="text"
-                value={formData.dividend}
-                onChange={e => setFormData(prev => ({ ...prev, dividend: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="0 or =10+20"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Row 2: Expense, Interest, Margin Available, Margin Borrowed - only show if manageCash is true */}
-        {manageCash && (
-          <div className="grid grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Expense ($)</label>
-              <input
-                type="number"
-                value={formData.expense}
-                onChange={e => setFormData(prev => ({ ...prev, expense: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Interest ($)</label>
-              <input
-                type="number"
-                value={formData.cash_interest}
-                onChange={e => setFormData(prev => ({ ...prev, cash_interest: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Margin Available ($)</label>
-              <input
-                type="number"
-                value={formData.margin_available}
-                onChange={e => setFormData(prev => ({ ...prev, margin_available: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Margin Borrowed ($)</label>
-              <input
-                type="number"
-                value={formData.margin_borrowed}
-                onChange={e => setFormData(prev => ({ ...prev, margin_borrowed: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                placeholder="0"
-                step="0.01"
-              />
             </div>
           </div>
         )}
+
       </div>
+
+      {/* OPTIONAL FIELDS SECTION - Collapsible */}
+      <details className="group">
+        <summary className="text-sm font-medium text-slate-300 border-b border-slate-700 pb-1 cursor-pointer hover:text-slate-200 list-none flex items-center gap-2">
+          <span className="text-slate-500 group-open:rotate-90 transition-transform">▶</span>
+          Optional
+        </summary>
+        <div className="space-y-3 pt-3">
+          {/* Shares, Price, Calc Button, Notes */}
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Shares/Units</label>
+              <input
+                type="number"
+                value={formData.shares}
+                onChange={e => setFormData(prev => ({ ...prev, shares: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                placeholder="0"
+                step="any"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Price ($)</label>
+              <input
+                type="number"
+                value={formData.price}
+                onChange={e => setFormData(prev => ({ ...prev, price: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                placeholder="Per unit"
+                step="any"
+                min="0"
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={calculatePriceEquity}
+                className="w-full px-3 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-500 transition-colors text-sm"
+                title="Calculate price from amount/shares, then equity from prior holdings"
+              >
+                Calc Price/Equity
+              </button>
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Notes</label>
+              <input
+                type="text"
+                value={formData.notes}
+                onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+
+          {/* Fund Size + trading-specific fields */}
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Fund Size ($)</label>
+              <input
+                type="number"
+                value={formData.fund_size}
+                onChange={e => setFormData(prev => ({ ...prev, fund_size: e.target.value }))}
+                className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-mint-500 ${
+                  showFundSizeAdjustment && fundSizeAdjustment !== 0 ? 'border-mint-500' : 'border-slate-600'
+                }`}
+                placeholder="Override"
+                step="0.01"
+                min="0"
+              />
+              {showFundSizeAdjustment && fundSizeAdjustment !== 0 && (
+                <p className={`text-xs mt-1 ${fundSizeAdjustment > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {fundSizeAdjustment > 0 ? '+' : ''}{fundSizeAdjustment.toFixed(2)} adjustment
+                  {baseFundSize > 0 && <span className="text-slate-500"> (base: ${baseFundSize.toFixed(2)})</span>}
+                </p>
+              )}
+            </div>
+            {/* Cash field - only show when fund manages its own cash */}
+            {manageCash ? (
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Cash ($)</label>
+                <input
+                  type="number"
+                  value={formData.cash}
+                  onChange={e => setFormData(prev => ({ ...prev, cash: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                  placeholder="Optional"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+            ) : (
+              <div className={isCryptoFund ? 'col-span-3' : 'col-span-2'}>
+                <div className="flex items-center h-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg">
+                  <span className="text-sm text-slate-400">
+                    Cash is managed at the platform level. Use the platform's cash fund for deposits/withdrawals.
+                  </span>
+                </div>
+              </div>
+            )}
+            {!isCryptoFund && (
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Dividend ($)</label>
+                <input
+                  type="text"
+                  value={formData.dividend}
+                  onChange={e => setFormData(prev => ({ ...prev, dividend: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                  placeholder="0 or =10+20"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Row 2: Expense, Interest, Margin Available, Margin Borrowed - only show if manageCash is true */}
+          {manageCash && (
+            <div className="grid grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Expense ($)</label>
+                <input
+                  type="number"
+                  value={formData.expense}
+                  onChange={e => setFormData(prev => ({ ...prev, expense: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                  placeholder="0"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Interest ($)</label>
+                <input
+                  type="number"
+                  value={formData.cash_interest}
+                  onChange={e => setFormData(prev => ({ ...prev, cash_interest: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                  placeholder="0"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Margin Available ($)</label>
+                <input
+                  type="number"
+                  value={formData.margin_available}
+                  onChange={e => setFormData(prev => ({ ...prev, margin_available: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                  placeholder="0"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Margin Borrowed ($)</label>
+                <input
+                  type="number"
+                  value={formData.margin_borrowed}
+                  onChange={e => setFormData(prev => ({ ...prev, margin_borrowed: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
+                  placeholder="0"
+                  step="0.01"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </details>
     </div>
   )
 }
 
 // Helper to build FundEntry from form data
-export function buildEntryFromForm(formData: EntryFormData): Partial<FundEntry> {
+export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType): Partial<FundEntry> {
   const entry: Partial<FundEntry> = {
     date: formData.date,
     value: parseFloat(formData.value) || 0
   }
 
-  const depositVal = parseFloat(formData.deposit) || 0
-  const withdrawalVal = parseFloat(formData.withdrawal) || 0
+  const isCashFund = fundType === 'cash'
   let notes = formData.notes
 
-  // Handle action - DEPOSIT/WITHDRAW are tracked cumulatively for fund_size calculation
-  if (depositVal > 0 && (!formData.action || formData.action === 'HOLD')) {
-    entry.action = 'DEPOSIT'
-    entry.amount = depositVal
-  } else if (withdrawalVal > 0 && (!formData.action || formData.action === 'HOLD')) {
-    entry.action = 'WITHDRAW'
-    entry.amount = withdrawalVal
-  } else if (formData.action && formData.action !== 'HOLD') {
-    entry.action = formData.action
-    entry.amount = parseFloat(formData.amount) || 0
-    if (depositVal > 0) {
-      notes = (notes ? notes + ' | ' : '') + `Deposit: $${depositVal}`
+  // Cash fund: use signed amount field directly
+  // Positive amount = DEPOSIT (external money in), Negative amount = WITHDRAW (external money out)
+  if (isCashFund) {
+    const signedAmount = parseFormulaValue(formData.amount)
+    if (signedAmount > 0) {
+      entry.action = 'DEPOSIT'
+      entry.amount = signedAmount
+    } else if (signedAmount < 0) {
+      entry.action = 'WITHDRAW'
+      entry.amount = signedAmount // Store as negative
+    } else {
+      entry.action = 'HOLD'
     }
-    if (withdrawalVal > 0) {
-      notes = (notes ? notes + ' | ' : '') + `Withdrawal: $${withdrawalVal}`
+  } else {
+    // Trading funds: use separate deposit/withdrawal fields (legacy support)
+    const depositVal = parseFormulaValue(formData.deposit)
+    const withdrawalVal = parseFormulaValue(formData.withdrawal)
+
+    // Handle action - DEPOSIT/WITHDRAW are tracked cumulatively for fund_size calculation
+    if (depositVal > 0 && (!formData.action || formData.action === 'HOLD')) {
+      entry.action = 'DEPOSIT'
+      entry.amount = depositVal
+    } else if (withdrawalVal > 0 && (!formData.action || formData.action === 'HOLD')) {
+      entry.action = 'WITHDRAW'
+      entry.amount = withdrawalVal
+    } else if (formData.action && formData.action !== 'HOLD') {
+      entry.action = formData.action
+      entry.amount = parseFloat(formData.amount) || 0
+      if (depositVal > 0) {
+        notes = (notes ? notes + ' | ' : '') + `Deposit: $${depositVal}`
+      }
+      if (withdrawalVal > 0) {
+        notes = (notes ? notes + ' | ' : '') + `Withdrawal: $${withdrawalVal}`
+      }
+    } else if (formData.action === 'HOLD') {
+      entry.action = 'HOLD'
     }
-  } else if (formData.action === 'HOLD') {
-    entry.action = 'HOLD'
   }
 
   if (formData.shares) entry.shares = parseFloat(formData.shares)
@@ -613,6 +663,10 @@ export function buildEntryFromForm(formData: EntryFormData): Partial<FundEntry> 
   if (formData.margin_available) entry.margin_available = parseFloat(formData.margin_available)
   if (formData.margin_borrowed) entry.margin_borrowed = parseFloat(formData.margin_borrowed)
   if (formData.cash) entry.cash = parseFloat(formData.cash)
+  // Derivatives-specific: actual margin locked for BUY/SELL trades
+  if (fundType === 'derivatives' && formData.margin) {
+    entry.margin = parseFloat(formData.margin)
+  }
 
   return entry
 }
@@ -635,15 +689,59 @@ export function createEmptyFormData(): EntryFormData {
     fund_size: '',
     margin_available: '',
     margin_borrowed: '',
-    notes: ''
+    notes: '',
+    margin: ''
   }
 }
 
 // Helper to create form data from existing entry
-export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: number): EntryFormData {
+export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: number, fundType?: FundType): EntryFormData {
+  const isCashFund = fundType === 'cash'
+
   const getActionType = (): ActionType => {
     if (entry.action === 'BUY' || entry.action === 'SELL') return entry.action
     return entry.action ? 'HOLD' : ''
+  }
+
+  // For cash funds: convert to signed amount for the unified Amount field
+  // DEPOSIT = positive, WITHDRAW = negative (handle old format where WITHDRAW had positive amount)
+  const getCashFundAmount = (): string => {
+    if (entry.action === 'DEPOSIT' && entry.amount) {
+      return entry.amount.toFixed(2) // Keep positive
+    }
+    if (entry.action === 'WITHDRAW' && entry.amount) {
+      // Old format stored as positive, new format as negative
+      // Convert to negative for form display
+      return entry.amount > 0 ? (-entry.amount).toFixed(2) : entry.amount.toFixed(2)
+    }
+    // HOLD with amount - already signed
+    if (entry.amount) {
+      return entry.amount.toFixed(2)
+    }
+    return ''
+  }
+
+  // For trading funds: use separate deposit/withdrawal fields (legacy support)
+  const getDeposit = (): string => {
+    if (entry.action === 'DEPOSIT' && entry.amount) {
+      return entry.amount.toFixed(2)
+    }
+    // HOLD with positive amount = deposit
+    if (entry.action === 'HOLD' && entry.amount && entry.amount > 0) {
+      return entry.amount.toFixed(2)
+    }
+    return parseDepositFromNotes(entry.notes)
+  }
+
+  const getWithdrawal = (): string => {
+    if (entry.action === 'WITHDRAW' && entry.amount) {
+      return Math.abs(entry.amount).toFixed(2) // Show as positive in withdrawal field
+    }
+    // HOLD with negative amount = withdrawal
+    if (entry.action === 'HOLD' && entry.amount && entry.amount < 0) {
+      return Math.abs(entry.amount).toFixed(2)
+    }
+    return parseWithdrawalFromNotes(entry.notes)
   }
 
   return {
@@ -651,17 +749,19 @@ export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: n
     value: entry.value.toFixed(2),
     cash: entry.cash?.toFixed(2) ?? '',
     action: getActionType(),
-    amount: entry.amount?.toFixed(2) ?? '',
+    // For cash funds, use signed amount; for trading funds, use raw amount
+    amount: isCashFund ? getCashFundAmount() : (entry.amount?.toFixed(2) ?? ''),
     shares: entry.shares?.toString() ?? '',
     price: entry.price?.toFixed(8) ?? '',
-    deposit: parseDepositFromNotes(entry.notes),
-    withdrawal: parseWithdrawalFromNotes(entry.notes),
+    deposit: getDeposit(),
+    withdrawal: getWithdrawal(),
     dividend: entry.dividend?.toFixed(2) ?? '',
     expense: entry.expense?.toFixed(2) ?? '',
     cash_interest: entry.cash_interest?.toFixed(2) ?? '',
     fund_size: (entry.fund_size ?? calculatedFundSize)?.toFixed(2) ?? '',
     margin_available: entry.margin_available?.toFixed(2) ?? '',
     margin_borrowed: entry.margin_borrowed?.toFixed(2) ?? '',
-    notes: cleanNotesOfDepositWithdrawal(entry.notes)
+    notes: cleanNotesOfDepositWithdrawal(entry.notes),
+    margin: entry.margin?.toFixed(2) ?? ''
   }
 }

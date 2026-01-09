@@ -3,6 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { createFund, notifyFundsChanged, type FundConfig, type FundType } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
+import {
+  isCashFund as checkIsCashFund,
+  getFundTypeFeatures,
+  FUND_TYPE_DEFAULTS
+} from '@escapemint/engine'
 
 interface CreateFundModalProps {
   onClose: () => void
@@ -36,21 +41,50 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     accumulate: true,
     manage_cash: true,
     margin_enabled: false,
+    dividend_reinvest: true,
+    interest_reinvest: true,
+    expense_from_fund: true,
     start_date: new Date().toISOString().slice(0, 10)
   })
 
-  const isCashFund = fundType === 'cash'
+  const _isCashFund = checkIsCashFund(fundType)
+  const features = getFundTypeFeatures(fundType)
+  const defaults = FUND_TYPE_DEFAULTS[fundType]
 
   useEffect(() => {
     fetchPlatforms().then(result => {
       if (result.data) {
         setPlatforms(result.data)
-        if (result.data.length > 0 && result.data[0]) {
-          setSelectedPlatform(result.data[0].id)
+        // Default to Robinhood if available, otherwise first platform
+        const robinhood = result.data.find(p => p.id === 'robinhood')
+        const defaultPlatform = robinhood || result.data[0]
+        if (defaultPlatform) {
+          setSelectedPlatform(defaultPlatform.id)
         }
       }
     })
   }, [])
+
+  // Update manage_cash default when fund type changes
+  useEffect(() => {
+    if (fundType === 'stock' || fundType === 'crypto') {
+      setFormData(prev => ({
+        ...prev,
+        manage_cash: false,
+        dividend_reinvest: false,
+        interest_reinvest: false,
+        expense_from_fund: false
+      }))
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        manage_cash: true,
+        dividend_reinvest: true,
+        interest_reinvest: true,
+        expense_from_fund: true
+      }))
+    }
+  }, [fundType])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -60,23 +94,27 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     }
     setLoading(true)
 
+    // For non-trading funds, use defaults for trading-related fields
     const config: Partial<FundConfig> = {
       status: 'active',
       fund_type: fundType,
       fund_size_usd: formData.fund_size_usd,
-      target_apy: isCashFund ? 0 : round(formData.target_apy / 100, 4),
-      interval_days: isCashFund ? 1 : formData.interval_days,
-      input_min_usd: isCashFund ? 0 : formData.input_min_usd,
-      input_mid_usd: isCashFund ? 0 : formData.input_mid_usd,
-      input_max_usd: isCashFund ? 0 : formData.input_max_usd,
-      max_at_pct: isCashFund ? 0 : round(formData.max_at_pct / 100, 4),
-      min_profit_usd: isCashFund ? 0 : formData.min_profit_usd,
+      target_apy: features.allowsTrading ? round(formData.target_apy / 100, 4) : (defaults.target_apy ?? 0),
+      interval_days: features.allowsTrading ? formData.interval_days : (defaults.interval_days ?? 1),
+      input_min_usd: features.allowsTrading ? formData.input_min_usd : (defaults.input_min_usd ?? 0),
+      input_mid_usd: features.allowsTrading ? formData.input_mid_usd : (defaults.input_mid_usd ?? 0),
+      input_max_usd: features.allowsTrading ? formData.input_max_usd : (defaults.input_max_usd ?? 0),
+      max_at_pct: features.allowsTrading ? round(formData.max_at_pct / 100, 4) : (defaults.max_at_pct ?? 0),
+      min_profit_usd: features.allowsTrading ? formData.min_profit_usd : (defaults.min_profit_usd ?? 0),
       cash_apy: round(formData.cash_apy / 100, 4),
       margin_apr: round(formData.margin_apr / 100, 4),
       margin_access_usd: formData.margin_access_usd,
-      accumulate: isCashFund ? true : formData.accumulate,
-      manage_cash: isCashFund ? true : formData.manage_cash,
-      margin_enabled: isCashFund ? false : formData.margin_enabled,
+      accumulate: features.allowsTrading ? formData.accumulate : (defaults.accumulate ?? true),
+      manage_cash: features.allowsTrading ? formData.manage_cash : (defaults.manage_cash ?? true),
+      margin_enabled: features.allowsTrading ? formData.margin_enabled : (defaults.margin_enabled ?? false),
+      dividend_reinvest: formData.dividend_reinvest,
+      interest_reinvest: formData.interest_reinvest,
+      expense_from_fund: formData.expense_from_fund,
       start_date: formData.start_date || new Date().toISOString().slice(0, 10)
     }
 
@@ -112,30 +150,35 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
           <div>
             <label className="block text-xs text-slate-400 mb-2">Fund Type</label>
             <div className="flex gap-2">
-              {(['stock', 'crypto', 'cash'] as FundType[]).map(type => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setFundType(type)}
-                  className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    fundType === type
-                      ? type === 'cash'
-                        ? 'bg-blue-600 text-white'
-                        : type === 'crypto'
-                        ? 'bg-yellow-600 text-white'
-                        : 'bg-green-600 text-white'
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                  }`}
-                >
-                  {type === 'stock' ? 'Stock' : type === 'crypto' ? 'Crypto' : 'Cash'}
-                </button>
-              ))}
+              {(['stock', 'crypto', 'cash', 'derivatives'] as FundType[]).map(type => {
+                const typeFeatures = getFundTypeFeatures(type)
+                const bgColorClass = fundType === type
+                  ? type === 'cash' ? 'bg-blue-600'
+                    : type === 'crypto' ? 'bg-yellow-600'
+                    : type === 'derivatives' ? 'bg-orange-600'
+                    : 'bg-green-600'
+                  : 'bg-slate-700 hover:bg-slate-600'
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setFundType(type)}
+                    className={`flex-1 px-3 py-2 rounded text-sm font-medium transition-colors ${bgColorClass} ${
+                      fundType === type ? 'text-white' : 'text-slate-300'
+                    }`}
+                  >
+                    {typeFeatures.label}
+                  </button>
+                )
+              })}
             </div>
             <p className="text-[10px] text-slate-500 mt-1">
               {fundType === 'cash'
                 ? 'Cash funds track deposits/withdrawals and earn interest'
                 : fundType === 'crypto'
                 ? 'Crypto funds track buy/sell without dividends'
+                : fundType === 'derivatives'
+                ? 'Futures funds track perpetual contracts with FIFO cost basis'
                 : 'Stock funds support full trading, dividends, and DCA strategies'}
             </p>
           </div>
@@ -162,7 +205,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                 value={ticker}
                 onChange={e => setTicker(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white uppercase focus:outline-none focus:border-mint-500"
-                placeholder={isCashFund ? 'e.g., cash, savings' : 'e.g., SPY, AAPL'}
+                placeholder={!features.allowsTrading ? 'e.g., cash, savings' : 'e.g., SPY, AAPL'}
                 required
               />
             </div>
@@ -171,7 +214,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
           {/* Fund Size and Start Date */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-slate-400 mb-1">{isCashFund ? 'Initial Balance ($)' : 'Fund Size ($)'}</label>
+              <label className="block text-xs text-slate-400 mb-1">{!features.allowsTrading ? 'Initial Balance ($)' : 'Fund Size ($)'}</label>
               <input
                 type="number"
                 value={formData.fund_size_usd}
@@ -195,7 +238,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
           </div>
 
           {/* Trading Fund: Target APY and Interval */}
-          {!isCashFund && (
+          {features.allowsTrading && (
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -303,18 +346,25 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                     <span className="text-slate-400 text-xs ml-2">(sell only DCA amount)</span>
                   </label>
                 </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="manage_cash"
-                    checked={formData.manage_cash}
-                    onChange={e => setFormData({ ...formData, manage_cash: e.target.checked })}
-                    className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
-                  />
-                  <label htmlFor="manage_cash" className="text-sm text-white">
-                    Manage Cash
-                    <span className="text-slate-400 text-xs ml-2">(maintain cash pile)</span>
-                  </label>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="manage_cash"
+                      checked={formData.manage_cash}
+                      onChange={e => setFormData({ ...formData, manage_cash: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
+                    />
+                    <label htmlFor="manage_cash" className="text-sm text-white">
+                      Manage Cash in Fund
+                      <span className="text-slate-400 text-xs ml-2">(maintain dedicated cash pile)</span>
+                    </label>
+                  </div>
+                  {!formData.manage_cash && (
+                    <p className="text-[10px] text-slate-500 ml-7">
+                      Cash will be managed at the platform level and shared with other funds
+                    </p>
+                  )}
                 </div>
               </div>
 

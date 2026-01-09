@@ -46,6 +46,17 @@ export function computeStartInput(trades: Trade[], asOfDate: string): number {
         totalBuys = 0
         totalSells = 0
         cumShares = 0
+      } else if (hasShareTracking && totalBuys > 0) {
+        // Use share-based fraction for accurate cost basis tracking
+        // cumShares is AFTER the sell, so add back shares to get pre-sell total
+        const sharesBeforeSell = cumShares + Math.abs(trade.shares!)
+        const sellFraction = sharesBeforeSell > 0
+          ? Math.abs(trade.shares!) / sharesBeforeSell
+          : 1
+        // Reduce cost basis proportionally, not by sale proceeds
+        const costBasisSold = totalBuys * sellFraction
+        totalBuys = totalBuys - costBasisSold
+        totalSells = 0 // Reset sells since we're tracking proportionally
       }
     }
   }
@@ -112,11 +123,24 @@ export function computeExpectedTarget(
         cumShares = 0
       } else {
         // SELL reduces the invested amount and proportionally reduces expected gain
+        // Use share-based fraction when available for accurate position tracking
         if (startInput > 0) {
-          const sellFraction = Math.min(1, trade.amount_usd / startInput)
+          let sellFraction: number
+          if (hasShareTracking) {
+            // Share-based: what fraction of position are we selling
+            // cumShares is AFTER the sell, so add back shares to get pre-sell total
+            const sharesBeforeSell = cumShares + Math.abs(trade.shares!)
+            sellFraction = sharesBeforeSell > 0
+              ? Math.abs(trade.shares!) / sharesBeforeSell
+              : 1
+          } else {
+            // Dollar-based fallback (less accurate for appreciated/depreciated assets)
+            sellFraction = Math.min(1, trade.amount_usd / startInput)
+          }
           expectedGain *= (1 - sellFraction)
+          // Reduce startInput proportionally by the fraction sold
+          startInput = Math.max(0, startInput * (1 - sellFraction))
         }
-        startInput = Math.max(0, startInput - trade.amount_usd)
       }
     }
   }
@@ -341,13 +365,16 @@ export function computeFundState(
   if (config.fund_type === 'cash') {
     // For cash funds, compute interest earned on the cash balance
     const cashInterest = computeCashInterest(config, trades, cashflows, asOfDate)
+    // start_input = principal (deposits minus withdrawals) = actualValue - interest
+    // This ensures gain calculations only count interest, not the full cash balance
+    const startInput = actualValue - cashInterest
     return {
       cash_available_usd: actualValue,
       expected_target_usd: 0,
       actual_value_usd: actualValue,
-      start_input_usd: 0,
+      start_input_usd: startInput,
       gain_usd: cashInterest,
-      gain_pct: config.fund_size_usd > 0 ? cashInterest / config.fund_size_usd : 0,
+      gain_pct: startInput > 0 ? cashInterest / startInput : 0,
       target_diff_usd: 0,
       cash_interest_usd: cashInterest,
       realized_gains_usd: cashInterest

@@ -46,21 +46,7 @@ export function AggregatePanel({ metrics }: AggregatePanelProps) {
       tooltip: 'Current market value of all positions'
     },
     {
-      label: 'Liquid Gain',
-      value: formatCurrency(metrics.totalGainUsd),
-      subtext: formatPercent(metrics.totalGainPct),
-      color: metrics.totalGainUsd >= 0 ? 'text-green-400' : 'text-red-400',
-      tooltip: 'Unrealized gain: Current Value minus Cost Basis (what you paid)'
-    },
-    {
-      label: 'Liquid APY',
-      value: formatPercent(metrics.liquidAPY ?? 0),
-      subtext: 'If liquidated now',
-      color: (metrics.liquidAPY ?? 0) >= 0 ? 'text-mint-400' : 'text-red-400',
-      tooltip: 'Annualized return if all positions were liquidated today'
-    },
-    {
-      label: 'Realized Gains',
+      label: 'Realized Gain',
       value: formatCurrency(metrics.totalRealizedGains ?? 0),
       subtext: 'Divs + Interest + Sells',
       color: (metrics.totalRealizedGains ?? 0) >= 0 ? 'text-green-400' : 'text-red-400',
@@ -72,6 +58,27 @@ export function AggregatePanel({ metrics }: AggregatePanelProps) {
       subtext: `${avgDaysActive} avg days`,
       color: metrics.realizedAPY >= 0 ? 'text-mint-400' : 'text-red-400',
       tooltip: `Annualized realized return. Time-Weighted Fund Size: ${formatCurrency(metrics.totalTimeWeightedFundSize ?? 0)}`
+    },
+    {
+      label: 'Unrealized Gain',
+      value: formatCurrency(metrics.totalUnrealizedGains ?? 0),
+      subtext: formatPercent(metrics.unrealizedGainPct ?? 0),
+      color: (metrics.totalUnrealizedGains ?? 0) >= 0 ? 'text-yellow-400' : 'text-red-400',
+      tooltip: 'Paper gains: Current Value minus Cost Basis (not yet realized)'
+    },
+    {
+      label: 'Liquid Gain',
+      value: formatCurrency(metrics.totalGainUsd),
+      subtext: formatPercent(metrics.totalGainPct),
+      color: metrics.totalGainUsd >= 0 ? 'text-green-400' : 'text-red-400',
+      tooltip: 'Total lifetime gain: Unrealized + Realized (if liquidated now)'
+    },
+    {
+      label: 'Liquid APY',
+      value: formatPercent(metrics.liquidAPY ?? 0),
+      subtext: 'If liquidated now',
+      color: (metrics.liquidAPY ?? 0) >= 0 ? 'text-mint-400' : 'text-red-400',
+      tooltip: 'Annualized return based on total liquid gain'
     },
     {
       label: 'Projected Annual',
@@ -90,18 +97,24 @@ export function AggregatePanel({ metrics }: AggregatePanelProps) {
   ]
 
   return (
-    <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 ${cashFunds.length > 0 ? 'lg:grid-cols-8' : 'lg:grid-cols-7'} gap-2`}>
-      {cards.map((card, i) => (
-        <div
-          key={i}
-          className="bg-slate-800 rounded-lg p-2 md:p-3 border border-slate-700 cursor-help"
-          title={card.tooltip}
-        >
-          <p className="text-xs text-slate-400">{card.label}</p>
-          <p className={`text-base md:text-lg font-bold ${card.color}`}>{card.value}</p>
-          <p className="text-xs text-slate-500">{card.subtext}</p>
+    <div className="relative">
+      {/* Scroll fade indicator for mobile */}
+      <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-slate-900 to-transparent pointer-events-none z-10 sm:hidden" />
+      <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0 sm:overflow-x-visible pb-1.5 sm:pb-0 scrollbar-thin scroll-smooth snap-x snap-mandatory">
+        <div className={`grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 ${cashFunds.length > 0 ? 'xl:grid-cols-9' : 'xl:grid-cols-8'} gap-1.5 xs:gap-2 sm:gap-2.5 min-w-[280px] sm:min-w-0`}>
+          {cards.map((card, i) => (
+            <div
+              key={i}
+              className="bg-slate-800 rounded-lg p-2 xs:p-2.5 sm:p-3 border border-slate-700 cursor-help min-w-0 touch-manipulation active:bg-slate-700/50 transition-colors snap-start"
+              title={card.tooltip}
+            >
+              <p className="text-[9px] xs:text-[10px] sm:text-xs text-slate-400 truncate leading-tight">{card.label}</p>
+              <p className={`text-[11px] xs:text-sm sm:text-base xl:text-lg font-bold ${card.color} truncate leading-tight mt-0.5`}>{card.value}</p>
+              <p className="text-[8px] xs:text-[9px] sm:text-xs text-slate-500 truncate leading-tight mt-0.5">{card.subtext}</p>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
     </div>
   )
 }
