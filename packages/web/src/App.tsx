@@ -10,11 +10,20 @@ import { Settings } from './pages/Settings'
 import { Layout } from './components/Layout'
 import { DashboardProvider } from './contexts/DashboardContext'
 
-// Wrap Dashboard with its WebSocket provider
+// Wrap Dashboard with its provider
 function DashboardWithProvider() {
   return (
     <DashboardProvider>
       <Dashboard />
+    </DashboardProvider>
+  )
+}
+
+// Settings also needs DashboardProvider for refresh function
+function SettingsWithProvider() {
+  return (
+    <DashboardProvider>
+      <Settings />
     </DashboardProvider>
   )
 }
@@ -34,7 +43,7 @@ export default function App() {
         <Route path="platform/:platformId/settings" element={<PlatformSettings />} />
         <Route path="audit" element={<AuditTrail />} />
         <Route path="platforms" element={<Platforms />} />
-        <Route path="settings" element={<Settings />} />
+        <Route path="settings" element={<SettingsWithProvider />} />
       </Route>
     </Routes>
   )

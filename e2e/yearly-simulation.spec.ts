@@ -13,76 +13,13 @@ import {
   type FundEntry
 } from './test-utils'
 import { TEST_PLATFORM, TEST_TICKERS } from './test-fixtures'
-
-// Market simulation helpers
-interface MarketScenario {
-  name: string
-  weeklyReturns: number[] // 52 weekly return percentages
-}
-
-function generateBullMarket(): number[] {
-  // Steady growth with occasional small dips
-  const returns: number[] = []
-  for (let i = 0; i < 52; i++) {
-    const baseReturn = 0.005 + Math.random() * 0.015 // 0.5% to 2% weekly
-    const noise = (Math.random() - 0.5) * 0.01 // +/- 0.5%
-    returns.push(baseReturn + noise)
-  }
-  return returns
-}
-
-function generateBearMarket(): number[] {
-  // Steady decline with occasional small rallies
-  const returns: number[] = []
-  for (let i = 0; i < 52; i++) {
-    const baseReturn = -0.02 + Math.random() * 0.015 // -2% to -0.5% weekly
-    const noise = (Math.random() - 0.3) * 0.02 // More noise
-    returns.push(baseReturn + noise)
-  }
-  return returns
-}
-
-function generateVolatileMarket(): number[] {
-  // High volatility with both large gains and losses
-  const returns: number[] = []
-  for (let i = 0; i < 52; i++) {
-    const direction = Math.random() > 0.5 ? 1 : -1
-    const magnitude = 0.02 + Math.random() * 0.05 // 2% to 7% swings
-    returns.push(direction * magnitude)
-  }
-  return returns
-}
-
-function generateSidewaysMarket(): number[] {
-  // Small fluctuations around zero
-  const returns: number[] = []
-  for (let i = 0; i < 52; i++) {
-    const baseReturn = (Math.random() - 0.5) * 0.02 // +/- 1%
-    returns.push(baseReturn)
-  }
-  return returns
-}
-
-function generateCrashAndRecovery(): number[] {
-  const returns: number[] = []
-  // First 13 weeks: normal growth
-  for (let i = 0; i < 13; i++) {
-    returns.push(0.01 + Math.random() * 0.01)
-  }
-  // Weeks 14-17: crash
-  for (let i = 0; i < 4; i++) {
-    returns.push(-0.10 - Math.random() * 0.05) // -10% to -15% per week
-  }
-  // Weeks 18-26: slow recovery
-  for (let i = 0; i < 9; i++) {
-    returns.push(0.02 + Math.random() * 0.02)
-  }
-  // Weeks 27-52: continued growth
-  for (let i = 0; i < 26; i++) {
-    returns.push(0.015 + Math.random() * 0.01)
-  }
-  return returns
-}
+import {
+  getBullMarketReturns,
+  getBearMarketReturns,
+  getVolatileMarketReturns,
+  getCrashRecoveryReturns,
+  getSteadyGrowthReturns
+} from './test-historical-data'
 
 test.describe('Yearly Fund Simulations', () => {
   test.describe('Bull Market Scenario', () => {
@@ -99,7 +36,7 @@ test.describe('Yearly Fund Simulations', () => {
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
-      const returns = generateBullMarket()
+      const returns = getBullMarketReturns()
 
       let currentValue = 0
       let currentDate = '2024-01-01'
@@ -184,7 +121,7 @@ test.describe('Yearly Fund Simulations', () => {
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
-      const returns = generateBearMarket()
+      const returns = getBearMarketReturns()
 
       let currentValue = 0
       let currentDate = '2024-01-01'
@@ -251,7 +188,7 @@ test.describe('Yearly Fund Simulations', () => {
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
-      const returns = generateVolatileMarket()
+      const returns = getVolatileMarketReturns()
 
       let currentValue = 1000
       let currentDate = '2024-01-01'
@@ -332,7 +269,7 @@ test.describe('Yearly Fund Simulations', () => {
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
-      const returns = generateCrashAndRecovery()
+      const returns = getCrashRecoveryReturns()
 
       let currentValue = 2000
       let currentDate = '2024-01-01'
@@ -563,10 +500,11 @@ test.describe('Yearly Fund Simulations', () => {
         await addEntryViaAPI(page, fund.id, entry)
       }
 
-      // Phase 2: Consolidation (26 weeks with smaller moves)
+      // Phase 2: Consolidation (26 weeks with smaller moves) - use deterministic returns
+      const consolidationReturns = getSteadyGrowthReturns()
       for (let week = 27; week <= 52; week++) {
         currentDate = addDays(currentDate, 7)
-        currentValue = currentValue * (1 + (Math.random() - 0.4) * 0.02)
+        currentValue = currentValue * (1 + consolidationReturns[week - 27] * 0.5) // Scale down for consolidation
 
         const stateResult = await getFundStateViaAPI(page, fund.id)
         const rec = stateResult.recommendation

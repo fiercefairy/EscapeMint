@@ -373,8 +373,8 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
   const realizedAPY = finalMetrics.realizedApy
   const liquidAPY = finalMetrics.liquidApy
 
-  // Projected annual return
-  const projectedAnnualReturn = liquidAPY * actualFundSize
+  // Projected annual return (based on realized APY - actual income, not paper gains)
+  const projectedAnnualReturn = realizedAPY * actualFundSize
 
   // For cash funds, gain = interest earned only
   const gainUsd = isCashFund ? finalMetrics.realized : finalMetrics.liquidPnl

@@ -300,13 +300,14 @@ export interface FundMetrics {
   platform: string
   ticker: string
   status: 'active' | 'closed'
-  fundType: 'cash' | 'stock' | 'crypto'
+  fundType: 'cash' | 'stock' | 'crypto' | 'derivatives'
   fundSize: number
   currentValue: number
   startInput: number
   daysActive: number
   timeWeightedFundSize: number
   realizedGains: number
+  unrealizedGains: number
   realizedAPY: number
   liquidAPY: number
   projectedAnnualReturn: number
@@ -323,6 +324,8 @@ export interface AggregateMetrics {
   totalTimeWeightedFundSize: number
   totalDaysActive: number
   totalRealizedGains: number
+  totalUnrealizedGains: number
+  unrealizedGainPct: number
   realizedAPY: number
   liquidAPY: number
   projectedAnnualReturn: number
