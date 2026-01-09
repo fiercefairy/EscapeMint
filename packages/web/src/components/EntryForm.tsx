@@ -24,6 +24,7 @@ export interface EntryFormData {
   fund_size: string
   margin_available: string
   margin_borrowed: string
+  margin_expense: string  // Margin interest expense for cash funds with margin
   notes: string
   // Derivatives-specific
   margin: string  // Actual margin locked for BUY/SELL trades
@@ -40,6 +41,7 @@ export interface EntryFormProps {
   currentFundSize?: number | undefined
   fundType?: FundType | undefined
   manageCash?: boolean | undefined
+  marginEnabled?: boolean | undefined
 }
 
 // Parse deposit/withdrawal from notes (legacy format)
@@ -99,7 +101,7 @@ export const parseFormulaValue = (input: string): number => {
   return parseFloat(trimmed) || 0
 }
 
-export function EntryForm({ formData, setFormData, existingEntries = [], baseFundSize = 0, showFundSizeAdjustment = false, cashAvailable, marginAvailable, currentFundSize, fundType = 'stock', manageCash = true }: EntryFormProps) {
+export function EntryForm({ formData, setFormData, existingEntries = [], baseFundSize = 0, showFundSizeAdjustment = false, cashAvailable, marginAvailable, currentFundSize, fundType = 'stock', manageCash = true, marginEnabled = false }: EntryFormProps) {
   const isCashFund = checkIsCashFund(fundType)
   const _features = getFundTypeFeatures(fundType)
   const isCryptoFund = fundType === 'crypto'
@@ -255,8 +257,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
             </div>
           </div>
 
-          {/* Row 2: Interest, Margin Available, Margin Borrowed, Notes */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Row 2: Interest, Margin Expense (if margin enabled), Margin Available, Margin Borrowed, Notes */}
+          <div className={`grid grid-cols-1 sm:grid-cols-2 ${marginEnabled ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-4`}>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Interest Earned ($)</label>
               <input
@@ -269,6 +271,21 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 min="0"
               />
             </div>
+            {marginEnabled && (
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Margin Expense ($)</label>
+                <input
+                  type="number"
+                  value={formData.margin_expense}
+                  onChange={e => setFormData(prev => ({ ...prev, margin_expense: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-700 border border-red-600/50 rounded-lg text-white focus:outline-none focus:border-red-500"
+                  placeholder="0"
+                  step="0.01"
+                  min="0"
+                />
+                <p className="text-xs text-slate-500 mt-1">Interest charged on margin</p>
+              </div>
+            )}
             <div>
               <label className="block text-sm text-slate-400 mb-1">Margin Available ($)</label>
               <input
@@ -613,9 +630,21 @@ export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType)
 
   // Cash fund: use signed amount field directly
   // Positive amount = DEPOSIT (external money in), Negative amount = WITHDRAW (external money out)
+  // MARGIN action for margin expense (interest charged on borrowed margin)
   if (isCashFund) {
     const signedAmount = parseFormulaValue(formData.amount)
-    if (signedAmount > 0) {
+    const marginExpense = parseFloat(formData.margin_expense) || 0
+    if (marginExpense > 0) {
+      // MARGIN action takes priority when margin expense is set
+      entry.action = 'MARGIN'
+      entry.amount = marginExpense
+      // If there's also a deposit/withdraw, add it to notes
+      if (signedAmount > 0) {
+        notes = (notes ? notes + ' | ' : '') + `Deposit: $${signedAmount}`
+      } else if (signedAmount < 0) {
+        notes = (notes ? notes + ' | ' : '') + `Withdrawal: $${Math.abs(signedAmount)}`
+      }
+    } else if (signedAmount > 0) {
       entry.action = 'DEPOSIT'
       entry.amount = signedAmount
     } else if (signedAmount < 0) {
@@ -689,6 +718,7 @@ export function createEmptyFormData(): EntryFormData {
     fund_size: '',
     margin_available: '',
     margin_borrowed: '',
+    margin_expense: '',
     notes: '',
     margin: ''
   }
@@ -705,7 +735,12 @@ export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: n
 
   // For cash funds: convert to signed amount for the unified Amount field
   // DEPOSIT = positive, WITHDRAW = negative (handle old format where WITHDRAW had positive amount)
+  // MARGIN = margin expense, shown in separate field
   const getCashFundAmount = (): string => {
+    // MARGIN entries have amount in margin_expense field, not amount field
+    if (entry.action === 'MARGIN') {
+      return ''
+    }
     if (entry.action === 'DEPOSIT' && entry.amount) {
       return entry.amount.toFixed(2) // Keep positive
     }
@@ -716,6 +751,14 @@ export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: n
     }
     // HOLD with amount - already signed
     if (entry.amount) {
+      return entry.amount.toFixed(2)
+    }
+    return ''
+  }
+
+  // Get margin expense for MARGIN action entries
+  const getMarginExpense = (): string => {
+    if (entry.action === 'MARGIN' && entry.amount) {
       return entry.amount.toFixed(2)
     }
     return ''
@@ -761,6 +804,7 @@ export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: n
     fund_size: (entry.fund_size ?? calculatedFundSize)?.toFixed(2) ?? '',
     margin_available: entry.margin_available?.toFixed(2) ?? '',
     margin_borrowed: entry.margin_borrowed?.toFixed(2) ?? '',
+    margin_expense: getMarginExpense(),
     notes: cleanNotesOfDepositWithdrawal(entry.notes),
     margin: entry.margin?.toFixed(2) ?? ''
   }

@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type { SubFundConfig, Trade, CashFlow, Dividend, Expense } from '@escapemint/engine'
 
 // Action types for regular funds (trading, cash, crypto)
-export type RegularFundAction = 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
+export type RegularFundAction = 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW' | 'MARGIN'
 
 // Action types specific to derivatives funds
 export type DerivativesFundAction = 'FUNDING' | 'INTEREST' | 'REBATE' | 'FEE'
@@ -116,7 +116,7 @@ function parseEntry(line: string, headers: string[]): FundEntry {
         break
       case 'action':
         // Regular actions and derivatives-specific actions
-        if (val === 'BUY' || val === 'SELL' || val === 'HOLD' || val === 'DEPOSIT' || val === 'WITHDRAW' ||
+        if (val === 'BUY' || val === 'SELL' || val === 'HOLD' || val === 'DEPOSIT' || val === 'WITHDRAW' || val === 'MARGIN' ||
             val === 'FUNDING' || val === 'INTEREST' || val === 'REBATE' || val === 'FEE') {
           entry.action = val as FundAction
         }

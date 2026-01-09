@@ -71,7 +71,7 @@ export interface FundSummary {
 }
 
 // Action types for regular funds (trading, cash, crypto)
-export type RegularFundAction = 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
+export type RegularFundAction = 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW' | 'MARGIN'
 
 // Action types specific to derivatives funds
 export type DerivativesFundAction = 'FUNDING' | 'INTEREST' | 'REBATE' | 'FEE'

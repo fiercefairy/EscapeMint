@@ -12,11 +12,12 @@ export interface AddEntryModalProps {
   minProfitUsd?: number
   manageCash?: boolean | undefined
   fundType?: FundType | undefined
+  marginEnabled?: boolean | undefined
   onClose: () => void
   onAdded: () => void
 }
 
-export function AddEntryModal({ fundId, fundTicker, currentRecommendation, existingEntries = [], targetApy, minProfitUsd, manageCash, fundType = 'stock', onClose, onAdded }: AddEntryModalProps) {
+export function AddEntryModal({ fundId, fundTicker, currentRecommendation, existingEntries = [], targetApy, minProfitUsd, manageCash, fundType = 'stock', marginEnabled = false, onClose, onAdded }: AddEntryModalProps) {
   const [loading, setLoading] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [result, setResult] = useState<{ state: FundState; recommendation: Recommendation } | null>(null)
@@ -344,6 +345,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
             currentFundSize={preview?.fund_size}
             fundType={fundType}
             manageCash={manageCash}
+            marginEnabled={marginEnabled}
           />
 
           {/* Buttons */}
