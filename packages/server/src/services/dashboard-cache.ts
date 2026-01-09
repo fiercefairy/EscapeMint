@@ -176,14 +176,13 @@ export function invalidateCache(): void {
 }
 
 // Load all fund files
+// includeTest: true = show ONLY test funds, false = show ONLY non-test funds
 async function loadAllFunds(includeTest = false): Promise<FundData[]> {
   // Check cache first
   if (isCacheValid(cache.rawFunds)) {
     const funds = cache.rawFunds.data
-    if (!includeTest) {
-      return funds.filter(f => !isTestPlatform(f.platform))
-    }
-    return funds
+    // Filter based on test mode
+    return funds.filter(f => includeTest ? isTestPlatform(f.platform) : !isTestPlatform(f.platform))
   }
 
   const files = await readdir(FUNDS_DIR)
@@ -203,10 +202,8 @@ async function loadAllFunds(includeTest = false): Promise<FundData[]> {
     timestamp: Date.now()
   }
 
-  if (!includeTest) {
-    return funds.filter(f => !isTestPlatform(f.platform))
-  }
-  return funds
+  // Filter based on test mode
+  return funds.filter(f => includeTest ? isTestPlatform(f.platform) : !isTestPlatform(f.platform))
 }
 
 // Convert entries to trades
@@ -246,16 +243,10 @@ function entriesToExpenses(entries: FundEntry[]): Expense[] {
 }
 
 // Get fund summaries (fast, for fund list)
+// includeTest: true = show ONLY test funds, false = show ONLY non-test funds
 export async function getFundSummaries(includeTest = false): Promise<DashboardFundSummary[]> {
-  if (isCacheValid(cache.funds)) {
-    const funds = cache.funds.data
-    if (!includeTest) {
-      return funds.filter(f => f.platform !== 'test')
-    }
-    return funds
-  }
-
-  const funds = await loadAllFunds(true) // Load all, filter later
+  // Load funds with the correct filter applied
+  const funds = await loadAllFunds(includeTest)
 
   const summaries: DashboardFundSummary[] = funds.map(fund => {
     const sortedEntries = [...fund.entries].sort(
@@ -279,31 +270,14 @@ export async function getFundSummaries(includeTest = false): Promise<DashboardFu
     }
   })
 
-  cache.funds = {
-    data: summaries,
-    timestamp: Date.now()
-  }
-
-  notifyListeners('dashboard:funds', summaries)
-
-  if (!includeTest) {
-    return summaries.filter(f => !isTestPlatform(f.platform))
-  }
   return summaries
 }
 
 // Get aggregate metrics (medium complexity)
+// includeTest: true = show ONLY test funds, false = show ONLY non-test funds
 export async function getAggregateMetrics(includeTest = false): Promise<DashboardMetrics> {
-  if (isCacheValid(cache.metrics)) {
-    const metrics = cache.metrics.data
-    if (!includeTest) {
-      const filteredFunds = metrics.funds.filter(f => !isTestPlatform(f.platform))
-      return recalculateAggregates(filteredFunds)
-    }
-    return metrics
-  }
-
-  const funds = await loadAllFunds(true)
+  // Load funds with the correct filter applied
+  const funds = await loadAllFunds(includeTest)
   const fundMetrics: FundMetrics[] = []
 
   for (const fund of funds) {
@@ -313,20 +287,7 @@ export async function getAggregateMetrics(includeTest = false): Promise<Dashboar
     }
   }
 
-  const aggregated = recalculateAggregates(fundMetrics)
-
-  cache.metrics = {
-    data: aggregated,
-    timestamp: Date.now()
-  }
-
-  notifyListeners('dashboard:metrics', aggregated)
-
-  if (!includeTest) {
-    const filteredFunds = aggregated.funds.filter(f => !isTestPlatform(f.platform))
-    return recalculateAggregates(filteredFunds)
-  }
-  return aggregated
+  return recalculateAggregates(fundMetrics)
 }
 
 // Compute metrics for a single fund using the same logic as /aggregate endpoint
@@ -481,44 +442,13 @@ function recalculateAggregates(fundMetrics: FundMetrics[]): DashboardMetrics {
 }
 
 // Get history (most expensive, computed last)
+// includeTest: true = show ONLY test funds, false = show ONLY non-test funds
 export async function getHistory(includeTest = false): Promise<DashboardHistory> {
-  if (isCacheValid(cache.history)) {
-    // Filter if needed
-    if (!includeTest) {
-      const history = cache.history.data
-      const filteredAllocations = history.currentAllocations.filter(a => !isTestPlatform(a.platform))
-      return {
-        ...history,
-        currentAllocations: filteredAllocations,
-        totals: recalculateTotals(filteredAllocations)
-      }
-    }
-    return cache.history.data
-  }
-
-  notifyListeners('dashboard:history:computing', { status: 'started' })
-
-  const funds = await loadAllFunds(true)
+  // Load funds with the correct filter applied
+  const funds = await loadAllFunds(includeTest)
 
   // Build time series and allocations
-  const history = computeHistory(funds)
-
-  cache.history = {
-    data: history,
-    timestamp: Date.now()
-  }
-
-  notifyListeners('dashboard:history', history)
-
-  if (!includeTest) {
-    const filteredAllocations = history.currentAllocations.filter(a => !isTestPlatform(a.platform))
-    return {
-      ...history,
-      currentAllocations: filteredAllocations,
-      totals: recalculateTotals(filteredAllocations)
-    }
-  }
-  return history
+  return computeHistory(funds)
 }
 
 // Compute history time series
