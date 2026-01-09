@@ -8,6 +8,9 @@ const SIDEBAR_COLLAPSED_KEY = 'escapemint-sidebar-collapsed'
 const EXPANDED_PLATFORMS_KEY = 'escapemint-expanded-platforms'
 const API_BASE = '/api'
 
+// Custom event for sidebar toggle - charts listen for this to resize
+export const SIDEBAR_TOGGLED_EVENT = 'escapemint-sidebar-toggled'
+
 const navItems = [
   { path: '/', label: 'Dashboard', icon: '📊' },
   { path: '/audit', label: 'Audit Trail', icon: '📋' },
@@ -37,6 +40,11 @@ export function Layout() {
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed))
+    // Dispatch event after transition completes (200ms transition duration)
+    const timer = setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(SIDEBAR_TOGGLED_EVENT))
+    }, 220)
+    return () => clearTimeout(timer)
   }, [collapsed])
 
   useEffect(() => {

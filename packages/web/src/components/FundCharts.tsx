@@ -12,6 +12,7 @@ import {
   isDerivativesFund as checkIsDerivativesFund,
   getFundTypeFeatures
 } from '@escapemint/engine'
+import { SIDEBAR_TOGGLED_EVENT } from './Layout'
 import { formatCurrencyCompact } from '../utils/format'
 
 interface FundChartsProps {
@@ -1375,11 +1376,15 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
   }, [entries, config, isDerivativesFund, computedEntries])
   const [chartResize, setChartResize] = useState(0)
 
-  // Resize handler for charts
+  // Resize handler for charts - listens for window resize and sidebar toggle
   useEffect(() => {
     const handleResize = () => setChartResize(n => n + 1)
     window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    window.addEventListener(SIDEBAR_TOGGLED_EVENT, handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener(SIDEBAR_TOGGLED_EVENT, handleResize)
+    }
   }, [])
 
   // Use external resize signal if provided, otherwise use internal

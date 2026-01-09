@@ -8,6 +8,7 @@ import { EditEntryModal } from '../components/EditEntryModal'
 import { EditFundPanel } from '../components/EditFundPanel'
 import { FundCharts } from '../components/FundCharts'
 import { ChartSettings } from '../components/ChartSettings'
+import { SIDEBAR_TOGGLED_EVENT } from '../components/Layout'
 import { EntriesTable, type ComputedEntry, type ColumnId } from '../components/entriesTable'
 import { formatCurrency, formatPercent } from '../utils/format'
 import {
@@ -49,11 +50,15 @@ export function FundDetail() {
   const isCashFund = checkIsCashFund(fund?.config.fund_type)
   const features = fund ? getFundTypeFeatures(fund.config.fund_type ?? 'stock') : getFundTypeFeatures('stock')
 
-  // Resize handler for charts
+  // Resize handler for charts - listens for window resize and sidebar toggle
   useEffect(() => {
     const handleResize = () => setChartResize(n => n + 1)
     window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    window.addEventListener(SIDEBAR_TOGGLED_EVENT, handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener(SIDEBAR_TOGGLED_EVENT, handleResize)
+    }
   }, [])
 
   // Sync chart bounds and collapsed state from fund config when fund loads
