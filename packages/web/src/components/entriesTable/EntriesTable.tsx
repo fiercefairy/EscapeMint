@@ -797,6 +797,57 @@ export function EntriesTable({
                           {entry.fee !== undefined && entry.fee > 0 ? formatCurrency(entry.fee) : '-'}
                         </td>
                       )
+                    case 'margin':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-amber-400">
+                          {entry.margin !== undefined && entry.margin > 0 ? formatCurrency(entry.margin) : '-'}
+                        </td>
+                      )
+                    case 'marginLocked':
+                      return (
+                        <td key={col.id} className="px-2 py-1.5 text-right text-amber-400">
+                          {entry.derivMarginLocked !== undefined && entry.derivMarginLocked > 0 ? formatCurrency(entry.derivMarginLocked) : '-'}
+                        </td>
+                      )
+                    case 'leverage':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${
+                          entry.derivLeverage !== undefined
+                            ? entry.derivLeverage < 3 ? 'text-green-400'
+                            : entry.derivLeverage < 5 ? 'text-amber-400'
+                            : 'text-red-400'
+                            : 'text-slate-500'
+                        }`}>
+                          {entry.derivLeverage !== undefined && entry.derivLeverage > 0 ? `${entry.derivLeverage.toFixed(2)}x` : '-'}
+                        </td>
+                      )
+                    case 'liquidationPrice':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${
+                          entry.derivLiquidationPrice !== undefined
+                            ? entry.derivLiquidationPrice < 0 ? 'text-green-400'  // Negative = over-collateralized
+                            : 'text-orange-400'
+                            : 'text-slate-500'
+                        }`}>
+                          {entry.derivLiquidationPrice !== undefined
+                            ? formatCurrency(entry.derivLiquidationPrice)
+                            : '-'}
+                        </td>
+                      )
+                    case 'distanceToLiq':
+                      return (
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${
+                          entry.derivDistanceToLiq !== undefined
+                            ? entry.derivDistanceToLiq > 0.5 ? 'text-green-400'
+                            : entry.derivDistanceToLiq > 0.25 ? 'text-amber-400'
+                            : 'text-red-400'
+                            : 'text-slate-500'
+                        }`}>
+                          {entry.derivDistanceToLiq !== undefined && entry.derivDistanceToLiq > 0
+                            ? `${(entry.derivDistanceToLiq * 100).toFixed(1)}%`
+                            : '-'}
+                        </td>
+                      )
                     case 'edit':
                       return (
                         <td key={col.id} className="px-2 py-1.5">

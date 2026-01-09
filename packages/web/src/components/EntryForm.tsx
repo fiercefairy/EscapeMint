@@ -25,6 +25,8 @@ export interface EntryFormData {
   margin_available: string
   margin_borrowed: string
   notes: string
+  // Derivatives-specific
+  margin: string  // Actual margin locked for BUY/SELL trades
 }
 
 export interface EntryFormProps {
@@ -405,6 +407,27 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           </div>
         </div>
 
+        {/* Derivatives: Margin input for BUY trades */}
+        {fundType === 'derivatives' && formData.action === 'BUY' && (
+          <div className="grid grid-cols-4 gap-4 mt-3">
+            <div className="col-span-2">
+              <label className="block text-sm text-slate-400 mb-1">Margin Locked ($)</label>
+              <input
+                type="number"
+                value={formData.margin}
+                onChange={e => setFormData(prev => ({ ...prev, margin: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                placeholder={`Default: ${((parseFloat(formData.amount) || 0) * 0.20).toFixed(2)} (20%)`}
+                step="0.01"
+                min="0"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Actual margin required by exchange (from trade confirmation)
+              </p>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* OPTIONAL FIELDS SECTION - Collapsible */}
@@ -640,6 +663,10 @@ export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType)
   if (formData.margin_available) entry.margin_available = parseFloat(formData.margin_available)
   if (formData.margin_borrowed) entry.margin_borrowed = parseFloat(formData.margin_borrowed)
   if (formData.cash) entry.cash = parseFloat(formData.cash)
+  // Derivatives-specific: actual margin locked for BUY/SELL trades
+  if (fundType === 'derivatives' && formData.margin) {
+    entry.margin = parseFloat(formData.margin)
+  }
 
   return entry
 }
@@ -662,7 +689,8 @@ export function createEmptyFormData(): EntryFormData {
     fund_size: '',
     margin_available: '',
     margin_borrowed: '',
-    notes: ''
+    notes: '',
+    margin: ''
   }
 }
 
@@ -733,6 +761,7 @@ export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: n
     fund_size: (entry.fund_size ?? calculatedFundSize)?.toFixed(2) ?? '',
     margin_available: entry.margin_available?.toFixed(2) ?? '',
     margin_borrowed: entry.margin_borrowed?.toFixed(2) ?? '',
-    notes: cleanNotesOfDepositWithdrawal(entry.notes)
+    notes: cleanNotesOfDepositWithdrawal(entry.notes),
+    margin: entry.margin?.toFixed(2) ?? ''
   }
 }

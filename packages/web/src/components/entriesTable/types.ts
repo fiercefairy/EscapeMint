@@ -39,7 +39,12 @@ export const ALL_COLUMNS = [
   { id: 'cumInterest', label: 'Σ Interest', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
   { id: 'cumRebates', label: 'Σ Rebates', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
   { id: 'cumFees', label: 'Σ Fees', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
-  { id: 'fee', label: 'Fee', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] }
+  { id: 'fee', label: 'Fee', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
+  { id: 'margin', label: 'Margin', defaultVisible: false, excludeFrom: ['stock', 'crypto', 'cash'] },
+  { id: 'marginLocked', label: 'Margin Locked', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
+  { id: 'leverage', label: 'Leverage', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
+  { id: 'liquidationPrice', label: 'Liq Price', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
+  { id: 'distanceToLiq', label: 'Dist to Liq', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] }
 ] as const
 
 export type ColumnId = typeof ALL_COLUMNS[number]['id']
@@ -63,14 +68,14 @@ const CASH_FUND_COLUMN_ORDER: ColumnId[] = [
 
 // Derivatives fund specific defaults
 const DERIVATIVES_FUND_DEFAULT_COLUMNS: ColumnId[] = [
-  'date', 'action', 'amount', 'contracts', 'price', 'fee', 'position', 'avgEntry',
-  'marginBalance', 'derivEquity', 'unrealized', 'realized', 'liquidPnl',
+  'date', 'action', 'amount', 'contracts', 'price', 'fee', 'margin', 'position', 'avgEntry',
+  'marginBalance', 'marginLocked', 'leverage', 'derivEquity', 'unrealized', 'realized', 'liquidPnl',
   'realizedApy', 'cumFunding', 'cumInterest', 'cumRebates', 'cumFees', 'notes', 'edit'
 ]
 
 const DERIVATIVES_FUND_COLUMN_ORDER: ColumnId[] = [
-  'date', 'action', 'amount', 'contracts', 'price', 'fee', 'position', 'avgEntry',
-  'marginBalance', 'derivEquity', 'unrealized', 'realized', 'liquidPnl',
+  'date', 'action', 'amount', 'contracts', 'price', 'fee', 'margin', 'position', 'avgEntry',
+  'marginBalance', 'marginLocked', 'leverage', 'derivEquity', 'unrealized', 'realized', 'liquidPnl',
   'realizedApy', 'cumFunding', 'cumInterest', 'cumRebates', 'cumFees', 'notes', 'edit'
 ]
 
@@ -130,8 +135,14 @@ export interface ComputedEntry extends FundEntry {
   derivCumFees?: number        // Cumulative fees (trading fees)
   // Margin tracking
   derivNotionalValue?: number      // Position value at avgEntry price
-  derivInitialMargin?: number      // Margin locked (typically 20%)
+  derivInitialMargin?: number      // Margin locked (typically 20%) - DEPRECATED: use derivMarginLocked
+  derivMarginLocked?: number       // Actual margin locked (sum from FIFO queue)
   derivMaintenanceMargin?: number  // Minimum margin required (typically 5%)
-  derivAvailableFunds?: number     // marginBalance - initialMargin
+  derivAvailableFunds?: number     // marginBalance - marginLocked
   derivMarginRatio?: number        // maintenanceMargin / marginBalance
+  derivLeverage?: number           // Dynamic leverage: notionalValue / equity
+  // Liquidation tracking
+  derivLiquidationPrice?: number   // Estimated liquidation price
+  derivMarginHealth?: number       // Buffer above liquidation (higher is safer)
+  derivDistanceToLiq?: number      // Percentage distance to liquidation
 }

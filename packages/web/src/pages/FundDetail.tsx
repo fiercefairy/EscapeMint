@@ -461,9 +461,14 @@ export function FundDetail() {
         derivCumFees: undefined as number | undefined,
         derivNotionalValue: undefined as number | undefined,
         derivInitialMargin: undefined as number | undefined,
+        derivMarginLocked: undefined as number | undefined,
         derivMaintenanceMargin: undefined as number | undefined,
         derivAvailableFunds: undefined as number | undefined,
-        derivMarginRatio: undefined as number | undefined
+        derivMarginRatio: undefined as number | undefined,
+        derivLeverage: undefined as number | undefined,
+        derivLiquidationPrice: undefined as number | undefined,
+        derivMarginHealth: undefined as number | undefined,
+        derivDistanceToLiq: undefined as number | undefined
       }
 
       // For derivatives funds, merge server-computed state
@@ -518,9 +523,15 @@ export function FundDetail() {
           // Margin tracking
           derivNotionalValue: derivState.notionalValue,
           derivInitialMargin: derivState.initialMargin,
+          derivMarginLocked: derivState.marginLocked,
           derivMaintenanceMargin: derivState.maintenanceMargin,
           derivAvailableFunds: derivState.availableFunds,
           derivMarginRatio: derivState.marginRatio,
+          derivLeverage: derivState.leverage,
+          // Liquidation tracking
+          derivLiquidationPrice: derivState.liquidationPrice,
+          derivMarginHealth: derivState.marginHealth,
+          derivDistanceToLiq: derivState.distanceToLiquidation,
           // Also use derivatives values for fundSize and P&L
           fundSize: derivState.marginBalance + derivState.unrealizedPnl,  // Account value = cash + unrealized
           realized: derivState.realizedPnl,
@@ -1291,6 +1302,46 @@ export function FundDetail() {
                         <p className="text-[10px] text-slate-400">Liquid P&L</p>
                         <p className={`font-medium ${latestEntry.liquidPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                           {formatCurrency(latestEntry.liquidPnl)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Margin Locked</p>
+                        <p className="font-medium text-amber-400">{formatCurrency(latestEntry.derivMarginLocked ?? 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Leverage</p>
+                        <p className={`font-medium ${
+                          (latestEntry.derivLeverage ?? 0) < 3 ? 'text-green-400'
+                          : (latestEntry.derivLeverage ?? 0) < 5 ? 'text-amber-400'
+                          : 'text-red-400'
+                        }`}>
+                          {latestEntry.derivLeverage !== undefined && latestEntry.derivLeverage > 0
+                            ? `${latestEntry.derivLeverage.toFixed(2)}x`
+                            : '-'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Liq Price</p>
+                        <p className={`font-medium ${
+                          latestEntry.derivLiquidationPrice !== undefined && latestEntry.derivLiquidationPrice < 0
+                            ? 'text-green-400'  // Negative = over-collateralized
+                            : 'text-orange-400'
+                        }`}>
+                          {latestEntry.derivLiquidationPrice !== undefined
+                            ? `$${latestEntry.derivLiquidationPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                            : '-'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400">Dist to Liq</p>
+                        <p className={`font-medium ${
+                          (latestEntry.derivDistanceToLiq ?? 0) > 0.5 ? 'text-green-400'
+                          : (latestEntry.derivDistanceToLiq ?? 0) > 0.25 ? 'text-amber-400'
+                          : 'text-red-400'
+                        }`}>
+                          {latestEntry.derivDistanceToLiq !== undefined && latestEntry.derivDistanceToLiq > 0
+                            ? `${(latestEntry.derivDistanceToLiq * 100).toFixed(1)}%`
+                            : '-'}
                         </p>
                       </div>
                     </div>

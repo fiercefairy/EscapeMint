@@ -895,8 +895,9 @@ fundsRouter.post('/', async (req, res, next) => {
       const platformsData = await readPlatformsData()
       const platformConfig = platformsData[platformId] ?? { name: platform }
 
-      // Set platform to manage cash at platform level
+      // Set platform to manage cash at platform level with auto-sync enabled
       platformConfig.manage_cash = true
+      platformConfig.auto_sync_cash = true
       platformsData[platformId] = platformConfig
       await writePlatformsData(platformsData)
 

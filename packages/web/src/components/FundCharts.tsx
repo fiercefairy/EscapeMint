@@ -3,6 +3,9 @@ import * as d3 from 'd3'
 import type { FundEntry, FundConfig, ChartBounds } from '../api/funds'
 import { updateFundConfig } from '../api/funds'
 import { DerivativesCapturedProfitChart } from './DerivativesCapturedProfitChart'
+import { DerivativesPriceChart } from './DerivativesPriceChart'
+import { DerivativesMarginChart } from './DerivativesMarginChart'
+import { DerivativesValueChart } from './DerivativesValueChart'
 import type { ComputedEntry } from './entriesTable'
 import {
   isCashFund as checkIsCashFund,
@@ -1332,10 +1335,11 @@ function MarginChart({
   )
 }
 
-type ChartKey = 'value'
+type ChartKey = 'value' | 'derivativesPrice'
 
 interface ChartBoundsState {
   value: ChartBounds
+  derivativesPrice: ChartBounds
 }
 
 export function FundCharts({ entries, config, fundId, computedEntries, resize: externalResize }: FundChartsProps) {
@@ -1383,13 +1387,15 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
 
   // Initialize state from config.chart_bounds
   const [chartBounds, setChartBounds] = useState<ChartBoundsState>(() => ({
-    value: config.chart_bounds?.value ?? {}
+    value: config.chart_bounds?.value ?? {},
+    derivativesPrice: config.chart_bounds?.derivativesPrice ?? {}
   }))
 
   // Sync with config when it changes externally
   useEffect(() => {
     setChartBounds({
-      value: config.chart_bounds?.value ?? {}
+      value: config.chart_bounds?.value ?? {},
+      derivativesPrice: config.chart_bounds?.derivativesPrice ?? {}
     })
   }, [config.chart_bounds])
 
@@ -1432,6 +1438,7 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       {/* Combined Value & Allocation for trading funds, Balance for cash funds */}
+      {/* Derivatives have their own DerivativesValueChart */}
       {isCashFund ? (
         <AreaChart
           data={timeSeries}
@@ -1442,14 +1449,14 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
           onBoundsChange={updateBounds('value')}
           resize={effectiveResize}
         />
-      ) : (
+      ) : !isDerivativesFund ? (
         <ValueAndFundSizeChart
           data={timeSeries}
           title="Value & Allocation"
           manageCash={manageCash}
           resize={effectiveResize}
         />
-      )}
+      ) : null}
 
       {/* Captured Profit - different chart for derivatives vs stock/crypto */}
       {features.allowsTrading && !isDerivativesFund && (
@@ -1465,12 +1472,28 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
         />
       )}
 
-      {/* Derivatives Captured Profit Chart */}
+      {/* Derivatives Charts */}
       {isDerivativesFund && computedEntries && (
-        <DerivativesCapturedProfitChart
-          entries={computedEntries}
-          resize={effectiveResize}
-        />
+        <>
+          <DerivativesValueChart
+            entries={computedEntries}
+            resize={effectiveResize}
+          />
+          <DerivativesPriceChart
+            entries={computedEntries}
+            resize={effectiveResize}
+            bounds={chartBounds.derivativesPrice}
+            onBoundsChange={updateBounds('derivativesPrice')}
+          />
+          <DerivativesMarginChart
+            entries={computedEntries}
+            resize={effectiveResize}
+          />
+          <DerivativesCapturedProfitChart
+            entries={computedEntries}
+            resize={effectiveResize}
+          />
+        </>
       )}
 
       {/* Margin chart for cash funds if they have margin data */}

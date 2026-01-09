@@ -143,7 +143,7 @@ export function FundCard({ fund, impactPct, realizedAPY, liquidAPY, realizedGain
           <span className="text-slate-500">{fund.entryCount} entries</span>
           {fund.latestEquity && (
             <span className="text-slate-500 truncate ml-1">
-              {isClosed && fund.firstEntryDate && fund.firstEntryDate !== fund.latestEquity.date
+              {fund.firstEntryDate && fund.firstEntryDate !== fund.latestEquity.date
                 ? `${fund.firstEntryDate} → ${fund.latestEquity.date}`
                 : fund.latestEquity.date}
             </span>

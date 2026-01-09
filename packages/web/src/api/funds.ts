@@ -104,6 +104,7 @@ export interface FundEntry {
   funding_loss?: number        // Funding loss + fees (negative) - DEPRECATED
   margin_locked?: number       // Total margin locked in positions
   fee?: number                 // Trading fee associated with BUY/SELL action
+  margin?: number              // Actual margin locked for BUY/SELL trades
 }
 
 export interface FundState {

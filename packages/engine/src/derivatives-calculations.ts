@@ -566,10 +566,16 @@ export interface DerivativesEntryState {
   equity: number             // Position value at entry price (cost basis)
   // Margin tracking
   notionalValue: number      // Position value at avgEntry price
-  initialMargin: number      // Margin locked (typically 20% of notional)
+  initialMargin: number      // Margin locked (typically 20% of notional) - DEPRECATED: use marginLocked
+  marginLocked: number       // Sum of actual margin in open positions (from FIFO queue)
   maintenanceMargin: number  // Minimum margin required (typically 5% of notional)
-  availableFunds: number     // marginBalance - initialMargin
+  availableFunds: number     // marginBalance - marginLocked
   marginRatio: number        // maintenanceMargin / marginBalance (lower is safer)
+  leverage: number           // Dynamic leverage: notionalValue / equity
+  // Liquidation tracking
+  liquidationPrice: number   // Estimated price at which position would be liquidated
+  marginHealth: number       // Buffer above liquidation: (equity - maintenanceMargin) / maintenanceMargin (higher is safer)
+  distanceToLiquidation: number  // Percentage distance from current price to liquidation
   notes?: string
 }
 
@@ -583,6 +589,7 @@ interface DerivativesFundEntry {
   contracts?: number
   price?: number
   fee?: number  // Trading fee associated with BUY/SELL
+  margin?: number  // Actual margin locked for this trade
   notes?: string
 }
 
@@ -634,8 +641,8 @@ export const computeDerivativesEntriesState = (
   let cumFees = 0
   let snapshotBtcPrice = 0  // BTC price at each snapshot (derived from trade prices)
 
-  // FIFO cost basis queue for realized P&L calculation
-  const costBasisQueue: { contracts: number; price: number; cost: number }[] = []
+  // FIFO cost basis queue for realized P&L calculation (includes margin per lot)
+  const costBasisQueue: { contracts: number; price: number; cost: number; margin: number }[] = []
 
   const results: DerivativesEntryState[] = []
 
@@ -676,7 +683,7 @@ export const computeDerivativesEntriesState = (
         marginBalance -= Math.abs(amount)  // Fees reduce margin
         break
 
-      case 'BUY':
+      case 'BUY': {
         // Add to position
         position += contracts
         // Update average entry price (weighted average)
@@ -687,11 +694,16 @@ export const computeDerivativesEntriesState = (
           const newCost = price * contracts  // Total dollar cost (price is already per contract)
           avgEntry = (oldCost + newCost) / (position * contractMultiplier)
         }
-        // Add to cost basis queue for FIFO
+        // Calculate margin for this trade
+        const notionalForTrade = price * contracts  // Total dollar cost
+        // Use stored margin if present, otherwise calculate from fixed 20% rate
+        const tradeMargin = entry.margin ?? (notionalForTrade * DEFAULT_INITIAL_MARGIN_RATE)
+        // Add to cost basis queue for FIFO (including actual margin)
         costBasisQueue.push({
           contracts,
           price,
-          cost: price * contracts  // Total dollar cost
+          cost: notionalForTrade,
+          margin: tradeMargin
         })
         // Process fee if present on entry
         if (fee > 0) {
@@ -704,6 +716,7 @@ export const computeDerivativesEntriesState = (
           snapshotBtcPrice = price / contractMultiplier
         }
         break
+      }
 
       case 'SELL': {
         // Close position using FIFO
@@ -716,16 +729,17 @@ export const computeDerivativesEntriesState = (
           if (!oldest) break
 
           if (oldest.contracts <= contractsToClose) {
-            // Close entire lot
+            // Close entire lot - margin is released automatically by removing lot
             costBasis += oldest.cost
             contractsToClose -= oldest.contracts
             costBasisQueue.shift()
           } else {
-            // Partial close
+            // Partial close - reduce margin proportionally
             const ratio = contractsToClose / oldest.contracts
             costBasis += oldest.cost * ratio
             oldest.contracts -= contractsToClose
             oldest.cost -= oldest.cost * ratio
+            oldest.margin -= oldest.margin * ratio  // Release proportional margin
             contractsToClose = 0
           }
         }
@@ -766,12 +780,16 @@ export const computeDerivativesEntriesState = (
     // This equals costBasisTotal for the current position
     const notionalValue = costBasisTotal
 
+    // Calculate actual margin locked from FIFO queue (sum of margin in open lots)
+    const marginLocked = costBasisQueue.reduce((sum, lot) => sum + lot.margin, 0)
+
     // Margin calculations (futures don't spend cash, they lock margin)
-    // Initial margin: typically 20% of notional value
-    // Maintenance margin: typically 5% of notional value
-    const initialMargin = notionalValue * DEFAULT_INITIAL_MARGIN_RATE
+    // initialMargin: DEPRECATED - kept for backward compatibility, use marginLocked instead
+    // marginLocked: Sum of actual margin from cost basis queue
+    // Maintenance margin: typically 5% of notional value (exchange enforced)
+    const initialMargin = notionalValue * DEFAULT_INITIAL_MARGIN_RATE  // Deprecated
     const maintenanceMargin = notionalValue * DEFAULT_MAINTENANCE_MARGIN_RATE
-    const availableFunds = marginBalance - initialMargin
+    const availableFunds = marginBalance - marginLocked  // Use actual margin locked
 
     // Margin ratio = maintenance margin / funds for margin
     // Lower is safer (Coinbase shows this as a percentage)
@@ -788,6 +806,42 @@ export const computeDerivativesEntriesState = (
     // Equity = total account value = marginBalance + unrealizedPnl
     // This is what your account would be worth if you closed all positions
     const equity = marginBalance + unrealizedPnl
+
+    // Dynamic leverage = Total Notional / Margin Locked
+    // This matches Coinbase's leverage display: how leveraged the position is relative to collateral
+    const leverage = marginLocked > 0 ? notionalValue / marginLocked : 0
+
+    // Liquidation price calculation for long positions
+    // At liquidation: equity = maintenanceMargin
+    // equity = marginBalance + (liqPrice - avgEntry) * btcSize
+    // So: liqPrice = avgEntry - (marginBalance - maintenanceMargin) / btcSize
+    // For short positions, the formula is: liqPrice = avgEntry + (marginBalance - maintenanceMargin) / btcSize
+    const btcSize = position * contractMultiplier
+    let liquidationPrice = 0
+    if (position > 0 && btcSize > 0) {
+      // Long position: price going down triggers liquidation
+      // Negative values indicate position is over-collateralized (safer than 0)
+      const buffer = marginBalance - maintenanceMargin
+      liquidationPrice = avgEntry - (buffer / btcSize)
+    } else if (position < 0 && btcSize < 0) {
+      // Short position: price going up triggers liquidation
+      const buffer = marginBalance - maintenanceMargin
+      liquidationPrice = avgEntry - (buffer / btcSize)  // btcSize is negative, so this adds
+    }
+
+    // Margin health: how much buffer above liquidation (higher is safer)
+    // marginHealth = (equity - maintenanceMargin) / maintenanceMargin
+    const marginHealth = maintenanceMargin > 0 ? (equity - maintenanceMargin) / maintenanceMargin : 0
+
+    // Distance to liquidation as percentage from current/avg price
+    // For long: (avgEntry - liquidationPrice) / avgEntry
+    // Negative liq price means over-collateralized; distance > 100% means price can drop past 0
+    let distanceToLiquidation = 0
+    if (position > 0 && avgEntry > 0) {
+      distanceToLiquidation = (avgEntry - liquidationPrice) / avgEntry
+    } else if (position < 0 && avgEntry > 0) {
+      distanceToLiquidation = (liquidationPrice - avgEntry) / avgEntry
+    }
 
     const entryState: DerivativesEntryState = {
       date: entry.date,
@@ -808,9 +862,14 @@ export const computeDerivativesEntriesState = (
       equity,
       notionalValue,
       initialMargin,
+      marginLocked,
       maintenanceMargin,
       availableFunds,
-      marginRatio
+      marginRatio,
+      leverage,
+      liquidationPrice,
+      marginHealth,
+      distanceToLiquidation
     }
     if (entry.notes !== undefined) {
       entryState.notes = entry.notes
