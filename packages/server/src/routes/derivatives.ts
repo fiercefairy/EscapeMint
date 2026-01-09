@@ -32,14 +32,14 @@ import {
 export const derivativesRouter: RouterType = Router()
 
 // ============================================
-// API Key Management Endpoints
+// Coinbase Credential Management Endpoints
 // ============================================
 
 /**
- * GET /api/v1/derivatives/api-keys
- * List all stored API key names (not the actual secrets).
+ * GET /api/v1/derivatives/coinbase-keys
+ * List all stored Coinbase API key names (not the actual secrets).
  */
-derivativesRouter.get('/api-keys', async (_req: Request, res: Response) => {
+derivativesRouter.get('/coinbase-keys', async (_req: Request, res: Response) => {
   const keychainOk = await testKeychainAccess()
   if (!keychainOk) {
     res.status(503).json({
@@ -54,12 +54,12 @@ derivativesRouter.get('/api-keys', async (_req: Request, res: Response) => {
 })
 
 /**
- * POST /api/v1/derivatives/api-keys
- * Store new API credentials in Keychain.
+ * POST /api/v1/derivatives/coinbase-keys
+ * Store new Coinbase API credentials in Keychain.
  *
  * Body: { name: string, apiKey: string, apiSecret: string }
  */
-derivativesRouter.post('/api-keys', async (req: Request, res: Response) => {
+derivativesRouter.post('/coinbase-keys', async (req: Request, res: Response) => {
   const { name, apiKey, apiSecret } = req.body
 
   if (!name || !apiKey || !apiSecret) {
@@ -82,10 +82,10 @@ derivativesRouter.post('/api-keys', async (req: Request, res: Response) => {
 })
 
 /**
- * DELETE /api/v1/derivatives/api-keys/:name
- * Remove API credentials from Keychain.
+ * DELETE /api/v1/derivatives/coinbase-keys/:name
+ * Remove Coinbase API credentials from Keychain.
  */
-derivativesRouter.delete('/api-keys/:name', async (req: Request, res: Response) => {
+derivativesRouter.delete('/coinbase-keys/:name', async (req: Request, res: Response) => {
   const name = req.params['name']
   if (!name) {
     res.status(400).json({ error: 'Missing name parameter' })
@@ -97,10 +97,10 @@ derivativesRouter.delete('/api-keys/:name', async (req: Request, res: Response) 
 })
 
 /**
- * POST /api/v1/derivatives/api-keys/:name/test
- * Test stored API credentials.
+ * POST /api/v1/derivatives/coinbase-keys/:name/test
+ * Test stored Coinbase API credentials.
  */
-derivativesRouter.post('/api-keys/:name/test', async (req: Request, res: Response) => {
+derivativesRouter.post('/coinbase-keys/:name/test', async (req: Request, res: Response) => {
   const name = req.params['name']
   if (!name) {
     res.status(400).json({ error: 'Missing name parameter' })

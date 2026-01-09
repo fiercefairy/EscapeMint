@@ -24,7 +24,7 @@ async function globalTeardown(config: FullConfig) {
     return
   }
 
-  const allFunds = await response.json()
+  const allFunds: Array<{ id: string; platform: string }> = await response.json()
 
   // Delete all funds that use the test platform
   let deletedCount = 0

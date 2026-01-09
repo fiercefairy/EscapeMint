@@ -1331,12 +1331,14 @@ const scrapeActivityItem = async (
 
   // No expansion - just use header data
   const details: Record<string, string> = {}
+  if (shouldLog) timings['parseHeader'] = Date.now() - t0 - (timings['getHeader'] ?? 0)
 
   // Parse the data
   const type = determineTransactionType(title)
   const date = parseRobinhoodDate(dateText)
   const amount = parseAmount(amountText)
   const symbol = extractSymbol(title, details)
+  if (shouldLog) timings['parseData'] = Date.now() - t0 - Object.values(timings).reduce((a, b) => a + b, 0)
 
   // Get shares and price
   let shares: number | undefined
@@ -4745,7 +4747,7 @@ const parseCoinbaseDateToISO = (dateText: string): string => {
   const match = dateText.match(/([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/)
   if (!match || !match[1] || !match[2] || !match[3]) {
     console.warn(`[Coinbase] Unable to parse date: ${dateText}`)
-    return new Date().toISOString().split('T')[0]!
+    return new Date().toISOString().split('T')[0] ?? new Date().toISOString().substring(0, 10)
   }
 
   const monthKey = match[1].toLowerCase().substring(0, 3)

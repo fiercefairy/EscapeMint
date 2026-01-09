@@ -564,7 +564,14 @@ export interface DerivativesEntryState {
   equity: number             // Position value at entry price (cost basis)
   // Margin tracking
   notionalValue: number      // Position value at avgEntry price
-  /** @deprecated Use marginLocked instead. Kept for backward compatibility, removal planned for v1.0 */
+  /**
+   * @deprecated Use marginLocked instead.
+   *
+   * This field is still computed and populated for backward compatibility with
+   * existing downstream consumers that rely on it. New code should depend on
+   * marginLocked and treat initialMargin as legacy-only. Removal is planned
+   * for v1.0, at which point this field and its calculation will be removed.
+   */
   initialMargin: number
   marginLocked: number       // Sum of actual margin in open positions (from FIFO queue)
   maintenanceMargin: number  // Minimum margin required (typically 5% of notional)
