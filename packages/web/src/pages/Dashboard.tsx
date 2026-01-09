@@ -350,20 +350,21 @@ export function Dashboard() {
         </div>
         {/* Controls - Charts, Platform filter, Add, Import */}
         <div className="flex items-center gap-1.5 xs:gap-2 flex-shrink-0">
-          <label className="flex items-center gap-1.5 xs:gap-2 cursor-pointer touch-manipulation self-center">
+          <div className="flex items-center gap-1.5 xs:gap-2 cursor-pointer touch-manipulation" onClick={() => setShowCharts(!showCharts)}>
             <span className="text-[10px] xs:text-[11px] sm:text-sm text-slate-400">Charts</span>
-            <button
-              type="button"
+            <div
               role="switch"
               aria-checked={showCharts}
-              onClick={() => setShowCharts(!showCharts)}
-              className={`relative h-6 w-11 flex-shrink-0 flex-grow-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-mint-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${showCharts ? 'bg-mint-600' : 'bg-slate-700'}`}
+              tabIndex={0}
+              onKeyDown={e => e.key === 'Enter' || e.key === ' ' ? setShowCharts(!showCharts) : null}
+              className={`relative rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-mint-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${showCharts ? 'bg-mint-600' : 'bg-slate-700'}`}
+              style={{ width: 44, height: 24 }}
             >
               <span
                 className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-lg transition-transform duration-200 ease-in-out ${showCharts ? 'translate-x-5' : 'translate-x-0'}`}
               />
-            </button>
-          </label>
+            </div>
+          </div>
           <select
             value={filterPlatform}
             onChange={e => handlePlatformChange(e.target.value)}
