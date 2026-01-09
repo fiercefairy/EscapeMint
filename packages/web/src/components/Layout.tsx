@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { fetchFunds, FUNDS_CHANGED_EVENT, type FundSummary } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
@@ -49,14 +49,14 @@ export function Layout() {
   }, [location.pathname])
 
   // Load funds and platforms based on testFundsMode setting
-  const loadFundsAndPlatforms = () => {
+  const loadFundsAndPlatforms = useCallback(() => {
     fetchFunds(settings.testFundsMode).then(result => {
       if (result.data) setFunds(result.data)
     })
     fetchPlatforms(settings.testFundsMode).then(result => {
       if (result.data) setPlatforms(result.data)
     })
-  }
+  }, [settings.testFundsMode])
 
   // Fetch funds, platforms, and version on mount and when testFundsMode changes
   useEffect(() => {
@@ -65,14 +65,14 @@ export function Layout() {
       .then(res => res.json())
       .then(data => setVersion(data.version))
       .catch(() => {})
-  }, [settings.testFundsMode])
+  }, [loadFundsAndPlatforms])
 
   // Listen for funds changed event
   useEffect(() => {
     const handleFundsChanged = () => loadFundsAndPlatforms()
     window.addEventListener(FUNDS_CHANGED_EVENT, handleFundsChanged)
     return () => window.removeEventListener(FUNDS_CHANGED_EVENT, handleFundsChanged)
-  }, [])
+  }, [loadFundsAndPlatforms])
 
   // Group funds by platform, separating active from closed
   const { activeFunds, closedFunds } = useMemo(() => {

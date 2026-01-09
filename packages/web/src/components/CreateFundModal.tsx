@@ -41,6 +41,9 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     accumulate: true,
     manage_cash: true,
     margin_enabled: false,
+    dividend_reinvest: true,
+    interest_reinvest: true,
+    expense_from_fund: true,
     start_date: new Date().toISOString().slice(0, 10)
   })
 
@@ -52,12 +55,36 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     fetchPlatforms().then(result => {
       if (result.data) {
         setPlatforms(result.data)
-        if (result.data.length > 0 && result.data[0]) {
-          setSelectedPlatform(result.data[0].id)
+        // Default to Robinhood if available, otherwise first platform
+        const robinhood = result.data.find(p => p.id === 'robinhood')
+        const defaultPlatform = robinhood || result.data[0]
+        if (defaultPlatform) {
+          setSelectedPlatform(defaultPlatform.id)
         }
       }
     })
   }, [])
+
+  // Update manage_cash default when fund type changes
+  useEffect(() => {
+    if (fundType === 'stock' || fundType === 'crypto') {
+      setFormData(prev => ({
+        ...prev,
+        manage_cash: false,
+        dividend_reinvest: false,
+        interest_reinvest: false,
+        expense_from_fund: false
+      }))
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        manage_cash: true,
+        dividend_reinvest: true,
+        interest_reinvest: true,
+        expense_from_fund: true
+      }))
+    }
+  }, [fundType])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -85,6 +112,9 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
       accumulate: features.allowsTrading ? formData.accumulate : (defaults.accumulate ?? true),
       manage_cash: features.allowsTrading ? formData.manage_cash : (defaults.manage_cash ?? true),
       margin_enabled: features.allowsTrading ? formData.margin_enabled : (defaults.margin_enabled ?? false),
+      dividend_reinvest: formData.dividend_reinvest,
+      interest_reinvest: formData.interest_reinvest,
+      expense_from_fund: formData.expense_from_fund,
       start_date: formData.start_date || new Date().toISOString().slice(0, 10)
     }
 
@@ -316,18 +346,25 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                     <span className="text-slate-400 text-xs ml-2">(sell only DCA amount)</span>
                   </label>
                 </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="manage_cash"
-                    checked={formData.manage_cash}
-                    onChange={e => setFormData({ ...formData, manage_cash: e.target.checked })}
-                    className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
-                  />
-                  <label htmlFor="manage_cash" className="text-sm text-white">
-                    Manage Cash
-                    <span className="text-slate-400 text-xs ml-2">(maintain cash pile)</span>
-                  </label>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="manage_cash"
+                      checked={formData.manage_cash}
+                      onChange={e => setFormData({ ...formData, manage_cash: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
+                    />
+                    <label htmlFor="manage_cash" className="text-sm text-white">
+                      Manage Cash in Fund
+                      <span className="text-slate-400 text-xs ml-2">(maintain dedicated cash pile)</span>
+                    </label>
+                  </div>
+                  {!formData.manage_cash && (
+                    <p className="text-[10px] text-slate-500 ml-7">
+                      Cash will be managed at the platform level and shared with other funds
+                    </p>
+                  )}
                 </div>
               </div>
 
