@@ -140,8 +140,8 @@ export function PlatformDetail() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2">
-            <Link to="/" className="text-slate-400 hover:text-white text-sm">Dashboard</Link>
+          <div className="flex items-baseline gap-2 text-sm">
+            <Link to="/" className="text-slate-400 hover:text-white">Dashboard</Link>
             <span className="text-slate-600">/</span>
             <span className="text-white font-medium capitalize">{metrics.platformName}</span>
           </div>
