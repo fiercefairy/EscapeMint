@@ -337,8 +337,9 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
   const actualFundSize = latestEntry.fund_size ?? fund.config.fund_size_usd
   const daysActive = finalMetrics.daysActive
 
-  // Time-weighted fund size calculation (for share weighting in aggregation)
-  let timeWeightedFundSize = 0
+  // Time-weighted AVERAGE fund size calculation (for APY and share weighting)
+  // Sum dollar-days, then divide by daysActive to get average
+  let dollarDays = 0
   for (let i = 0; i < sortedEntries.length; i++) {
     const entry = sortedEntries[i]!
     const nextEntry = sortedEntries[i + 1]
@@ -348,8 +349,10 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
     const endDate = nextEntry ? new Date(nextEntry.date) : new Date(latestEntry.date)
     const days = Math.max(1, Math.floor((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)))
 
-    timeWeightedFundSize += entryFundSize * days
+    dollarDays += entryFundSize * days
   }
+  // Convert to time-weighted average (same as engine's computeTimeWeightedFundSize)
+  const timeWeightedFundSize = daysActive > 0 ? dollarDays / daysActive : 0
 
   const isCashFund = fund.config.fund_type === 'cash'
   const isClosed = fund.config.status === 'closed' || fund.config.fund_size_usd === 0
@@ -431,10 +434,11 @@ function recalculateAggregates(fundMetrics: FundMetrics[]): DashboardMetrics {
   const totalGainUsd = totalValue - totalStartInput
   const totalGainPct = totalStartInput > 0 ? totalGainUsd / totalStartInput : 0
 
-  // Aggregate liquid APY: totalGainUsd / totalTimeWeightedFundSize * 365
-  // totalTimeWeightedFundSize is already in dollar-days
-  const liquidAPY = totalTimeWeightedFundSize > 0
-    ? (totalGainUsd * 365) / totalTimeWeightedFundSize
+  // Aggregate liquid APY: (totalGainUsd / totalTimeWeightedFundSize) * (365 / avgDaysActive)
+  // totalTimeWeightedFundSize is now the AVERAGE fund size (not dollar-days)
+  const avgDaysActive = fundMetrics.length > 0 ? totalDaysActive / fundMetrics.length : 1
+  const liquidAPY = totalTimeWeightedFundSize > 0 && avgDaysActive > 0
+    ? (totalGainUsd / totalTimeWeightedFundSize) * (365 / avgDaysActive)
     : 0
 
   return {
