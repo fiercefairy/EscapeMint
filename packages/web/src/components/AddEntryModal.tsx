@@ -100,7 +100,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     e.preventDefault()
     setLoading(true)
 
-    const entry = buildEntryFromForm(formData)
+    const entry = buildEntryFromForm(formData, fundType)
     const response = await addFundEntry(fundId, entry)
 
     if (response.error) {
@@ -357,7 +357,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
             </button>
             <button
               type="submit"
-              disabled={loading || (!formData.action && fundType !== 'cash') || (fundType === 'cash' && !formData.deposit && !formData.withdrawal && !formData.cash_interest && !formData.value)}
+              disabled={loading || (!formData.action && fundType !== 'cash') || (fundType === 'cash' && !formData.amount && !formData.cash_interest && !formData.value)}
               className="flex-1 px-4 py-2 bg-mint-600 text-white rounded-lg hover:bg-mint-700 transition-colors disabled:opacity-50"
             >
               {loading ? 'Recording...' : 'Record Action'}

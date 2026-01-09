@@ -195,16 +195,21 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
     }
   }, [formData.deposit, formData.withdrawal, currentFundSize, showFundSizeAdjustment, setFormData])
 
-  // Simplified form for cash funds
+  // Simplified form for cash funds - single Amount field with sign
   if (isCashFund) {
+    // Parse amount to show appropriate styling
+    const amountValue = parseFormulaValue(formData.amount)
+    const formatCurrency = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v)
+    const amountColorClass = amountValue > 0 ? 'border-green-500' : amountValue < 0 ? 'border-red-500' : 'border-slate-600'
+
     return (
       <div className="space-y-4">
         {/* CASH FUND ENTRY */}
         <div className="space-y-3">
           <h3 className="text-sm font-medium text-blue-400 border-b border-slate-700 pb-1">Cash Balance Entry</h3>
 
-          {/* Row 1: Date, Cash Balance, Deposit, Withdrawal */}
-          <div className="grid grid-cols-4 gap-4">
+          {/* Row 1: Date, Cash Balance, Amount */}
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm text-slate-400 mb-1">Date</label>
               <input
@@ -224,29 +229,27 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 placeholder="Current cash balance"
                 step="0.01"
-                min="0"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Deposit ($)</label>
+              <label className="block text-sm text-slate-400 mb-1">Amount ($)</label>
               <input
                 type="text"
-                value={formData.deposit}
-                onChange={e => setFormData(prev => ({ ...prev, deposit: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                placeholder="0 or =100+50"
+                value={formData.amount}
+                onChange={e => setFormData(prev => ({ ...prev, amount: e.target.value }))}
+                className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-blue-500 ${amountColorClass}`}
+                placeholder="+100 deposit, -50 withdraw"
               />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Withdrawal ($)</label>
-              <input
-                type="text"
-                value={formData.withdrawal}
-                onChange={e => setFormData(prev => ({ ...prev, withdrawal: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                placeholder="0 or =100+50"
-              />
+              <p className="text-xs text-slate-500 mt-1">
+                {amountValue > 0 ? (
+                  <span className="text-green-400">Deposit: +{formatCurrency(amountValue)}</span>
+                ) : amountValue < 0 ? (
+                  <span className="text-red-400">Withdraw: {formatCurrency(amountValue)}</span>
+                ) : (
+                  'Positive = deposit, negative = withdraw'
+                )}
+              </p>
             </div>
           </div>
 
@@ -576,34 +579,52 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
 }
 
 // Helper to build FundEntry from form data
-export function buildEntryFromForm(formData: EntryFormData): Partial<FundEntry> {
+export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType): Partial<FundEntry> {
   const entry: Partial<FundEntry> = {
     date: formData.date,
     value: parseFloat(formData.value) || 0
   }
 
-  const depositVal = parseFormulaValue(formData.deposit)
-  const withdrawalVal = parseFormulaValue(formData.withdrawal)
+  const isCashFund = fundType === 'cash'
   let notes = formData.notes
 
-  // Handle action - DEPOSIT/WITHDRAW are tracked cumulatively for fund_size calculation
-  if (depositVal > 0 && (!formData.action || formData.action === 'HOLD')) {
-    entry.action = 'DEPOSIT'
-    entry.amount = depositVal
-  } else if (withdrawalVal > 0 && (!formData.action || formData.action === 'HOLD')) {
-    entry.action = 'WITHDRAW'
-    entry.amount = withdrawalVal
-  } else if (formData.action && formData.action !== 'HOLD') {
-    entry.action = formData.action
-    entry.amount = parseFloat(formData.amount) || 0
-    if (depositVal > 0) {
-      notes = (notes ? notes + ' | ' : '') + `Deposit: $${depositVal}`
+  // Cash fund: use signed amount field directly
+  // Positive amount = DEPOSIT (external money in), Negative amount = WITHDRAW (external money out)
+  if (isCashFund) {
+    const signedAmount = parseFormulaValue(formData.amount)
+    if (signedAmount > 0) {
+      entry.action = 'DEPOSIT'
+      entry.amount = signedAmount
+    } else if (signedAmount < 0) {
+      entry.action = 'WITHDRAW'
+      entry.amount = signedAmount // Store as negative
+    } else {
+      entry.action = 'HOLD'
     }
-    if (withdrawalVal > 0) {
-      notes = (notes ? notes + ' | ' : '') + `Withdrawal: $${withdrawalVal}`
+  } else {
+    // Trading funds: use separate deposit/withdrawal fields (legacy support)
+    const depositVal = parseFormulaValue(formData.deposit)
+    const withdrawalVal = parseFormulaValue(formData.withdrawal)
+
+    // Handle action - DEPOSIT/WITHDRAW are tracked cumulatively for fund_size calculation
+    if (depositVal > 0 && (!formData.action || formData.action === 'HOLD')) {
+      entry.action = 'DEPOSIT'
+      entry.amount = depositVal
+    } else if (withdrawalVal > 0 && (!formData.action || formData.action === 'HOLD')) {
+      entry.action = 'WITHDRAW'
+      entry.amount = withdrawalVal
+    } else if (formData.action && formData.action !== 'HOLD') {
+      entry.action = formData.action
+      entry.amount = parseFloat(formData.amount) || 0
+      if (depositVal > 0) {
+        notes = (notes ? notes + ' | ' : '') + `Deposit: $${depositVal}`
+      }
+      if (withdrawalVal > 0) {
+        notes = (notes ? notes + ' | ' : '') + `Withdrawal: $${withdrawalVal}`
+      }
+    } else if (formData.action === 'HOLD') {
+      entry.action = 'HOLD'
     }
-  } else if (formData.action === 'HOLD') {
-    entry.action = 'HOLD'
   }
 
   if (formData.shares) entry.shares = parseFloat(formData.shares)
@@ -646,15 +667,33 @@ export function createEmptyFormData(): EntryFormData {
 }
 
 // Helper to create form data from existing entry
-export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: number): EntryFormData {
+export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: number, fundType?: FundType): EntryFormData {
+  const isCashFund = fundType === 'cash'
+
   const getActionType = (): ActionType => {
     if (entry.action === 'BUY' || entry.action === 'SELL') return entry.action
     return entry.action ? 'HOLD' : ''
   }
 
-  // For DEPOSIT/WITHDRAW actions, use the amount field directly
-  // For HOLD actions, positive amount = deposit, negative amount = withdrawal
-  // Otherwise fall back to parsing from notes
+  // For cash funds: convert to signed amount for the unified Amount field
+  // DEPOSIT = positive, WITHDRAW = negative (handle old format where WITHDRAW had positive amount)
+  const getCashFundAmount = (): string => {
+    if (entry.action === 'DEPOSIT' && entry.amount) {
+      return entry.amount.toFixed(2) // Keep positive
+    }
+    if (entry.action === 'WITHDRAW' && entry.amount) {
+      // Old format stored as positive, new format as negative
+      // Convert to negative for form display
+      return entry.amount > 0 ? (-entry.amount).toFixed(2) : entry.amount.toFixed(2)
+    }
+    // HOLD with amount - already signed
+    if (entry.amount) {
+      return entry.amount.toFixed(2)
+    }
+    return ''
+  }
+
+  // For trading funds: use separate deposit/withdrawal fields (legacy support)
   const getDeposit = (): string => {
     if (entry.action === 'DEPOSIT' && entry.amount) {
       return entry.amount.toFixed(2)
@@ -668,7 +707,7 @@ export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: n
 
   const getWithdrawal = (): string => {
     if (entry.action === 'WITHDRAW' && entry.amount) {
-      return entry.amount.toFixed(2)
+      return Math.abs(entry.amount).toFixed(2) // Show as positive in withdrawal field
     }
     // HOLD with negative amount = withdrawal
     if (entry.action === 'HOLD' && entry.amount && entry.amount < 0) {
@@ -682,7 +721,8 @@ export function createFormDataFromEntry(entry: FundEntry, calculatedFundSize?: n
     value: entry.value.toFixed(2),
     cash: entry.cash?.toFixed(2) ?? '',
     action: getActionType(),
-    amount: entry.amount?.toFixed(2) ?? '',
+    // For cash funds, use signed amount; for trading funds, use raw amount
+    amount: isCashFund ? getCashFundAmount() : (entry.amount?.toFixed(2) ?? ''),
     shares: entry.shares?.toString() ?? '',
     price: entry.price?.toFixed(8) ?? '',
     deposit: getDeposit(),
