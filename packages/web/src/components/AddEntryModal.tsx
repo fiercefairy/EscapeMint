@@ -126,12 +126,12 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
   if (result) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-        <div className="bg-slate-800 rounded-lg p-6 w-full max-w-md border border-slate-700">
-          <h2 className="text-xl font-bold text-white mb-4">Action Recorded</h2>
+        <div className="bg-slate-800 rounded-lg p-4 sm:p-6 w-full max-w-md border border-slate-700">
+          <h2 className="text-lg sm:text-xl font-bold text-white mb-4">Action Recorded</h2>
 
           {/* State Summary */}
-          <div className="bg-slate-900 rounded-lg p-4 mb-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="bg-slate-900 rounded-lg p-3 sm:p-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div>
                 <p className="text-slate-400">Actual Value</p>
                 <p className="text-mint-400 font-medium">{formatCurrency(result.state.actual_value_usd)}</p>
@@ -190,7 +190,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-slate-800 rounded-lg p-6 w-full max-w-4xl border border-slate-700 max-h-[90vh] overflow-y-auto">
+      <div className="bg-slate-800 rounded-lg p-4 sm:p-6 w-full max-w-4xl border border-slate-700 max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-bold text-white mb-2">Take Action</h2>
         <p className="text-slate-400 text-sm mb-4">Record activity for {fundTicker.toUpperCase()}</p>
 
@@ -237,7 +237,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
                 {/* Performance Details */}
                 {displayRec.explanation && (
                   <>
-                    <div className="mt-2 pt-2 border-t border-slate-700 grid grid-cols-4 gap-2 text-xs">
+                    <div className="mt-2 pt-2 border-t border-slate-700 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                       <div>
                         <p className="text-slate-500">Invested</p>
                         <p className="text-white">{formatCurrency(displayRec.explanation.start_input_usd)}</p>
@@ -259,7 +259,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
                         <p className="text-white">{formatCurrency(displayRec.explanation.expected_target_usd)}</p>
                       </div>
                     </div>
-                    <div className="mt-1 grid grid-cols-4 gap-2 text-xs">
+                    <div className="mt-1 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                       <div>
                         <p className="text-slate-500">Target APY</p>
                         <p className="text-white">{targetApy !== undefined ? `${(targetApy * 100).toFixed(0)}%` : '-'}</p>

@@ -211,7 +211,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           <h3 className="text-sm font-medium text-blue-400 border-b border-slate-700 pb-1">Cash Balance Entry</h3>
 
           {/* Row 1: Date, Cash Balance, Amount */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm text-slate-400 mb-1">Date</label>
               <input
@@ -256,7 +256,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           </div>
 
           {/* Row 2: Interest, Margin Available, Margin Borrowed, Notes */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm text-slate-400 mb-1">Interest Earned ($)</label>
               <input
@@ -316,7 +316,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
         <h3 className="text-sm font-medium text-slate-300 border-b border-slate-700 pb-1">Action</h3>
 
         {/* Row 1: Date, Equity, Action, Amount */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm text-slate-400 mb-1">Date</label>
             <input
@@ -409,8 +409,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
 
         {/* Derivatives: Margin input for BUY trades */}
         {fundType === 'derivatives' && formData.action === 'BUY' && (
-          <div className="grid grid-cols-4 gap-4 mt-3">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+            <div className="sm:col-span-2">
               <label className="block text-sm text-slate-400 mb-1">Margin Locked ($)</label>
               <input
                 type="number"
@@ -438,7 +438,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
         </summary>
         <div className="space-y-3 pt-3">
           {/* Shares, Price, Calc Button, Notes */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm text-slate-400 mb-1">Shares/Units</label>
               <input
@@ -485,7 +485,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           </div>
 
           {/* Fund Size + trading-specific fields */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm text-slate-400 mb-1">Fund Size ($)</label>
               <input
@@ -521,7 +521,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 />
               </div>
             ) : (
-              <div className={isCryptoFund ? 'col-span-3' : 'col-span-2'}>
+              <div className={isCryptoFund ? 'sm:col-span-2 lg:col-span-3' : 'sm:col-span-1 lg:col-span-2'}>
                 <div className="flex items-center h-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg">
                   <span className="text-sm text-slate-400">
                     Cash is managed at the platform level. Use the platform's cash fund for deposits/withdrawals.
@@ -545,7 +545,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
 
           {/* Row 2: Expense, Interest, Margin Available, Margin Borrowed - only show if manageCash is true */}
           {manageCash && (
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm text-slate-400 mb-1">Expense ($)</label>
                 <input
