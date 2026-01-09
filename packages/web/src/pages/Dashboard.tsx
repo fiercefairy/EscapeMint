@@ -350,24 +350,24 @@ export function Dashboard() {
         </div>
         {/* Controls - Charts, Platform filter, Add, Import */}
         <div className="flex items-center gap-1.5 xs:gap-2 flex-shrink-0">
-          <label className="flex items-center gap-1.5 xs:gap-2 cursor-pointer touch-manipulation">
+          <label className="flex items-center gap-1.5 xs:gap-2 cursor-pointer touch-manipulation self-center">
             <span className="text-[10px] xs:text-[11px] sm:text-sm text-slate-400">Charts</span>
             <button
               type="button"
               role="switch"
               aria-checked={showCharts}
               onClick={() => setShowCharts(!showCharts)}
-              className={`relative inline-flex h-5 xs:h-6 w-9 xs:w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-mint-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${showCharts ? 'bg-mint-600' : 'bg-slate-700'}`}
+              className={`relative h-6 w-11 flex-shrink-0 flex-grow-0 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-mint-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${showCharts ? 'bg-mint-600' : 'bg-slate-700'}`}
             >
               <span
-                className={`pointer-events-none inline-block h-4 xs:h-5 w-4 xs:w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${showCharts ? 'translate-x-4 xs:translate-x-5' : 'translate-x-0'}`}
+                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-lg transition-transform duration-200 ease-in-out ${showCharts ? 'translate-x-5' : 'translate-x-0'}`}
               />
             </button>
           </label>
           <select
             value={filterPlatform}
             onChange={e => handlePlatformChange(e.target.value)}
-            className="px-2 xs:px-2.5 sm:px-3 py-1.5 xs:py-2 text-[10px] xs:text-[11px] sm:text-sm bg-slate-800 border border-slate-700 rounded-lg text-white min-w-[80px] xs:min-w-[100px] sm:min-w-[140px] touch-manipulation min-h-[36px] xs:min-h-[40px] sm:min-h-[44px]"
+            className="px-2 xs:px-2.5 sm:px-3 py-1.5 xs:py-2 text-[10px] xs:text-[11px] sm:text-sm bg-slate-800 border border-slate-700 rounded-lg text-white min-w-[80px] xs:min-w-[100px] sm:min-w-[140px] touch-manipulation min-h-[36px] xs:min-h-[40px] md:min-h-[36px]"
           >
             <option value="all">All Platforms</option>
             {platforms.map(p => (
@@ -376,13 +376,13 @@ export function Dashboard() {
           </select>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-2.5 xs:px-3 sm:px-4 py-1.5 xs:py-2 text-[11px] xs:text-xs sm:text-sm bg-mint-600 text-white rounded-lg hover:bg-mint-700 active:bg-mint-800 transition-colors font-medium whitespace-nowrap touch-manipulation min-h-[36px] xs:min-h-[40px] sm:min-h-[44px]"
+            className="px-2.5 xs:px-3 sm:px-4 py-1.5 xs:py-2 text-[11px] xs:text-xs sm:text-sm bg-mint-600 text-white rounded-lg hover:bg-mint-700 active:bg-mint-800 transition-colors font-medium whitespace-nowrap touch-manipulation min-h-[36px] xs:min-h-[40px] md:min-h-[36px]"
           >
             + Add
           </button>
           <button
             onClick={() => setShowImportModal(true)}
-            className="px-2.5 xs:px-3 sm:px-4 py-1.5 xs:py-2 text-[11px] xs:text-xs sm:text-sm bg-slate-700 text-white rounded-lg hover:bg-slate-600 active:bg-slate-500 transition-colors font-medium touch-manipulation min-h-[36px] xs:min-h-[40px] sm:min-h-[44px]"
+            className="px-2.5 xs:px-3 sm:px-4 py-1.5 xs:py-2 text-[11px] xs:text-xs sm:text-sm bg-slate-700 text-white rounded-lg hover:bg-slate-600 active:bg-slate-500 transition-colors font-medium touch-manipulation min-h-[36px] xs:min-h-[40px] md:min-h-[36px]"
           >
             Import
           </button>
