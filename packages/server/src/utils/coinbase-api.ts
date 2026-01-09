@@ -45,7 +45,16 @@ export const generateJWT = (
   requestMethod: string,
   requestPath: string
 ): string => {
-  const uri = `${requestMethod} api.coinbase.com${requestPath}`
+  // Validate HTTP method to prevent injection
+  const allowedMethods = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
+  const method = requestMethod.toUpperCase()
+  if (!allowedMethods.has(method)) {
+    throw new Error(`Unsupported HTTP method for JWT signing: ${requestMethod}`)
+  }
+
+  // Ensure path starts with /
+  const path = requestPath.startsWith('/') ? requestPath : `/${requestPath}`
+  const uri = `${method} api.coinbase.com${path}`
 
   const pemKey = preparePrivateKey(apiSecret)
 
