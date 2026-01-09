@@ -673,8 +673,8 @@ function computeHistory(funds: FundData[]): DashboardHistory {
     }
 
     // Calculate gains and APY
-    const totalGainUsdForChart = totalValue - totalStartInput
-    const totalGainPct = totalStartInput > 0 ? totalGainUsdForChart / totalStartInput : 0
+    // totalGainUsd was accumulated above and includes both unrealized + realized (full lifetime gain)
+    const totalGainPct = totalStartInput > 0 ? totalGainUsd / totalStartInput : 0
 
     const daysActive = earliestStartDate
       ? Math.max(1, Math.floor((new Date(date).getTime() - new Date(earliestStartDate).getTime()) / (24 * 60 * 60 * 1000)))
@@ -702,7 +702,7 @@ function computeHistory(funds: FundData[]): DashboardHistory {
       totalRealizedGain,
       realizedAPY,
       liquidAPY,
-      totalGainUsd: totalGainUsdForChart,
+      totalGainUsd,
       totalGainPct,
       fundBreakdown
     })

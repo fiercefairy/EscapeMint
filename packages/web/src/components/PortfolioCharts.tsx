@@ -1297,7 +1297,7 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
       </div>
 
       {/* Time Series Charts - Row 1: Key metrics */}
-      <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 gap-1 xs:gap-1.5 sm:gap-2">
+      <div className="grid grid-cols-2 gap-1 xs:gap-1.5 sm:gap-2">
         <APYChart
           data={timeSeries}
           currentRealizedAPY={currentRealizedAPY}
@@ -1308,14 +1308,6 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
           data={timeSeries}
           currentRealized={currentRealizedGains}
           currentLiquid={currentLiquidGain}
-          resize={resize}
-        />
-        <AreaChart
-          data={timeSeries}
-          title="Total Gain (%)"
-          valueKey="totalGainPct"
-          color="#8b5cf6"
-          formatValue={formatPercentSimple}
           resize={resize}
         />
       </div>
