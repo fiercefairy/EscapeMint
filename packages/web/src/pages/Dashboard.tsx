@@ -105,18 +105,75 @@ export function Dashboard() {
     if (!history) return null
     if (filterPlatform === 'all') return history
 
+    // Get fund IDs for the selected platform
+    const platformFundIds = new Set(
+      funds?.filter(f => f.platform === filterPlatform).map(f => f.id) ?? []
+    )
+
     const filteredAllocations = history.currentAllocations.filter(a => a.platform === filterPlatform)
+
+    // Filter time series - fundBreakdown contains per-fund values which we can filter
+    const filteredTimeSeries = history.timeSeries.map(point => {
+      // Filter fundBreakdown to only include funds from selected platform
+      const filteredBreakdown: Record<string, number> = {}
+      let filteredTotalValue = 0
+      let originalTotalValue = 0
+
+      for (const [fundId, value] of Object.entries(point.fundBreakdown)) {
+        originalTotalValue += value
+        if (platformFundIds.has(fundId)) {
+          filteredBreakdown[fundId] = value
+          filteredTotalValue += value
+        }
+      }
+
+      // Calculate scaling ratio for fields we can't filter directly
+      // This is an approximation since we don't have per-fund historical data for all fields
+      const ratio = originalTotalValue > 0 ? filteredTotalValue / originalTotalValue : 0
+
+      return {
+        ...point,
+        fundBreakdown: filteredBreakdown,
+        totalValue: filteredTotalValue,
+        // Scale other values by the ratio (approximation based on value proportion)
+        totalFundSize: point.totalFundSize * ratio,
+        totalCash: point.totalCash * ratio,
+        totalMarginBorrowed: point.totalMarginBorrowed * ratio,
+        totalMarginAccess: point.totalMarginAccess * ratio,
+        totalStartInput: point.totalStartInput * ratio,
+        totalDividends: point.totalDividends * ratio,
+        totalExpenses: point.totalExpenses * ratio,
+        totalCashInterest: point.totalCashInterest * ratio,
+        totalRealizedGain: point.totalRealizedGain * ratio,
+        totalGainUsd: point.totalGainUsd * ratio,
+        // Percentages and APY remain the same (they represent rates, not totals)
+        totalGainPct: point.totalGainPct,
+        realizedAPY: point.realizedAPY,
+        liquidAPY: point.liquidAPY
+      }
+    })
+
+    // Calculate filtered aggregate totals
+    const lastFilteredPoint = filteredTimeSeries[filteredTimeSeries.length - 1]
+    const filteredAggregateTotals = {
+      totalGainUsd: lastFilteredPoint?.totalGainUsd ?? 0,
+      totalRealizedGains: lastFilteredPoint?.totalRealizedGain ?? 0,
+      totalValue: filteredAllocations.reduce((sum, a) => sum + a.value, 0),
+      totalStartInput: lastFilteredPoint?.totalStartInput ?? 0
+    }
+
     return {
-      ...history,
+      timeSeries: filteredTimeSeries,
       currentAllocations: filteredAllocations,
       totals: {
         totalCurrentValue: filteredAllocations.reduce((sum, a) => sum + a.value, 0),
         totalCurrentCash: filteredAllocations.reduce((sum, a) => sum + a.cash, 0),
         totalCurrentMarginAccess: filteredAllocations.reduce((sum, a) => sum + a.marginAccess, 0),
         totalCurrentMarginBorrowed: filteredAllocations.reduce((sum, a) => sum + a.marginBorrowed, 0)
-      }
+      },
+      aggregateTotals: filteredAggregateTotals
     }
-  }, [history, filterPlatform])
+  }, [history, filterPlatform, funds])
 
   // Calculate filtered metrics based on selected platform
   const filteredMetrics = useMemo((): AggregateMetrics | null => {
@@ -207,68 +264,47 @@ export function Dashboard() {
   return (
     <div className="space-y-3 sm:space-y-4">
       {/* Header */}
-      <div className="flex flex-col gap-2 xs:gap-2.5 sm:gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-lg xs:text-xl sm:text-2xl font-bold text-white leading-tight">
-              Dashboard
-              {!connected && <span className="ml-1.5 xs:ml-2 text-red-400 text-[10px] xs:text-xs sm:text-sm font-normal">(Offline)</span>}
-            </h1>
-            <p className="text-[10px] xs:text-[11px] sm:text-sm text-slate-400 mt-0.5 leading-tight">
-              {filteredMetrics?.activeFunds ?? 0} active • {filteredMetrics?.closedFunds ?? 0} closed
-              {filterPlatform !== 'all' && <span className="ml-1 text-mint-400 capitalize">({filterPlatform})</span>}
-            </p>
-          </div>
-          {/* Primary Actions - Always visible */}
-          <div className="flex items-center gap-1.5 xs:gap-2 flex-shrink-0">
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-2.5 xs:px-3 sm:px-4 py-1.5 xs:py-2 text-[11px] xs:text-xs sm:text-sm bg-mint-600 text-white rounded-lg hover:bg-mint-700 active:bg-mint-800 transition-colors font-medium whitespace-nowrap touch-manipulation min-h-[36px] xs:min-h-[40px] sm:min-h-[44px]"
-            >
-              + Add
-            </button>
-            <button
-              onClick={() => setShowImportModal(true)}
-              className="px-2.5 xs:px-3 sm:px-4 py-1.5 xs:py-2 text-[11px] xs:text-xs sm:text-sm bg-slate-700 text-white rounded-lg hover:bg-slate-600 active:bg-slate-500 transition-colors font-medium touch-manipulation min-h-[36px] xs:min-h-[40px] sm:min-h-[44px]"
-            >
-              Import
-            </button>
-          </div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg xs:text-xl sm:text-2xl font-bold text-white leading-tight">
+            Dashboard
+            {!connected && <span className="ml-1.5 xs:ml-2 text-red-400 text-[10px] xs:text-xs sm:text-sm font-normal">(Offline)</span>}
+          </h1>
+          <p className="text-[10px] xs:text-[11px] sm:text-sm text-slate-400 mt-0.5 leading-tight">
+            {filteredMetrics?.activeFunds ?? 0} active • {filteredMetrics?.closedFunds ?? 0} closed
+            {filterPlatform !== 'all' && <span className="ml-1 text-mint-400 capitalize">({filterPlatform})</span>}
+          </p>
         </div>
-        {/* Secondary Controls */}
-        <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 overflow-x-auto scrollbar-hide -mx-2 px-2 sm:mx-0 sm:px-0 sm:overflow-visible pb-1 sm:pb-0">
-          <div className="flex items-center gap-1.5 xs:gap-2 sm:gap-2.5 flex-shrink-0">
-            <button
-              onClick={() => setShowCharts(!showCharts)}
-              className={`px-2 xs:px-2.5 sm:px-3 py-1.5 text-[10px] xs:text-[11px] sm:text-sm rounded-lg touch-manipulation min-h-[32px] xs:min-h-[36px] sm:min-h-[40px] whitespace-nowrap ${showCharts ? 'bg-mint-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 active:bg-slate-600'}`}
-            >
-              Charts
-            </button>
-            <select
-              value={filterPlatform}
-              onChange={e => setFilterPlatform(e.target.value)}
-              className="px-2 xs:px-2.5 sm:px-3 py-1.5 text-[10px] xs:text-[11px] sm:text-sm bg-slate-800 border border-slate-700 rounded-lg text-white min-w-[80px] xs:min-w-[100px] sm:min-w-[140px] touch-manipulation min-h-[32px] xs:min-h-[36px] sm:min-h-[40px]"
-            >
-              <option value="all">All Platforms</option>
-              {platforms.map(p => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex bg-slate-800 rounded-lg p-0.5 ml-auto flex-shrink-0">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`px-2 xs:px-2.5 sm:px-3 py-1.5 text-[10px] xs:text-[11px] sm:text-sm rounded-md touch-manipulation min-h-[28px] xs:min-h-[32px] sm:min-h-[36px] ${viewMode === 'grid' ? 'bg-mint-600 text-white' : 'text-slate-400 hover:text-slate-300 active:text-slate-200'}`}
-            >
-              Grid
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`px-2 xs:px-2.5 sm:px-3 py-1.5 text-[10px] xs:text-[11px] sm:text-sm rounded-md touch-manipulation min-h-[28px] xs:min-h-[32px] sm:min-h-[36px] ${viewMode === 'table' ? 'bg-mint-600 text-white' : 'text-slate-400 hover:text-slate-300 active:text-slate-200'}`}
-            >
-              Table
-            </button>
-          </div>
+        {/* Controls - Charts, Platform filter, Add, Import */}
+        <div className="flex items-center gap-1.5 xs:gap-2 flex-shrink-0">
+          <button
+            onClick={() => setShowCharts(!showCharts)}
+            className={`px-2 xs:px-2.5 sm:px-3 py-1.5 xs:py-2 text-[10px] xs:text-[11px] sm:text-sm rounded-lg touch-manipulation min-h-[36px] xs:min-h-[40px] sm:min-h-[44px] whitespace-nowrap ${showCharts ? 'bg-mint-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 active:bg-slate-600'}`}
+          >
+            Charts
+          </button>
+          <select
+            value={filterPlatform}
+            onChange={e => setFilterPlatform(e.target.value)}
+            className="px-2 xs:px-2.5 sm:px-3 py-1.5 xs:py-2 text-[10px] xs:text-[11px] sm:text-sm bg-slate-800 border border-slate-700 rounded-lg text-white min-w-[80px] xs:min-w-[100px] sm:min-w-[140px] touch-manipulation min-h-[36px] xs:min-h-[40px] sm:min-h-[44px]"
+          >
+            <option value="all">All Platforms</option>
+            {platforms.map(p => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-2.5 xs:px-3 sm:px-4 py-1.5 xs:py-2 text-[11px] xs:text-xs sm:text-sm bg-mint-600 text-white rounded-lg hover:bg-mint-700 active:bg-mint-800 transition-colors font-medium whitespace-nowrap touch-manipulation min-h-[36px] xs:min-h-[40px] sm:min-h-[44px]"
+          >
+            + Add
+          </button>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="px-2.5 xs:px-3 sm:px-4 py-1.5 xs:py-2 text-[11px] xs:text-xs sm:text-sm bg-slate-700 text-white rounded-lg hover:bg-slate-600 active:bg-slate-500 transition-colors font-medium touch-manipulation min-h-[36px] xs:min-h-[40px] sm:min-h-[44px]"
+          >
+            Import
+          </button>
         </div>
       </div>
 
@@ -299,6 +335,24 @@ export function Dashboard() {
               />
             ) : null
           )}
+
+          {/* View Mode Toggle */}
+          <div className="flex justify-end">
+            <div className="flex bg-slate-800 rounded-lg p-0.5">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`px-2 xs:px-2.5 sm:px-3 py-1.5 text-[10px] xs:text-[11px] sm:text-sm rounded-md touch-manipulation min-h-[28px] xs:min-h-[32px] sm:min-h-[36px] ${viewMode === 'grid' ? 'bg-mint-600 text-white' : 'text-slate-400 hover:text-slate-300 active:text-slate-200'}`}
+              >
+                Grid
+              </button>
+              <button
+                onClick={() => setViewMode('table')}
+                className={`px-2 xs:px-2.5 sm:px-3 py-1.5 text-[10px] xs:text-[11px] sm:text-sm rounded-md touch-manipulation min-h-[28px] xs:min-h-[32px] sm:min-h-[36px] ${viewMode === 'table' ? 'bg-mint-600 text-white' : 'text-slate-400 hover:text-slate-300 active:text-slate-200'}`}
+              >
+                Table
+              </button>
+            </div>
+          </div>
 
           {/* Funds List/Grid - shows skeleton while loading */}
           {fundsLoading ? (
