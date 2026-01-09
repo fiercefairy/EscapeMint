@@ -275,9 +275,27 @@ export function Dashboard() {
     const unrealizedGainPct = totalStartInput > 0 ? totalUnrealizedGains / totalStartInput : 0
 
     const avgDaysActive = fundsWithSharesPct.length > 0 ? totalDaysActive / fundsWithSharesPct.length : 1
-    const aggregateLiquidAPY = totalTimeWeightedFundSize > 0 && avgDaysActive > 0
-      ? (totalGainUsd / totalTimeWeightedFundSize) * (365 / avgDaysActive)
-      : 0
+
+    // Calculate APY with fallback for when time-weighted values are 0
+    let aggregateLiquidAPY = 0
+    let aggregateRealizedAPY = weightedRealizedAPY
+
+    if (totalTimeWeightedFundSize > 0 && avgDaysActive > 0) {
+      // Primary calculation using time-weighted fund size
+      aggregateLiquidAPY = (totalGainUsd / totalTimeWeightedFundSize) * (365 / avgDaysActive)
+    } else if (totalStartInput > 0 && avgDaysActive > 0) {
+      // Fallback: use start input as base
+      aggregateLiquidAPY = (totalGainUsd / totalStartInput) * (365 / avgDaysActive)
+    }
+
+    // Fallback for realized APY if weighted calculation yielded 0
+    if (aggregateRealizedAPY === 0 && totalRealizedGains !== 0 && avgDaysActive > 0) {
+      if (totalTimeWeightedFundSize > 0) {
+        aggregateRealizedAPY = (totalRealizedGains / totalTimeWeightedFundSize) * (365 / avgDaysActive)
+      } else if (totalStartInput > 0) {
+        aggregateRealizedAPY = (totalRealizedGains / totalStartInput) * (365 / avgDaysActive)
+      }
+    }
 
     return {
       ...metrics,
@@ -289,7 +307,7 @@ export function Dashboard() {
       totalRealizedGains,
       totalUnrealizedGains,
       unrealizedGainPct,
-      realizedAPY: weightedRealizedAPY,
+      realizedAPY: aggregateRealizedAPY,
       liquidAPY: aggregateLiquidAPY,
       projectedAnnualReturn,
       totalGainUsd,
