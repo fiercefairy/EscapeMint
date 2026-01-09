@@ -253,24 +253,34 @@ pnpm run dev
 ## Screenshots
 
 ### Dashboard
-The main dashboard shows all platforms with aggregate metrics, portfolio charts, and fund cards.
+The main dashboard shows all platforms with aggregate metrics, allocation charts, APY/gain tracking, fund size history, and cash vs asset breakdown.
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
+### Dashboard - Platform Filter
+Filter the dashboard to view metrics for a single platform with platform-specific allocation and performance charts.
+
+![Dashboard Platform Filter](docs/screenshots/dashboard-platform.png)
+
 ### Platform View
-View all funds within a platform with performance summaries.
+View all funds within a platform with P&L summary, dividends, expenses, and detailed fund table.
 
 ![Platform View](docs/screenshots/platform.png)
 
-### Fund Detail
-Detailed fund view with value/allocation charts, recommendations, and entry history.
+### Fund - Accumulate Mode
+Track funds in accumulate mode with profit extraction. Shows value & allocation over time and captured profit chart.
 
-![Fund Detail](docs/screenshots/fund-detail.png)
+![Fund Accumulate](docs/screenshots/fund-accumulate.png)
 
-### Trading History
-Track DCA cycles with full trade history and performance metrics.
+### Fund - Liquidate Mode
+Track funds in liquidate mode with dividend tracking and extracted profits visualization.
 
-![Trading History](docs/screenshots/fund-tqqq.png)
+![Fund Liquidate](docs/screenshots/fund-liquidate.png)
+
+### Fund - Cash Tracking
+Track cash funds with interest earned, expenses, and balance over time with APY calculation.
+
+![Fund Cash](docs/screenshots/fund-cash.png)
 
 ## Documentation
 
