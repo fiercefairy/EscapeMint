@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { FundCard } from '../components/FundCard'
 import { AggregatePanel } from '../components/AggregatePanel'
@@ -59,9 +59,17 @@ export function Dashboard() {
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
   const [filterPlatform, setFilterPlatform] = useState<string>('all')
-  const [showCharts, setShowCharts] = useState(true)
+  const [showCharts, setShowCharts] = useState(() => {
+    const saved = localStorage.getItem('dashboard-showCharts')
+    return saved !== null ? saved === 'true' : true
+  })
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
+
+  // Persist showCharts preference to localStorage
+  useEffect(() => {
+    localStorage.setItem('dashboard-showCharts', String(showCharts))
+  }, [showCharts])
 
   // Get unique platforms
   const platforms = useMemo(() => {
@@ -277,12 +285,20 @@ export function Dashboard() {
         </div>
         {/* Controls - Charts, Platform filter, Add, Import */}
         <div className="flex items-center gap-1.5 xs:gap-2 flex-shrink-0">
-          <button
-            onClick={() => setShowCharts(!showCharts)}
-            className={`px-2 xs:px-2.5 sm:px-3 py-1.5 xs:py-2 text-[10px] xs:text-[11px] sm:text-sm rounded-lg touch-manipulation min-h-[36px] xs:min-h-[40px] sm:min-h-[44px] whitespace-nowrap ${showCharts ? 'bg-mint-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 active:bg-slate-600'}`}
-          >
-            Charts
-          </button>
+          <label className="flex items-center gap-1.5 xs:gap-2 cursor-pointer touch-manipulation">
+            <span className="text-[10px] xs:text-[11px] sm:text-sm text-slate-400">Charts</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showCharts}
+              onClick={() => setShowCharts(!showCharts)}
+              className={`relative inline-flex h-5 xs:h-6 w-9 xs:w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-mint-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${showCharts ? 'bg-mint-600' : 'bg-slate-700'}`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 xs:h-5 w-4 xs:w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${showCharts ? 'translate-x-4 xs:translate-x-5' : 'translate-x-0'}`}
+              />
+            </button>
+          </label>
           <select
             value={filterPlatform}
             onChange={e => setFilterPlatform(e.target.value)}
