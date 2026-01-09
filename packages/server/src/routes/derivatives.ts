@@ -338,15 +338,9 @@ derivativesRouter.post('/sync/:fundId', async (req: Request, res: Response) => {
     return
   }
 
-  // TODO: Implement sync logic
-  // 1. Read fund config to get productId
-  // 2. Fetch fills and funding from API
-  // 3. Process into entries using derivatives-calculations
-  // 4. Merge with existing entries
-  // 5. Write back to fund
-
-  res.json({
-    message: 'Sync not yet implemented',
+  // Sync functionality is not yet implemented
+  res.status(501).json({
+    error: 'Derivatives sync is not yet implemented',
     fundId,
     keyName
   })

@@ -16,9 +16,9 @@ export const testDataRouter: ReturnType<typeof Router> = Router()
 const DATA_DIR = process.env['DATA_DIR'] ?? './data'
 const FUNDS_DIR = join(DATA_DIR, 'funds')
 
-// Test platforms: 'test' or any platform ending in 'test' (with or without dash)
+// Test platforms: exactly 'test' or ending with '-test' (e.g., 'my-test')
 const isTestPlatform = (platform: string) =>
-  platform === 'test' || platform.endsWith('test')
+  platform === 'test' || platform.endsWith('-test')
 
 /**
  * GET /test-data/status - Check if test data can be generated

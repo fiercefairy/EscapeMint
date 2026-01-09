@@ -1268,8 +1268,6 @@ const createNewPage = async (browser: Browser): Promise<Page> => {
  * Expands it if needed and extracts all data.
  * @param existingIds - Set of existing transaction IDs to skip expanding for performance
  */
-// Track slow operations for diagnostics
-let scrapeCallCount = 0
 
 /**
  * Extract all data from an activity item in a single browser evaluate call.
@@ -1281,8 +1279,8 @@ const scrapeActivityItem = async (
   index: number,
   _existingIds?: Set<string>  // Unused - kept for API compatibility
 ): Promise<ScrapedTransaction | null> => {
-  scrapeCallCount++
-  const shouldLog = scrapeCallCount % 100 === 0
+  // Log timing every 100 items (use index which is 0-based)
+  const shouldLog = (index + 1) % 100 === 0
   const timings: Record<string, number> = {}
   const t0 = Date.now()
 
@@ -1389,7 +1387,7 @@ const scrapeActivityItem = async (
   if (shouldLog && Object.keys(timings).length > 0) {
     const total = Object.values(timings).reduce((a, b) => a + b, 0)
     const breakdown = Object.entries(timings).map(([k, v]) => `${k}=${v}ms`).join(', ')
-    console.log(`[Robinhood] Item #${scrapeCallCount} timing (total=${total}ms): ${breakdown}`)
+    console.log(`[Robinhood] Item #${index + 1} timing (total=${total}ms): ${breakdown}`)
   }
 
   return result

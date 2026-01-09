@@ -46,6 +46,9 @@ export const generateJWT = (
   requestPath: string
 ): string => {
   // Validate HTTP method to prevent injection
+  // Note: POST/PUT/DELETE/PATCH are included because Coinbase uses POST for
+  // some read-only queries (e.g., portfolio balance snapshots). This client
+  // only calls documented read-only endpoints regardless of HTTP method.
   const allowedMethods = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
   const method = requestMethod.toUpperCase()
   if (!allowedMethods.has(method)) {

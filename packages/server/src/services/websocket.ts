@@ -80,9 +80,12 @@ export function initWebSocket(server: Server): WebSocketServer {
 }
 
 function parseMessage(data: Buffer): ClientMessage | null {
-  const str = data.toString()
-  const parsed = JSON.parse(str) as ClientMessage
-  return parsed
+  try {
+    const str = data.toString()
+    return JSON.parse(str) as ClientMessage
+  } catch {
+    return null
+  }
 }
 
 function send(ws: WebSocket, message: ServerMessage): void {
