@@ -1078,14 +1078,14 @@ export function FundDetail() {
                 {/* Audited Badge - clickable to toggle */}
                 <button
                   onClick={toggleAudited}
-                  className={`px-2 py-0.5 text-[10px] font-medium rounded inline-flex items-center gap-1 transition-colors ${
+                  className={`px-2 py-0.5 text-[10px] font-medium rounded inline-flex items-center gap-1 leading-none h-auto transition-colors ${
                     fund.config.audited
                       ? 'bg-green-900/50 text-green-300 border border-green-700 hover:bg-green-900/70'
                       : 'bg-slate-700/50 text-slate-500 border border-slate-600 hover:bg-slate-700 hover:text-slate-400'
                   }`}
                   title={fund.config.audited ? `Audited on ${fund.config.audited} - click to clear` : 'Click to mark as audited'}
                 >
-                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <svg className="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>
                   {fund.config.audited ? 'Audited' : 'Audit'}
