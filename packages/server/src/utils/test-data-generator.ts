@@ -51,14 +51,14 @@ function createCashFundConfig(startDate: string): SubFundConfig {
     fund_type: 'cash',
     status: 'active',
     fund_size_usd: 0,
-    target_apy: 0.04,
+    target_apy: 0.01,
     interval_days: 7,
     input_min_usd: 0,
     input_mid_usd: 0,
     input_max_usd: 0,
     max_at_pct: 0,
     min_profit_usd: 0,
-    cash_apy: 0.04,
+    cash_apy: 0.01,
     margin_apr: 0,
     margin_access_usd: 0,
     accumulate: true,
@@ -96,7 +96,7 @@ function createTradingFundConfig(
 }
 
 /**
- * Generate entries for a cash fund
+ * Generate entries for a cash fund with monthly 1% APY interest
  */
 function generateCashFundEntries(
   initialDeposit: number,
@@ -116,6 +116,35 @@ function generateCashFundEntries(
     amount: initialDeposit,
     fund_size: initialDeposit
   })
+
+  // Monthly interest at 1% APY
+  const monthlyRate = 0.01 / 12
+  let currentCash = initialDeposit
+  let lastMonth = startDate.substring(0, 7) // YYYY-MM
+
+  // Walk through all weeks and add interest at month boundaries
+  for (let i = 1; i < priceData.length; i++) {
+    const point = priceData[i]
+    if (!point) continue
+
+    const currentMonth = point.date.substring(0, 7)
+
+    // When month changes, credit interest for the previous month
+    if (currentMonth !== lastMonth) {
+      const interest = currentCash * monthlyRate
+      currentCash += interest
+
+      entries.push({
+        date: point.date,
+        value: currentCash - interest, // Value before interest
+        cash: currentCash,
+        action: 'HOLD',
+        cash_interest: interest
+      })
+
+      lastMonth = currentMonth
+    }
+  }
 
   return entries
 }
