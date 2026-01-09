@@ -152,51 +152,107 @@ function createTradingFundConfig(
 
 /**
  * Generate entries for a cash fund with monthly 1% APY interest
+ * and WITHDRAW/DEPOSIT entries from trading fund movements
  */
 function generateCashFundEntries(
   initialDeposit: number,
-  priceData: PriceDataPoint[]
+  priceData: PriceDataPoint[],
+  cashTracker: CashTracker
 ): FundEntry[] {
   const entries: FundEntry[] = []
   const startDate = priceData[0]?.date
 
   if (!startDate) return entries
 
+  // Get all movements sorted by date
+  const movements = [...cashTracker.movements].sort((a, b) => a.date.localeCompare(b.date))
+
+  // Track fund_size (initial deposit + dividends - withdrawn profits)
+  // For liquidate mode funds, we don't increase fund_size on SELL deposits
+  let fundSize = initialDeposit
+  let currentCash = initialDeposit
+  let lastMonth = startDate.substring(0, 7)
+  const monthlyRate = 0.01 / 12
+  let movementIndex = 0
+
   // Initial deposit
   entries.push({
     date: startDate,
     value: 0,
-    cash: initialDeposit,
+    cash: currentCash,
     action: 'DEPOSIT',
     amount: initialDeposit,
-    fund_size: initialDeposit
+    fund_size: fundSize
   })
 
-  // Monthly interest at 1% APY
-  const monthlyRate = 0.01 / 12
-  let currentCash = initialDeposit
-  let lastMonth = startDate.substring(0, 7) // YYYY-MM
-
-  // Walk through all weeks and add interest at month boundaries
+  // Walk through all price points to handle interest and movements
   for (let i = 1; i < priceData.length; i++) {
     const point = priceData[i]
     if (!point) continue
 
-    const currentMonth = point.date.substring(0, 7)
+    // Process all movements that occurred before or on this date
+    // Use HOLD actions with signed amounts: negative = cash out, positive = cash in
+    while (movementIndex < movements.length && movements[movementIndex]!.date <= point.date) {
+      const movement = movements[movementIndex]!
+      const valueBeforeMove = currentCash
 
-    // When month changes, credit interest for the previous month
+      if (movement.type === 'withdraw') {
+        // Cash leaving to buy assets (negative amount)
+        currentCash -= movement.amount
+        entries.push({
+          date: movement.date,
+          value: valueBeforeMove,
+          cash: currentCash,
+          action: 'HOLD',
+          amount: -movement.amount,
+          notes: `${movement.source} BUY`
+        })
+      } else {
+        // Cash coming back from selling assets or dividends (positive amount)
+        currentCash += movement.amount
+        const isDividend = movement.source.endsWith('-dividend')
+        if (isDividend) {
+          // Dividends increase fund_size (reinvested)
+          fundSize += movement.amount
+          entries.push({
+            date: movement.date,
+            value: valueBeforeMove,
+            cash: currentCash,
+            action: 'HOLD',
+            amount: movement.amount,
+            fund_size: fundSize,
+            notes: movement.source
+          })
+        } else {
+          // SELL proceeds - no fund_size change
+          entries.push({
+            date: movement.date,
+            value: valueBeforeMove,
+            cash: currentCash,
+            action: 'HOLD',
+            amount: movement.amount,
+            notes: `${movement.source} SELL`
+          })
+        }
+      }
+      movementIndex++
+    }
+
+    // Check for month boundary to credit interest
+    const currentMonth = point.date.substring(0, 7)
     if (currentMonth !== lastMonth) {
       const interest = currentCash * monthlyRate
-      currentCash += interest
-
-      entries.push({
-        date: point.date,
-        value: currentCash - interest, // Value before interest
-        cash: currentCash,
-        action: 'HOLD',
-        cash_interest: interest
-      })
-
+      if (interest > 0.01) {
+        const valueBeforeInterest = currentCash
+        currentCash += interest
+        entries.push({
+          date: point.date,
+          value: valueBeforeInterest,
+          cash: currentCash,
+          action: 'HOLD',
+          cash_interest: interest
+        })
+      }
       lastMonth = currentMonth
     }
   }
@@ -205,36 +261,217 @@ function generateCashFundEntries(
 }
 
 /**
+ * Cash movement record for generating cash fund entries
+ */
+interface CashMovement {
+  date: string
+  amount: number
+  type: 'withdraw' | 'deposit'
+  source: string // Which fund caused this movement (e.g., 'btc', 'tqqq')
+}
+
+/**
  * Shared cash tracker for a platform
  * Allows multiple trading funds to draw from the same cash pool
+ * Records all movements for generating cash fund entries
  */
 interface CashTracker {
   balance: number
-  withdraw: (amount: number) => number // Returns amount actually withdrawn
-  deposit: (amount: number) => void // Add funds back to cash pool
+  movements: CashMovement[]
+  withdraw: (amount: number, date: string, source: string) => number
+  deposit: (amount: number, date: string, source: string) => void
 }
 
 function createCashTracker(initialBalance: number): CashTracker {
   let balance = initialBalance
+  const movements: CashMovement[] = []
   return {
     get balance() {
       return balance
     },
-    withdraw(amount: number): number {
+    get movements() {
+      return movements
+    },
+    withdraw(amount: number, date: string, source: string): number {
       const available = Math.min(amount, balance)
-      balance -= available
+      if (available > 0) {
+        balance -= available
+        movements.push({ date, amount: available, type: 'withdraw', source })
+      }
       return available
     },
-    deposit(amount: number): void {
-      balance += amount
+    deposit(amount: number, date: string, source: string): void {
+      if (amount > 0) {
+        balance += amount
+        movements.push({ date, amount, type: 'deposit', source })
+      }
     }
   }
 }
 
 /**
- * Generate entries for a trading fund using the engine's recommendation system.
- * Uses cashTracker to draw from and return to platform's shared cash pool.
- * Includes dividend payments based on shares held at ex-dividend dates.
+ * Fund state for interleaved generation
+ */
+interface TradingFundState {
+  config: SubFundConfig
+  ticker: string
+  dividendPayments: DividendPayment[]
+  priceData: PriceDataPoint[]
+  entries: FundEntry[]
+  trades: Trade[]
+  dividends: Dividend[]
+  totalShares: number
+  previousDate: string
+}
+
+/**
+ * Process a single week for one trading fund
+ * Returns true if an entry was created
+ */
+function processWeekForFund(
+  fundState: TradingFundState,
+  weekIndex: number,
+  cashTracker: CashTracker
+): boolean {
+  const point = fundState.priceData[weekIndex]
+  if (!point) return false
+
+  const price = point.close
+  const currentValue = fundState.totalShares * price
+
+  // Check for dividends that occurred since the last price point
+  if (fundState.previousDate && fundState.totalShares > 0) {
+    const periodDividends = getDividendsInRange(
+      fundState.dividendPayments,
+      fundState.previousDate,
+      point.date
+    )
+    for (const div of periodDividends) {
+      const dividendAmount = fundState.totalShares * div.amount
+      // Add dividend to cash tracker (simulates receiving dividend in brokerage cash)
+      cashTracker.deposit(dividendAmount, div.exDate, `${fundState.ticker}-dividend`)
+      // Track dividend for engine calculations
+      fundState.dividends.push({ date: div.exDate, amount_usd: dividendAmount })
+
+      fundState.entries.push({
+        date: div.exDate,
+        value: currentValue,
+        action: 'HOLD',
+        dividend: dividendAmount,
+        price: price
+      })
+    }
+  }
+
+  // Compute fund state using the engine
+  const state = computeFundState(
+    fundState.config,
+    fundState.trades,
+    [], // cashflows
+    fundState.dividends,
+    [], // expenses
+    currentValue,
+    point.date
+  )
+
+  // Override cash_available_usd with our shared cash tracker
+  // This allows multiple funds to share the same cash pool
+  state.cash_available_usd = cashTracker.balance
+
+  // Get recommendation from the engine
+  const recommendation = computeRecommendation(fundState.config, state)
+
+  if (!recommendation) {
+    // No recommendation (shouldn't happen for trading funds)
+    fundState.entries.push({
+      date: point.date,
+      value: currentValue,
+      action: 'HOLD',
+      price: price,
+      ...(weekIndex === 0 ? { fund_size: fundState.config.fund_size_usd } : {})
+    })
+  } else if (recommendation.action === 'SELL') {
+    // SELL: liquidate mode sells entire position, accumulate sells DCA amount
+    const sellAmount = recommendation.amount
+    const sharesToSell = sellAmount / price
+    const actualSharesToSell = Math.min(sharesToSell, fundState.totalShares)
+    const actualSellAmount = actualSharesToSell * price
+
+    if (actualSharesToSell > 0) {
+      fundState.totalShares -= actualSharesToSell
+      // Return proceeds to cash tracker
+      cashTracker.deposit(actualSellAmount, point.date, fundState.ticker)
+      // Track trade for engine
+      fundState.trades.push({
+        date: point.date,
+        amount_usd: actualSellAmount,
+        type: 'sell',
+        shares: actualSharesToSell,
+        value: currentValue
+      })
+
+      fundState.entries.push({
+        date: point.date,
+        value: currentValue,
+        action: 'SELL',
+        amount: actualSellAmount,
+        shares: actualSharesToSell,
+        price: price
+      })
+    }
+  } else if (recommendation.action === 'BUY') {
+    // BUY: limited by available cash from shared tracker
+    const buyAmount = Math.min(recommendation.amount, cashTracker.balance)
+    const actualBuyAmount = cashTracker.withdraw(buyAmount, point.date, fundState.ticker)
+
+    if (actualBuyAmount > 0) {
+      const sharesToBuy = actualBuyAmount / price
+      fundState.totalShares += sharesToBuy
+      // Track trade for engine
+      fundState.trades.push({
+        date: point.date,
+        amount_usd: actualBuyAmount,
+        type: 'buy',
+        shares: sharesToBuy
+      })
+
+      fundState.entries.push({
+        date: point.date,
+        value: weekIndex === 0 ? 0 : currentValue,
+        action: 'BUY',
+        amount: actualBuyAmount,
+        shares: sharesToBuy,
+        price: price,
+        ...(weekIndex === 0 ? { fund_size: fundState.config.fund_size_usd } : {})
+      })
+    } else {
+      // No cash available - HOLD
+      fundState.entries.push({
+        date: point.date,
+        value: currentValue,
+        action: 'HOLD',
+        price: price,
+        ...(weekIndex === 0 ? { fund_size: fundState.config.fund_size_usd } : {})
+      })
+    }
+  } else {
+    // HOLD
+    fundState.entries.push({
+      date: point.date,
+      value: currentValue,
+      action: 'HOLD',
+      price: price,
+      ...(weekIndex === 0 ? { fund_size: fundState.config.fund_size_usd } : {})
+    })
+  }
+
+  fundState.previousDate = point.date
+  return true
+}
+
+/**
+ * Generate entries for multiple trading funds together, week by week.
+ * This ensures funds properly share the same cash pool, preventing negative balances.
  *
  * The recommendation system determines:
  * - BUY: when below target, limited by available cash
@@ -243,161 +480,54 @@ function createCashTracker(initialBalance: number): CashTracker {
  *   - Accumulate mode (accumulate=true): sell only DCA amount
  * - HOLD: when no cash available for buying
  */
-function generateTradingFundEntries(
-  config: SubFundConfig,
-  priceData: PriceDataPoint[],
-  cashTracker: CashTracker,
-  dividendPayments: DividendPayment[] = []
-): FundEntry[] {
-  const entries: FundEntry[] = []
+function generateInterleavedTradingFundEntries(
+  funds: Array<{
+    config: SubFundConfig
+    priceData: PriceDataPoint[]
+    ticker: string
+    dividendPayments?: DividendPayment[]
+  }>,
+  cashTracker: CashTracker
+): Map<string, FundEntry[]> {
+  // Initialize state for each fund
+  const fundStates: TradingFundState[] = funds.map(f => ({
+    config: f.config,
+    ticker: f.ticker,
+    dividendPayments: f.dividendPayments ?? [],
+    priceData: f.priceData,
+    entries: [],
+    trades: [],
+    dividends: [],
+    totalShares: 0,
+    previousDate: ''
+  }))
 
-  if (priceData.length === 0) return entries
+  // Find the maximum number of weeks across all funds
+  const maxWeeks = Math.max(...fundStates.map(f => f.priceData.length))
 
-  // Track position state
-  let totalShares = 0
-  let previousDate = ''
-
-  // Build up trade and dividend history for the engine
-  const trades: Trade[] = []
-  const dividends: Dividend[] = []
-
-  for (let i = 0; i < priceData.length; i++) {
-    const point = priceData[i]
-    if (!point) continue
-
-    const price = point.close
-    const currentValue = totalShares * price
-
-    // Check for dividends that occurred since the last price point
-    if (previousDate && totalShares > 0) {
-      const periodDividends = getDividendsInRange(dividendPayments, previousDate, point.date)
-      for (const div of periodDividends) {
-        const dividendAmount = totalShares * div.amount
-        // Add dividend to cash tracker (simulates receiving dividend in brokerage cash)
-        cashTracker.deposit(dividendAmount)
-        // Track dividend for engine calculations
-        dividends.push({ date: div.exDate, amount_usd: dividendAmount })
-
-        entries.push({
-          date: div.exDate,
-          value: currentValue,
-          action: 'HOLD',
-          dividend: dividendAmount,
-          price: price
-        })
+  // Process each week for all funds together
+  for (let weekIndex = 0; weekIndex < maxWeeks; weekIndex++) {
+    for (const fundState of fundStates) {
+      if (weekIndex < fundState.priceData.length) {
+        processWeekForFund(fundState, weekIndex, cashTracker)
       }
     }
-
-    // Compute fund state using the engine
-    const state = computeFundState(
-      config,
-      trades,
-      [], // cashflows
-      dividends,
-      [], // expenses
-      currentValue,
-      point.date
-    )
-
-    // Override cash_available_usd with our shared cash tracker
-    // This allows multiple funds to share the same cash pool
-    state.cash_available_usd = cashTracker.balance
-
-    // Get recommendation from the engine
-    const recommendation = computeRecommendation(config, state)
-
-    if (!recommendation) {
-      // No recommendation (shouldn't happen for trading funds)
-      entries.push({
-        date: point.date,
-        value: currentValue,
-        action: 'HOLD',
-        price: price,
-        ...(i === 0 ? { fund_size: config.fund_size_usd } : {})
-      })
-    } else if (recommendation.action === 'SELL') {
-      // SELL: liquidate mode sells entire position, accumulate sells DCA amount
-      const sellAmount = recommendation.amount
-      const sharesToSell = sellAmount / price
-      const actualSharesToSell = Math.min(sharesToSell, totalShares)
-      const actualSellAmount = actualSharesToSell * price
-
-      if (actualSharesToSell > 0) {
-        totalShares -= actualSharesToSell
-        // Return proceeds to cash tracker
-        cashTracker.deposit(actualSellAmount)
-        // Track trade for engine
-        trades.push({
-          date: point.date,
-          amount_usd: actualSellAmount,
-          type: 'sell',
-          shares: actualSharesToSell,
-          value: currentValue
-        })
-
-        entries.push({
-          date: point.date,
-          value: currentValue,
-          action: 'SELL',
-          amount: actualSellAmount,
-          shares: actualSharesToSell,
-          price: price
-        })
-      }
-    } else if (recommendation.action === 'BUY') {
-      // BUY: limited by available cash from shared tracker
-      const buyAmount = Math.min(recommendation.amount, cashTracker.balance)
-      const actualBuyAmount = cashTracker.withdraw(buyAmount)
-
-      if (actualBuyAmount > 0) {
-        const sharesToBuy = actualBuyAmount / price
-        totalShares += sharesToBuy
-        // Track trade for engine
-        trades.push({
-          date: point.date,
-          amount_usd: actualBuyAmount,
-          type: 'buy',
-          shares: sharesToBuy
-        })
-
-        entries.push({
-          date: point.date,
-          value: i === 0 ? 0 : currentValue,
-          action: 'BUY',
-          amount: actualBuyAmount,
-          shares: sharesToBuy,
-          price: price,
-          ...(i === 0 ? { fund_size: config.fund_size_usd } : {})
-        })
-      } else {
-        // No cash available - HOLD
-        entries.push({
-          date: point.date,
-          value: currentValue,
-          action: 'HOLD',
-          price: price,
-          ...(i === 0 ? { fund_size: config.fund_size_usd } : {})
-        })
-      }
-    } else {
-      // HOLD
-      entries.push({
-        date: point.date,
-        value: currentValue,
-        action: 'HOLD',
-        price: price,
-        ...(i === 0 ? { fund_size: config.fund_size_usd } : {})
-      })
-    }
-
-    previousDate = point.date
   }
 
-  return entries
+  // Return entries keyed by ticker
+  const result = new Map<string, FundEntry[]>()
+  for (const fundState of fundStates) {
+    result.set(fundState.ticker, fundState.entries)
+  }
+  return result
 }
 
 /**
  * Generate all test funds
+ *
+ * Order matters:
+ * 1. Generate trading fund entries first (populates cash tracker with movements)
+ * 2. Generate cash fund entries after (reflects all WITHDRAW/DEPOSIT from trading)
  */
 export function generateTestFunds(options: GeneratorOptions = {}): FundData[] {
   const { initialFundSize = 10000 } = options
@@ -414,75 +544,97 @@ export function generateTestFunds(options: GeneratorOptions = {}): FundData[] {
     throw new Error('No price data available')
   }
 
-  const funds: FundData[] = []
-
   // Create cash trackers for each platform
-  // These track the available cash as trading funds draw from them
+  // These track the available cash and record all movements
   const coinbaseCashTracker = createCashTracker(initialFundSize)
   const robinhoodCashTracker = createCashTracker(initialFundSize * 2)
 
-  // Generate coinbasetest-cash (no dash in platform name due to filename parsing)
+  // === STEP 1: Generate trading fund entries (populates cash tracker movements) ===
+
+  // coinbasetest-btc (accumulate mode) - single fund, doesn't need interleaving
+  const btcConfig = createTradingFundConfig('crypto', initialFundSize, startDate)
+  const coinbaseEntries = generateInterleavedTradingFundEntries(
+    [{ config: btcConfig, priceData: btcPrices, ticker: 'btc' }],
+    coinbaseCashTracker
+  )
+  const btcEntries = coinbaseEntries.get('btc') ?? []
+
+  // robinhoodtest funds (liquidate mode) - interleaved to share cash properly
+  const tqqqConfig = createTradingFundConfig('stock', initialFundSize, startDate)
+  tqqqConfig.accumulate = false
+
+  const spxlConfig = createTradingFundConfig('stock', initialFundSize, startDate)
+  spxlConfig.accumulate = false
+
+  // Generate TQQQ and SPXL together, week by week, so they properly share cash
+  const robinhoodEntries = generateInterleavedTradingFundEntries(
+    [
+      { config: tqqqConfig, priceData: tqqqPrices, ticker: 'tqqq', dividendPayments: TQQQ_DIVIDENDS },
+      { config: spxlConfig, priceData: spxlPrices, ticker: 'spxl', dividendPayments: SPXL_DIVIDENDS }
+    ],
+    robinhoodCashTracker
+  )
+  const tqqqEntries = robinhoodEntries.get('tqqq') ?? []
+  const spxlEntries = robinhoodEntries.get('spxl') ?? []
+
+  // === STEP 2: Generate cash fund entries (using recorded movements) ===
+
+  const coinbaseCashEntries = generateCashFundEntries(
+    initialFundSize,
+    btcPrices,
+    coinbaseCashTracker
+  )
+
+  const robinhoodCashEntries = generateCashFundEntries(
+    initialFundSize * 2,
+    tqqqPrices,
+    robinhoodCashTracker
+  )
+
+  // === STEP 3: Assemble funds array ===
+
+  const funds: FundData[] = []
+
+  // coinbasetest platform
   funds.push({
     id: 'coinbasetest-cash',
     platform: 'coinbasetest',
     ticker: 'cash',
     config: createCashFundConfig(startDate),
-    entries: generateCashFundEntries(initialFundSize, btcPrices)
+    entries: coinbaseCashEntries
   })
 
-  // Generate coinbasetest-btc (accumulate mode)
-  const btcConfig = createTradingFundConfig('crypto', initialFundSize, startDate)
   funds.push({
     id: 'coinbasetest-btc',
     platform: 'coinbasetest',
     ticker: 'btc',
     config: btcConfig,
-    entries: generateTradingFundEntries(
-      btcConfig,
-      btcPrices,
-      coinbaseCashTracker
-    )
+    entries: btcEntries
   })
 
-  // Generate robinhoodtest-cash (larger to support both funds)
+  // robinhoodtest platform
   funds.push({
     id: 'robinhoodtest-cash',
     platform: 'robinhoodtest',
     ticker: 'cash',
     config: createCashFundConfig(startDate),
-    entries: generateCashFundEntries(initialFundSize * 2, tqqqPrices)
+    entries: robinhoodCashEntries
   })
 
-  // Generate robinhoodtest-tqqq (liquidate mode)
-  const tqqqConfig = createTradingFundConfig('stock', initialFundSize, startDate)
-  tqqqConfig.accumulate = false
   funds.push({
     id: 'robinhoodtest-tqqq',
     platform: 'robinhoodtest',
     ticker: 'tqqq',
     config: tqqqConfig,
-    entries: generateTradingFundEntries(
-      tqqqConfig,
-      tqqqPrices,
-      robinhoodCashTracker,
-      TQQQ_DIVIDENDS
-    )
+    entries: tqqqEntries
   })
 
-  // Generate robinhoodtest-spxl (liquidate mode)
-  const spxlConfig = createTradingFundConfig('stock', initialFundSize, startDate)
-  spxlConfig.accumulate = false
   funds.push({
     id: 'robinhoodtest-spxl',
     platform: 'robinhoodtest',
     ticker: 'spxl',
     config: spxlConfig,
-    entries: generateTradingFundEntries(
-      spxlConfig,
-      spxlPrices,
-      robinhoodCashTracker,
-      SPXL_DIVIDENDS
-    )
+    entries: spxlEntries
   })
 
   return funds
