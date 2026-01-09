@@ -133,58 +133,72 @@ export function Dashboard() {
     const filteredAllocations = history.currentAllocations.filter(a => a.platform === filterPlatform)
 
     // Filter time series - fundBreakdown contains per-fund values which we can filter
-    const firstDate = history.timeSeries[0]?.date ? new Date(history.timeSeries[0].date) : null
+    // First pass: filter and scale values, excluding points with no platform data
+    const rawFilteredTimeSeries = history.timeSeries
+      .map(point => {
+        // Filter fundBreakdown to only include funds from selected platform
+        const filteredBreakdown: Record<string, number> = {}
+        let filteredTotalValue = 0
 
-    const filteredTimeSeries = history.timeSeries.map(point => {
-      // Filter fundBreakdown to only include funds from selected platform
-      const filteredBreakdown: Record<string, number> = {}
-      let filteredTotalValue = 0
-
-      for (const [fundId, value] of Object.entries(point.fundBreakdown)) {
-        if (platformFundIds.has(fundId)) {
-          filteredBreakdown[fundId] = value
-          filteredTotalValue += value
+        for (const [fundId, value] of Object.entries(point.fundBreakdown)) {
+          if (platformFundIds.has(fundId)) {
+            filteredBreakdown[fundId] = value
+            filteredTotalValue += value
+          }
         }
-      }
 
-      // Calculate scaling ratio using server's totalValue as base
-      // This avoids issues with negative fund values skewing the ratio
-      // Clamp ratio to [0, 1] to prevent over-scaling when platform value exceeds total
-      const rawRatio = point.totalValue > 0 ? filteredTotalValue / point.totalValue : 0
-      const ratio = Math.max(0, Math.min(1, rawRatio))
+        // Skip points where the platform has no data
+        if (Object.keys(filteredBreakdown).length === 0) {
+          return null
+        }
 
-      // Scale monetary values by ratio
-      const scaledStartInput = point.totalStartInput * ratio
-      const scaledRealizedGain = point.totalRealizedGain * ratio
-      const scaledGainUsd = point.totalGainUsd * ratio
+        // Calculate scaling ratio using server's totalValue as base
+        const rawRatio = point.totalValue > 0 ? filteredTotalValue / point.totalValue : 0
+        const ratio = Math.max(0, Math.min(1, rawRatio))
 
-      // Recalculate APY for filtered data
-      // APY = (gain / startInput) * (365 / daysElapsed)
+        // Scale monetary values by ratio
+        const scaledStartInput = point.totalStartInput * ratio
+        const scaledRealizedGain = point.totalRealizedGain * ratio
+        const scaledGainUsd = point.totalGainUsd * ratio
+
+        return {
+          ...point,
+          fundBreakdown: filteredBreakdown,
+          totalValue: filteredTotalValue,
+          totalFundSize: point.totalFundSize * ratio,
+          totalCash: point.totalCash * ratio,
+          totalMarginBorrowed: point.totalMarginBorrowed * ratio,
+          totalMarginAccess: point.totalMarginAccess * ratio,
+          totalStartInput: scaledStartInput,
+          totalDividends: point.totalDividends * ratio,
+          totalExpenses: point.totalExpenses * ratio,
+          totalCashInterest: point.totalCashInterest * ratio,
+          totalRealizedGain: scaledRealizedGain,
+          totalGainUsd: scaledGainUsd,
+          totalGainPct: scaledStartInput > 0 ? scaledGainUsd / scaledStartInput : 0,
+          // APY will be calculated in second pass
+          realizedAPY: 0,
+          liquidAPY: 0
+        }
+      })
+      .filter((point): point is NonNullable<typeof point> => point !== null)
+
+    // Second pass: calculate APY using the filtered series' first date
+    const firstFilteredDate = rawFilteredTimeSeries[0]?.date ? new Date(rawFilteredTimeSeries[0].date) : null
+
+    const filteredTimeSeries = rawFilteredTimeSeries.map(point => {
       const pointDate = new Date(point.date)
-      const daysElapsed = firstDate ? Math.max(1, (pointDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)) : 1
-      const realizedAPY = scaledStartInput > 0 ? (scaledRealizedGain / scaledStartInput) * (365 / daysElapsed) : 0
-      const liquidAPY = scaledStartInput > 0 ? (scaledGainUsd / scaledStartInput) * (365 / daysElapsed) : 0
+      const daysElapsed = firstFilteredDate
+        ? Math.max(1, (pointDate.getTime() - firstFilteredDate.getTime()) / (1000 * 60 * 60 * 24))
+        : 1
+      const realizedAPY = point.totalStartInput > 0
+        ? (point.totalRealizedGain / point.totalStartInput) * (365 / daysElapsed)
+        : 0
+      const liquidAPY = point.totalStartInput > 0
+        ? (point.totalGainUsd / point.totalStartInput) * (365 / daysElapsed)
+        : 0
 
-      return {
-        ...point,
-        fundBreakdown: filteredBreakdown,
-        totalValue: filteredTotalValue,
-        // Scale other values by the ratio (approximation based on value proportion)
-        totalFundSize: point.totalFundSize * ratio,
-        totalCash: point.totalCash * ratio,
-        totalMarginBorrowed: point.totalMarginBorrowed * ratio,
-        totalMarginAccess: point.totalMarginAccess * ratio,
-        totalStartInput: scaledStartInput,
-        totalDividends: point.totalDividends * ratio,
-        totalExpenses: point.totalExpenses * ratio,
-        totalCashInterest: point.totalCashInterest * ratio,
-        totalRealizedGain: scaledRealizedGain,
-        totalGainUsd: scaledGainUsd,
-        // Recalculate percentage and APY based on filtered values
-        totalGainPct: scaledStartInput > 0 ? scaledGainUsd / scaledStartInput : 0,
-        realizedAPY,
-        liquidAPY
-      }
+      return { ...point, realizedAPY, liquidAPY }
     })
 
     // Calculate filtered aggregate totals
