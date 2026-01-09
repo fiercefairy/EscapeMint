@@ -1404,7 +1404,6 @@ const scrapeRobinhoodHistoryWithProgress = async (
   page: Page,
   archive: ScrapeArchive,
   onProgress: (current: number, total: number, tx: ScrapedTransaction | null) => void,
-  _maxScrolls = 500,  // Deprecated: no longer used, safety limit is built into while loop
   fullSync = false   // When true, don't early exit on consecutive existing transactions
 ): Promise<{ newCount: number; totalScraped: number }> => {
   // Wait for activity items to load
@@ -2202,8 +2201,7 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
         } : null
       })
     },
-    500,      // maxScrolls
-    fullSync  // fullSync parameter
+    fullSync
   ).catch((err: Error) => {
     sendEvent('error', { message: `Scraping error: ${err.message}` })
     return null
@@ -2303,8 +2301,7 @@ importRouter.post('/robinhood/scrape', async (req, res, next) => {
     page,
     archive,
     () => {}, // No progress callback for non-streaming
-    500,      // maxScrolls
-    fullSync  // fullSync parameter
+    fullSync
   ).catch((err: Error) => {
     return { error: err.message }
   })

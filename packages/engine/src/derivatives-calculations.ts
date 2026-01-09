@@ -458,7 +458,6 @@ export const processTradeHistory = (
  * Compute full derivatives position state from trade history.
  *
  * @param trades - Processed trade history
- * @param fundingPayments - Funding payments
  * @param currentPrice - Current BTC price
  * @param productId - Coinbase product ID
  * @param contractMultiplier - BTC per contract
@@ -466,7 +465,6 @@ export const processTradeHistory = (
  */
 export const computeDerivativesState = (
   trades: ProcessedTrade[],
-  _fundingPayments: FundingPayment[], // Reserved for future funding P&L integration
   currentPrice: number,
   productId: string,
   contractMultiplier: number = DEFAULT_CONTRACT_MULTIPLIER
