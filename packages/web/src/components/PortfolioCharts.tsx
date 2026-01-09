@@ -28,6 +28,64 @@ const COLORS = [
   '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'
 ]
 
+// Mobile-friendly allocation list (replaces pie charts on small screens)
+function AllocationList({ data, title, valueKey, showPlatformOnly = false }: {
+  data: AllocationData[]
+  title: string
+  valueKey: 'value' | 'cash' | 'fundSize'
+  showPlatformOnly?: boolean
+}) {
+  const sortedData = [...data]
+    .filter(d => d[valueKey] > 0)
+    .sort((a, b) => b[valueKey] - a[valueKey])
+
+  const total = sortedData.reduce((sum, d) => sum + d[valueKey], 0)
+  const maxValue = sortedData[0]?.[valueKey] ?? 1
+
+  return (
+    <div className="bg-slate-800 rounded-lg p-2 border border-slate-700">
+      <h3 className="text-[10px] font-medium text-white mb-1.5">{title}</h3>
+      <div className="space-y-1.5">
+        {sortedData.slice(0, 5).map((d, i) => {
+          const pct = (d[valueKey] / total * 100)
+          const barWidth = (d[valueKey] / maxValue * 100)
+          const label = showPlatformOnly ? d.platform : `${d.platform}-${d.ticker}`
+          return (
+            <div key={d.id} className="flex items-center gap-2">
+              <span
+                className="w-2 h-2 rounded-full flex-shrink-0"
+                style={{ backgroundColor: COLORS[i % COLORS.length] }}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between text-[9px] mb-0.5">
+                  <span className="text-slate-300 truncate">{label}</span>
+                  <span className="text-slate-400 font-mono ml-1 flex-shrink-0">
+                    {formatCurrencyCompact(d[valueKey])} ({pct.toFixed(0)}%)
+                  </span>
+                </div>
+                <div className="h-1.5 bg-slate-700 rounded-sm overflow-hidden">
+                  <div
+                    className="h-full rounded-sm"
+                    style={{
+                      width: `${barWidth}%`,
+                      backgroundColor: COLORS[i % COLORS.length]
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )
+        })}
+        {sortedData.length > 5 && (
+          <div className="text-[8px] text-slate-500 text-center pt-0.5">
+            +{sortedData.length - 5} more
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Pie Chart Component with side-by-side legend
 function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: string; valueKey: 'value' | 'cash' | 'fundSize' }) {
   const ref = useRef<SVGSVGElement>(null)
@@ -1286,16 +1344,18 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
 
   return (
     <div className="space-y-1.5 xs:space-y-2 sm:space-y-3">
-      {/* Pie Charts Row - Scrollable on mobile with fade indicator */}
-      <div className="relative">
-        <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-slate-900 to-transparent pointer-events-none z-10 sm:hidden" />
-        <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0 sm:overflow-x-visible pb-1 sm:pb-0 scroll-smooth scrollbar-thin snap-x snap-mandatory">
-          <div className="grid grid-cols-3 gap-1 xs:gap-1.5 sm:gap-2 min-w-[400px] sm:min-w-0">
-            <PieChart data={allocations} title="Fund Allocation" valueKey="fundSize" />
-            <PieChart data={allocations} title="Asset Allocation" valueKey="value" />
-            <PlatformPieChart data={platformAllocations} title="Platform Allocation" valueKey="value" />
-          </div>
-        </div>
+      {/* Mobile: Allocation Lists (compact, no pie charts) */}
+      <div className="grid grid-cols-1 gap-1.5 sm:hidden">
+        <AllocationList data={allocations} title="Fund Allocation" valueKey="fundSize" />
+        <AllocationList data={allocations} title="Asset Allocation" valueKey="value" />
+        <AllocationList data={platformAllocations} title="Platform Allocation" valueKey="value" showPlatformOnly />
+      </div>
+
+      {/* Desktop: Pie Charts Row */}
+      <div className="hidden sm:grid grid-cols-3 gap-2">
+        <PieChart data={allocations} title="Fund Allocation" valueKey="fundSize" />
+        <PieChart data={allocations} title="Asset Allocation" valueKey="value" />
+        <PlatformPieChart data={platformAllocations} title="Platform Allocation" valueKey="value" />
       </div>
 
       {/* Time Series Charts - Row 1: Key metrics */}

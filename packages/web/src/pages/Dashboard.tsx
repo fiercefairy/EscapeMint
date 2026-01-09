@@ -550,32 +550,50 @@ export function Dashboard() {
 function ChartsSkeleton() {
   return (
     <div className="space-y-1.5 xs:space-y-2 sm:space-y-3">
-      {/* Pie Charts Row */}
-      <div className="relative">
-        <div className="grid grid-cols-3 gap-1 xs:gap-1.5 sm:gap-2">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="bg-slate-800 rounded-lg p-1.5 sm:p-2 border border-slate-700 animate-pulse">
-              <div className="h-2 w-24 bg-slate-700 rounded mb-1" />
-              <div className="flex items-start gap-2">
-                <div className="w-[100px] h-[100px] bg-slate-700/50 rounded-full flex-shrink-0" />
-                <div className="flex-1 space-y-2">
-                  {[1, 2, 3].map(j => (
-                    <div key={j} className="h-4 bg-slate-700 rounded" />
-                  ))}
+      {/* Mobile: Allocation List Skeletons */}
+      <div className="grid grid-cols-1 gap-1.5 sm:hidden">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="bg-slate-800 rounded-lg p-2 border border-slate-700 animate-pulse">
+            <div className="h-3 w-24 bg-slate-700 rounded mb-2" />
+            <div className="space-y-2">
+              {[1, 2, 3].map(j => (
+                <div key={j} className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-slate-700 rounded-full flex-shrink-0" />
+                  <div className="flex-1">
+                    <div className="h-2 bg-slate-700 rounded mb-1" />
+                    <div className="h-1.5 bg-slate-700/50 rounded" />
+                  </div>
                 </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop: Pie Charts Row */}
+      <div className="hidden sm:grid grid-cols-3 gap-2">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="bg-slate-800 rounded-lg p-2 border border-slate-700 animate-pulse">
+            <div className="h-2 w-24 bg-slate-700 rounded mb-1" />
+            <div className="flex items-start gap-2">
+              <div className="w-[100px] h-[100px] bg-slate-700/50 rounded-full flex-shrink-0" />
+              <div className="flex-1 space-y-2">
+                {[1, 2, 3].map(j => (
+                  <div key={j} className="h-4 bg-slate-700 rounded" />
+                ))}
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
 
       {/* Time Series Rows */}
       {[1, 2, 3].map(row => (
-        <div key={row} className="grid grid-cols-2 sm:grid-cols-3 gap-1 xs:gap-1.5 sm:gap-2">
-          {[1, 2, 3].slice(0, row === 1 ? 3 : 2).map(i => (
+        <div key={row} className="grid grid-cols-2 gap-1 xs:gap-1.5 sm:gap-2">
+          {[1, 2].map(i => (
             <div key={i} className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 animate-pulse">
               <div className="h-2 w-20 bg-slate-700 rounded mb-1" />
-              <div className="h-[80px] sm:h-[100px] bg-slate-700/50 rounded" />
+              <div className="h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px] bg-slate-700/50 rounded" />
             </div>
           ))}
         </div>
