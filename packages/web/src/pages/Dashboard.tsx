@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { FundCard } from '../components/FundCard'
 import { AggregatePanel } from '../components/AggregatePanel'
 import { PortfolioCharts } from '../components/PortfolioCharts'
@@ -46,6 +46,9 @@ function FundCardsSkeleton() {
 }
 
 export function Dashboard() {
+  const { platform: urlPlatform } = useParams<{ platform?: string }>()
+  const navigate = useNavigate()
+
   const {
     funds,
     metrics,
@@ -58,7 +61,16 @@ export function Dashboard() {
   } = useDashboard()
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
-  const [filterPlatform, setFilterPlatform] = useState<string>('all')
+  // Platform filter is driven by URL param
+  const filterPlatform = urlPlatform ?? 'all'
+
+  const handlePlatformChange = (platform: string) => {
+    if (platform === 'all') {
+      navigate('/')
+    } else {
+      navigate(`/dashboard/${platform}`)
+    }
+  }
   const [showCharts, setShowCharts] = useState(() => {
     const saved = localStorage.getItem('dashboard-showCharts')
     return saved !== null ? saved === 'true' : true
@@ -305,7 +317,7 @@ export function Dashboard() {
           </label>
           <select
             value={filterPlatform}
-            onChange={e => setFilterPlatform(e.target.value)}
+            onChange={e => handlePlatformChange(e.target.value)}
             className="px-2 xs:px-2.5 sm:px-3 py-1.5 xs:py-2 text-[10px] xs:text-[11px] sm:text-sm bg-slate-800 border border-slate-700 rounded-lg text-white min-w-[80px] xs:min-w-[100px] sm:min-w-[140px] touch-manipulation min-h-[36px] xs:min-h-[40px] sm:min-h-[44px]"
           >
             <option value="all">All Platforms</option>

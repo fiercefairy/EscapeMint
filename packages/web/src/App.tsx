@@ -33,6 +33,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Layout />}>
         <Route index element={<DashboardWithProvider />} />
+        <Route path="dashboard/:platform" element={<DashboardWithProvider />} />
         <Route path="fund/:id" element={<FundDetail />} />
         <Route path="fund/:id/edit" element={<FundDetail />} />
         <Route path="fund/:id/add" element={<FundDetail />} />
