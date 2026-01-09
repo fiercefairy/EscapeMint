@@ -565,7 +565,7 @@ export interface DerivativesEntryState {
   // Margin tracking
   notionalValue: number      // Position value at avgEntry price
   /**
-   * @deprecated Use marginLocked instead.
+   * @deprecated since 0.6.0. Use marginLocked instead.
    *
    * This field is still computed and populated for backward compatibility with
    * existing downstream consumers that rely on it. New code should depend on

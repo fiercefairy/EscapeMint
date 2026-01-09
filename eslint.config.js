@@ -39,7 +39,9 @@ export default tseslint.config(
       '@typescript-eslint/no-floating-promises': 'off',
       '@typescript-eslint/no-misused-promises': 'off',
       '@typescript-eslint/unbound-method': 'off',
-      // Disable unsafe-* rules (they conflict with project references and create noise)
+      // Disable unsafe-* rules: These create excessive noise with JSON parsing, API responses,
+      // and cross-package type inference in this monorepo. TypeScript's strict mode provides
+      // sufficient type safety; re-enabling incrementally would require typing 100+ API boundaries.
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',

@@ -1277,7 +1277,7 @@ const scrapeActivityItem = async (
   page: Page,
   itemSelector: string,
   index: number,
-  _existingIds?: Set<string>  // Unused - kept for API compatibility
+  _existingIds?: Set<string>  // Reserved for future deduplication; kept for API stability
 ): Promise<ScrapedTransaction | null> => {
   // Log timing every 100 items (use index which is 0-based)
   const shouldLog = (index + 1) % 100 === 0
@@ -1375,7 +1375,7 @@ const scrapeActivityItem = async (
     id,
     date,
     type,
-    title,  // Keep title for debugging/display
+    title,  // Keep for debugging/display (replaces rawText which was removed to slim payload)
     amount,
     details  // Empty object now, but keep for type compatibility
   }
