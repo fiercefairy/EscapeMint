@@ -353,71 +353,90 @@ export function Settings() {
         <p className="text-sm text-slate-400">Manage your data and preferences.</p>
       </div>
 
-      {/* Export Section */}
-      <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
-        <h2 className="text-base font-semibold text-white mb-2">Export Data</h2>
-        <p className="text-sm text-slate-400 mb-3">
-          Download all fund data as a JSON file.
-        </p>
-        <button
-          onClick={handleExport}
-          disabled={exporting}
-          className="px-3 py-1.5 text-sm bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors disabled:opacity-50"
-        >
-          {exporting ? 'Exporting...' : 'Export All Data'}
-        </button>
-      </div>
-
-      {/* Import Section */}
-      <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
-        <h2 className="text-base font-semibold text-white mb-2">Import Data</h2>
-        <p className="text-sm text-slate-400 mb-3">
-          Import fund data from a previously exported JSON file.
-        </p>
-
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
-          <label className="text-sm text-slate-400">Mode:</label>
-          <div className="flex gap-4">
-            <label className="flex items-center gap-1.5 text-sm text-white cursor-pointer">
-              <input
-                type="radio"
-                name="importMode"
-                value="merge"
-                checked={importMode === 'merge'}
-                onChange={() => setImportMode('merge')}
-                className="text-mint-500"
-              />
-              <span>Merge</span>
-            </label>
-            <label className="flex items-center gap-1.5 text-sm text-white cursor-pointer">
-              <input
-                type="radio"
-                name="importMode"
-                value="replace"
-                checked={importMode === 'replace'}
-                onChange={() => setImportMode('replace')}
-                className="text-mint-500"
-              />
-              <span>Replace</span>
-            </label>
-          </div>
+      {/* Row 1: Export | Import | Advanced Tools */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Export Data */}
+        <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
+          <h2 className="text-base font-semibold text-white mb-2">Export Data</h2>
+          <p className="text-sm text-slate-400 mb-3">
+            Download all fund data as a JSON file.
+          </p>
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="px-3 py-1.5 text-sm bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors disabled:opacity-50"
+          >
+            {exporting ? 'Exporting...' : 'Export All Data'}
+          </button>
         </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
+        {/* Import Data */}
+        <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
+          <h2 className="text-base font-semibold text-white mb-2">Import Data</h2>
+          <p className="text-sm text-slate-400 mb-3">
+            Import fund data from a previously exported JSON file.
+          </p>
 
-        <button
-          onClick={handleImportClick}
-          disabled={importing}
-          className="px-3 py-1.5 text-sm bg-slate-600 text-white rounded hover:bg-slate-500 transition-colors disabled:opacity-50"
-        >
-          {importing ? 'Importing...' : 'Select File'}
-        </button>
+          <div className="flex flex-col gap-3 mb-3">
+            <div className="flex gap-4">
+              <label className="flex items-center gap-1.5 text-sm text-white cursor-pointer">
+                <input
+                  type="radio"
+                  name="importMode"
+                  value="merge"
+                  checked={importMode === 'merge'}
+                  onChange={() => setImportMode('merge')}
+                  className="text-mint-500"
+                />
+                <span>Merge</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-white cursor-pointer">
+                <input
+                  type="radio"
+                  name="importMode"
+                  value="replace"
+                  checked={importMode === 'replace'}
+                  onChange={() => setImportMode('replace')}
+                  className="text-mint-500"
+                />
+                <span>Replace</span>
+              </label>
+            </div>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+
+          <button
+            onClick={handleImportClick}
+            disabled={importing}
+            className="px-3 py-1.5 text-sm bg-slate-600 text-white rounded hover:bg-slate-500 transition-colors disabled:opacity-50"
+          >
+            {importing ? 'Importing...' : 'Select File'}
+          </button>
+        </div>
+
+        {/* Advanced/Beta Tools */}
+        <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
+          <h2 className="text-base font-semibold text-white mb-2">Advanced/Beta Tools</h2>
+          <p className="text-sm text-slate-400 mb-3">
+            Enable experimental features like Paste Column and Recalculate buttons.
+          </p>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={settings.advancedTools}
+              onChange={(e) => updateSetting('advancedTools', e.target.checked)}
+              className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500 focus:ring-offset-slate-800"
+            />
+            <span className="text-sm text-white">Enable Advanced/Beta Tools</span>
+          </label>
+        </div>
       </div>
 
       {/* iCloud Backup Section */}
@@ -475,97 +494,83 @@ export function Settings() {
         )}
       </div>
 
-      {/* Test Funds Mode */}
-      <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
-        <h2 className="text-base font-semibold text-white mb-2">Data Mode</h2>
-        <p className="text-sm text-slate-400 mb-3">
-          Switch between viewing your real funds or test/demo funds.
-        </p>
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="fundsMode"
-              checked={!settings.testFundsMode}
-              onChange={() => updateSetting('testFundsMode', false)}
-              className="w-4 h-4 border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500 focus:ring-offset-slate-800"
-            />
-            <span className="text-sm text-white">My Funds</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="fundsMode"
-              checked={settings.testFundsMode}
-              onChange={() => updateSetting('testFundsMode', true)}
-              className="w-4 h-4 border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500 focus:ring-offset-slate-800"
-            />
-            <span className="text-sm text-white">Test Funds</span>
-          </label>
-        </div>
-      </div>
+      {/* Row 2: Test/Demo Data | Data Mode */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Test/Demo Data Section */}
+        <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
+          <h2 className="text-base font-semibold text-white mb-2">Test/Demo Data</h2>
+          <p className="text-sm text-slate-400 mb-3">
+            Generate demo funds with 5 years of simulated DCA investing using real historical prices
+            for BTC, TQQQ, and SPXL. Each fund starts with $10K and invests $100/week.
+          </p>
 
-      {/* Advanced/Beta Tools */}
-      <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
-        <h2 className="text-base font-semibold text-white mb-2">Advanced/Beta Tools</h2>
-        <p className="text-sm text-slate-400 mb-3">
-          Enable experimental features like Paste Column and Recalculate buttons.
-        </p>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={settings.advancedTools}
-            onChange={(e) => updateSetting('advancedTools', e.target.checked)}
-            className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500 focus:ring-offset-slate-800"
-          />
-          <span className="text-sm text-white">Enable Advanced/Beta Tools</span>
-        </label>
-      </div>
+          {testDataStatus && (
+            <div className="text-xs text-slate-500 mb-3 space-y-1">
+              {testDataStatus.existingTestFunds > 0 ? (
+                <p>
+                  <span className="text-slate-400">Existing test funds:</span>{' '}
+                  {testDataStatus.testFundIds.join(', ')}
+                </p>
+              ) : (
+                <p className="text-slate-400">No test funds currently loaded.</p>
+              )}
+              {!testDataStatus.priceDataAvailable && (
+                <p className="text-amber-400">
+                  Missing price data: {testDataStatus.missingPriceData.join(', ')}
+                </p>
+              )}
+            </div>
+          )}
 
-      {/* Test/Demo Data Section */}
-      <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
-        <h2 className="text-base font-semibold text-white mb-2">Test/Demo Data</h2>
-        <p className="text-sm text-slate-400 mb-3">
-          Generate demo funds with 5 years of simulated DCA investing using real historical prices
-          for BTC, TQQQ, and SPXL. Each fund starts with $10K and invests $100/week.
-        </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setTestDataConfirm('generate')}
+              disabled={generatingTestData || !testDataStatus?.priceDataAvailable}
+              className="px-3 py-1.5 text-sm bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors disabled:opacity-50"
+            >
+              {generatingTestData ? 'Generating...' : 'Load Test Data'}
+            </button>
 
-        {testDataStatus && (
-          <div className="text-xs text-slate-500 mb-3 space-y-1">
-            {testDataStatus.existingTestFunds > 0 ? (
-              <p>
-                <span className="text-slate-400">Existing test funds:</span>{' '}
-                {testDataStatus.testFundIds.join(', ')}
-              </p>
-            ) : (
-              <p className="text-slate-400">No test funds currently loaded.</p>
-            )}
-            {!testDataStatus.priceDataAvailable && (
-              <p className="text-amber-400">
-                Missing price data: {testDataStatus.missingPriceData.join(', ')}
-              </p>
+            {testDataStatus && testDataStatus.existingTestFunds > 0 && (
+              <button
+                onClick={() => setTestDataConfirm('delete')}
+                disabled={deletingTestData}
+                className="px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {deletingTestData ? 'Deleting...' : 'Delete Test Data'}
+              </button>
             )}
           </div>
-        )}
+        </div>
 
-        <div className="flex gap-2">
-          <button
-            onClick={() => setTestDataConfirm('generate')}
-            disabled={generatingTestData || !testDataStatus?.priceDataAvailable}
-            className="px-3 py-1.5 text-sm bg-mint-600 text-white rounded hover:bg-mint-700 transition-colors disabled:opacity-50"
-          >
-            {generatingTestData ? 'Generating...' : 'Load Test Data'}
-          </button>
-
-          {testDataStatus && testDataStatus.existingTestFunds > 0 && (
-            <button
-              onClick={() => setTestDataConfirm('delete')}
-              disabled={deletingTestData}
-              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
-            >
-              {deletingTestData ? 'Deleting...' : 'Delete Test Data'}
-            </button>
-          )}
+        {/* Data Mode */}
+        <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
+          <h2 className="text-base font-semibold text-white mb-2">Data Mode</h2>
+          <p className="text-sm text-slate-400 mb-3">
+            Switch between viewing your real funds or test/demo funds.
+          </p>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="fundsMode"
+                checked={!settings.testFundsMode}
+                onChange={() => updateSetting('testFundsMode', false)}
+                className="w-4 h-4 border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500 focus:ring-offset-slate-800"
+              />
+              <span className="text-sm text-white">My Funds</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="fundsMode"
+                checked={settings.testFundsMode}
+                onChange={() => updateSetting('testFundsMode', true)}
+                className="w-4 h-4 border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500 focus:ring-offset-slate-800"
+              />
+              <span className="text-sm text-white">Test Funds</span>
+            </label>
+          </div>
         </div>
       </div>
 
