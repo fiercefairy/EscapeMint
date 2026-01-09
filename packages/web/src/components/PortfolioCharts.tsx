@@ -17,6 +17,8 @@ interface PortfolioChartsProps {
     totalRealizedGains: number
     totalValue: number
     totalStartInput: number
+    realizedAPY?: number
+    liquidAPY?: number
   }
 }
 
@@ -1248,14 +1250,14 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // Use aggregate totals for current gain values (consistent with header metrics)
+  // Use aggregate totals for current values (consistent with header metrics)
   const currentLiquidGain = aggregateTotals?.totalGainUsd ?? timeSeries[timeSeries.length - 1]?.totalGainUsd ?? 0
   const currentRealizedGains = aggregateTotals?.totalRealizedGains ?? timeSeries[timeSeries.length - 1]?.totalRealizedGain ?? 0
 
-  // Get current APY values from time series
+  // Get current APY values from aggregateTotals (properly filtered) or fall back to time series
   const lastTimeSeriesPoint = timeSeries[timeSeries.length - 1]
-  const currentRealizedAPY = lastTimeSeriesPoint?.realizedAPY ?? 0
-  const currentLiquidAPY = lastTimeSeriesPoint?.liquidAPY ?? 0
+  const currentRealizedAPY = aggregateTotals?.realizedAPY ?? lastTimeSeriesPoint?.realizedAPY ?? 0
+  const currentLiquidAPY = aggregateTotals?.liquidAPY ?? lastTimeSeriesPoint?.liquidAPY ?? 0
 
   // Aggregate allocations by platform for Platform Allocation chart
   const platformAllocations: AllocationData[] = Object.values(

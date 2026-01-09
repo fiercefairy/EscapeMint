@@ -133,6 +133,8 @@ export function Dashboard() {
     const filteredAllocations = history.currentAllocations.filter(a => a.platform === filterPlatform)
 
     // Filter time series - fundBreakdown contains per-fund values which we can filter
+    const firstDate = history.timeSeries[0]?.date ? new Date(history.timeSeries[0].date) : null
+
     const filteredTimeSeries = history.timeSeries.map(point => {
       // Filter fundBreakdown to only include funds from selected platform
       const filteredBreakdown: Record<string, number> = {}
@@ -151,6 +153,18 @@ export function Dashboard() {
       const rawRatio = point.totalValue > 0 ? filteredTotalValue / point.totalValue : 0
       const ratio = Math.max(0, Math.min(1, rawRatio))
 
+      // Scale monetary values by ratio
+      const scaledStartInput = point.totalStartInput * ratio
+      const scaledRealizedGain = point.totalRealizedGain * ratio
+      const scaledGainUsd = point.totalGainUsd * ratio
+
+      // Recalculate APY for filtered data
+      // APY = (gain / startInput) * (365 / daysElapsed)
+      const pointDate = new Date(point.date)
+      const daysElapsed = firstDate ? Math.max(1, (pointDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)) : 1
+      const realizedAPY = scaledStartInput > 0 ? (scaledRealizedGain / scaledStartInput) * (365 / daysElapsed) : 0
+      const liquidAPY = scaledStartInput > 0 ? (scaledGainUsd / scaledStartInput) * (365 / daysElapsed) : 0
+
       return {
         ...point,
         fundBreakdown: filteredBreakdown,
@@ -160,26 +174,29 @@ export function Dashboard() {
         totalCash: point.totalCash * ratio,
         totalMarginBorrowed: point.totalMarginBorrowed * ratio,
         totalMarginAccess: point.totalMarginAccess * ratio,
-        totalStartInput: point.totalStartInput * ratio,
+        totalStartInput: scaledStartInput,
         totalDividends: point.totalDividends * ratio,
         totalExpenses: point.totalExpenses * ratio,
         totalCashInterest: point.totalCashInterest * ratio,
-        totalRealizedGain: point.totalRealizedGain * ratio,
-        totalGainUsd: point.totalGainUsd * ratio,
-        // Percentages and APY remain the same (they represent rates, not totals)
-        totalGainPct: point.totalGainPct,
-        realizedAPY: point.realizedAPY,
-        liquidAPY: point.liquidAPY
+        totalRealizedGain: scaledRealizedGain,
+        totalGainUsd: scaledGainUsd,
+        // Recalculate percentage and APY based on filtered values
+        totalGainPct: scaledStartInput > 0 ? scaledGainUsd / scaledStartInput : 0,
+        realizedAPY,
+        liquidAPY
       }
     })
 
     // Calculate filtered aggregate totals
+    // Note: APY values will be added from filteredMetrics when rendering
     const lastFilteredPoint = filteredTimeSeries[filteredTimeSeries.length - 1]
     const filteredAggregateTotals = {
       totalGainUsd: lastFilteredPoint?.totalGainUsd ?? 0,
       totalRealizedGains: lastFilteredPoint?.totalRealizedGain ?? 0,
       totalValue: filteredAllocations.reduce((sum, a) => sum + a.value, 0),
-      totalStartInput: lastFilteredPoint?.totalStartInput ?? 0
+      totalStartInput: lastFilteredPoint?.totalStartInput ?? 0,
+      realizedAPY: 0, // Will be overridden with correct value when rendering
+      liquidAPY: 0    // Will be overridden with correct value when rendering
     }
 
     return {
@@ -363,7 +380,11 @@ export function Dashboard() {
                 timeSeries={filteredHistory.timeSeries}
                 allocations={filteredHistory.currentAllocations}
                 totals={filteredHistory.totals}
-                aggregateTotals={filteredHistory.aggregateTotals}
+                aggregateTotals={{
+                  ...filteredHistory.aggregateTotals,
+                  realizedAPY: filteredMetrics?.realizedAPY ?? 0,
+                  liquidAPY: filteredMetrics?.liquidAPY ?? 0
+                }}
               />
             ) : null
           )}
