@@ -19,10 +19,6 @@ import type {
   CoinbaseFill
 } from '../src/derivatives-types.js'
 
-const DEFAULT_CONTRACT_MULTIPLIER = 0.01
-const DEFAULT_INITIAL_MARGIN_RATE = 0.20
-const DEFAULT_MAINTENANCE_MARGIN_RATE = 0.05
-
 describe('processTrade', () => {
   it('adds BUY trade to empty queue', () => {
     const result = processTrade('BUY', 100, 100000, 0.01, 0.20, [])

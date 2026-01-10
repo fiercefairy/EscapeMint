@@ -399,7 +399,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               if (shortfall > 0.01) {
                 const isM1Platform = platform?.toLowerCase() === 'm1'
                 const shortfallMessage = isM1Platform
-                  ? `Shortfall: ${formatCurrency(shortfall)} - will be borrowed from margin`
+                  ? `Shortfall: ${formatCurrency(shortfall)} - may be borrowed from margin if available`
                   : `Shortfall: ${formatCurrency(shortfall)} - deposit to platform cash fund`
 
                 return (
