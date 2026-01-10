@@ -30,6 +30,7 @@ export interface FundEntry {
   fund_size?: number
   margin_available?: number
   margin_borrowed?: number
+  margin_expense?: number    // Margin interest expense for cash funds with margin
   notes?: string
 
   // Derivatives-specific fields
@@ -56,7 +57,7 @@ export interface FundData {
   entries: FundEntry[]
 }
 
-const ENTRY_HEADERS = ['date', 'value', 'cash', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'notes', 'contracts', 'entry_price', 'liquidation_price', 'unrealized_pnl', 'funding_profit', 'funding_loss', 'margin_locked', 'fee', 'margin']
+const ENTRY_HEADERS = ['date', 'value', 'cash', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'margin_expense', 'notes', 'contracts', 'entry_price', 'liquidation_price', 'unrealized_pnl', 'funding_profit', 'funding_loss', 'margin_locked', 'fee', 'margin']
 
 /**
  * Get the JSON config file path for a TSV file.

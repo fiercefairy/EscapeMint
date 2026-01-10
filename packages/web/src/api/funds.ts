@@ -93,6 +93,7 @@ export interface FundEntry {
   fund_size?: number
   margin_available?: number
   margin_borrowed?: number
+  margin_expense?: number    // Margin interest expense for cash funds with margin
   notes?: string
 
   // Derivatives-specific fields

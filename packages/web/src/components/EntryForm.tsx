@@ -637,7 +637,7 @@ export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType)
 
     // Store margin expense in a structured field if present
     if (marginExpense > 0) {
-      ;(entry as Partial<FundEntry> & { margin_expense?: number }).margin_expense = marginExpense
+      entry.margin_expense = marginExpense
     }
 
     // Determine action: deposit/withdraw takes priority over pure margin expense

@@ -4869,11 +4869,17 @@ const findCoinbaseTransactionsPage = async (browser: Browser): Promise<Page | nu
  * Handles the Coinbase "Advanced Trade" modal that blocks the transactions page.
  * If the modal is present, clicks "Turn off Advanced" to dismiss it.
  * Returns true if modal was handled, false if no modal was present.
+ *
+ * NOTE: The selectors below rely on Coinbase's internal `data-testid` attributes.
+ * These are brittle and may change when Coinbase updates their UI. If this logic
+ * stops working, verify the modal structure in browser DevTools and update the
+ * selectors accordingly.
  */
 const handleAdvancedTradeModal = async (
   page: Page,
   sendEvent?: (event: string, data: Record<string, unknown>) => void
 ): Promise<boolean> => {
+  // Brittle selectors based on Coinbase's current UI - see JSDoc note above
   const modalSelector = '[data-testid="simple-mode-feature-nux-modal"]'
   const confirmButtonSelector = '[data-testid="simple-nux-confirm-button"]'
 
