@@ -77,8 +77,8 @@ The storage layer handles file I/O for fund data stored in TSV format.
 Express.js API that orchestrates the engine and storage layers.
 
 **Key directories:**
-- `routes/` - API endpoints (funds, platforms, import, derivatives)
-- `utils/` - Shared utilities (calculations, keychain, coinbase-api)
+- `routes/` - API endpoints (funds, platforms, import, export, etc.)
+- `utils/` - Shared utilities (calculations, platforms, fund-metrics)
 
 **Port:** 5551 (configurable via `ecosystem.config.cjs`)
 

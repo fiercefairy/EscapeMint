@@ -10,7 +10,6 @@ import { exportRouter } from './routes/export.js'
 import { platformsRouter } from './routes/platforms.js'
 import { importRouter } from './routes/import.js'
 import { backupRouter } from './routes/backup.js'
-import { derivativesRouter } from './routes/derivatives.js'
 import { testDataRouter } from './routes/test-data.js'
 import { errorHandler } from './middleware/error-handler.js'
 import { initWebSocket } from './services/websocket.js'
@@ -31,7 +30,6 @@ app.use('/api/v1/export', exportRouter)
 app.use('/api/v1/platforms', platformsRouter)
 app.use('/api/v1/import', importRouter)
 app.use('/api/v1/backup', backupRouter)
-app.use('/api/v1/derivatives', derivativesRouter)
 app.use('/api/v1/test-data', testDataRouter)
 
 // Health check

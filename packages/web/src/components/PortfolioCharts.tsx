@@ -15,6 +15,7 @@ interface PortfolioChartsProps {
   aggregateTotals?: {
     totalGainUsd: number
     totalRealizedGains: number
+    totalUnrealizedGains?: number
     totalValue: number
     totalStartInput: number
     realizedAPY?: number
@@ -27,6 +28,64 @@ const COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
   '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'
 ]
+
+// Mobile-friendly allocation list (replaces pie charts on small screens)
+function AllocationList({ data, title, valueKey, showPlatformOnly = false }: {
+  data: AllocationData[]
+  title: string
+  valueKey: 'value' | 'cash' | 'fundSize'
+  showPlatformOnly?: boolean
+}) {
+  const sortedData = [...data]
+    .filter(d => d[valueKey] > 0)
+    .sort((a, b) => b[valueKey] - a[valueKey])
+
+  const total = sortedData.reduce((sum, d) => sum + d[valueKey], 0)
+  const maxValue = sortedData[0]?.[valueKey] ?? 1
+
+  return (
+    <div className="bg-slate-800 rounded-lg p-2 border border-slate-700">
+      <h3 className="text-[10px] font-medium text-white mb-1.5">{title}</h3>
+      <div className="space-y-1.5">
+        {sortedData.slice(0, 5).map((d, i) => {
+          const pct = (d[valueKey] / total * 100)
+          const barWidth = (d[valueKey] / maxValue * 100)
+          const label = showPlatformOnly ? d.platform : `${d.platform}-${d.ticker}`
+          return (
+            <div key={d.id} className="flex items-center gap-2">
+              <span
+                className="w-2 h-2 rounded-full flex-shrink-0"
+                style={{ backgroundColor: COLORS[i % COLORS.length] }}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between text-[9px] mb-0.5">
+                  <span className="text-slate-300 truncate">{label}</span>
+                  <span className="text-slate-400 font-mono ml-1 flex-shrink-0">
+                    {formatCurrencyCompact(d[valueKey])} ({pct.toFixed(0)}%)
+                  </span>
+                </div>
+                <div className="h-1.5 bg-slate-700 rounded-sm overflow-hidden">
+                  <div
+                    className="h-full rounded-sm"
+                    style={{
+                      width: `${barWidth}%`,
+                      backgroundColor: COLORS[i % COLORS.length]
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )
+        })}
+        {sortedData.length > 5 && (
+          <div className="text-[8px] text-slate-500 text-center pt-0.5">
+            +{sortedData.length - 5} more
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // Pie Chart Component with side-by-side legend
 function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: string; valueKey: 'value' | 'cash' | 'fundSize' }) {
@@ -284,7 +343,7 @@ function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = for
 
     const margin = { top: 10, right: 10, bottom: 20, left: 45 }
     const width = ref.current.clientWidth - margin.left - margin.right
-    const height = 120 - margin.top - margin.bottom
+    const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
       .append('g')
@@ -352,7 +411,13 @@ function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = for
         const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
         tooltip
           .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/>${formatValue(d.value)}`)
-          .style('left', (event.pageX + 10) + 'px')
+        // Position tooltip - flip to left side if near right edge
+        const tooltipWidth = 120
+        const leftPos = event.pageX + tooltipWidth + 20 > window.innerWidth
+          ? event.pageX - tooltipWidth - 10
+          : event.pageX + 10
+        tooltip
+          .style('left', leftPos + 'px')
           .style('top', (event.pageY - 10) + 'px')
       })
       .on('mouseout', () => tooltip.style('opacity', 0))
@@ -380,7 +445,7 @@ function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = for
   return (
     <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
       <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white mb-0.5">{title}</h3>
-      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
       <div
         ref={tooltipRef}
         className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[180px]"
@@ -403,7 +468,7 @@ function StackedAreaChart({ data, resize }: { data: TimeSeriesPoint[]; resize?: 
 
     const margin = { top: 10, right: 10, bottom: 20, left: 45 }
     const width = ref.current.clientWidth - margin.left - margin.right
-    const height = 120 - margin.top - margin.bottom
+    const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
       .append('g')
@@ -469,7 +534,13 @@ function StackedAreaChart({ data, resize }: { data: TimeSeriesPoint[]; resize?: 
         const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
         tooltip
           .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/>Cash: ${(d.cashPct * 100).toFixed(1)}% (${formatCurrencyCompact(d.cash)})<br/>Asset: ${(d.assetPct * 100).toFixed(1)}% (${formatCurrencyCompact(d.asset)})`)
-          .style('left', (event.pageX + 10) + 'px')
+        // Position tooltip - flip to left side if near right edge
+        const tooltipWidth = 160
+        const leftPos = event.pageX + tooltipWidth + 20 > window.innerWidth
+          ? event.pageX - tooltipWidth - 10
+          : event.pageX + 10
+        tooltip
+          .style('left', leftPos + 'px')
           .style('top', (event.pageY - 10) + 'px')
       })
       .on('mouseout', () => tooltip.style('opacity', 0))
@@ -497,7 +568,7 @@ function StackedAreaChart({ data, resize }: { data: TimeSeriesPoint[]; resize?: 
   return (
     <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
       <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white mb-0.5">Cash vs Asset</h3>
-      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
       <div
         ref={tooltipRef}
         className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[200px]"
@@ -540,7 +611,7 @@ function FundsStackedAreaChart({ data, allocations, resize }: {
 
     const margin = { top: 10, right: 10, bottom: 20, left: 45 }
     const width = ref.current.clientWidth - margin.left - margin.right
-    const height = 120 - margin.top - margin.bottom
+    const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
       .append('g')
@@ -648,7 +719,7 @@ function FundsStackedAreaChart({ data, allocations, resize }: {
   return (
     <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
       <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white mb-0.5">Total Fund Size</h3>
-      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
       <div
         ref={tooltipRef}
         className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[250px]"
@@ -672,15 +743,48 @@ function FundsStackedAreaChart({ data, allocations, resize }: {
   )
 }
 
-// Combined Realized + Liquid Gains Chart
-function GainsChart({ data, currentRealized, currentLiquid, resize }: {
+// Combined Realized + Unrealized + Liquid Gains Chart
+function GainsChart({ data, currentRealized, currentUnrealized, currentLiquid, resize, storageKey = 'gains' }: {
   data: TimeSeriesPoint[]
   currentRealized: number
+  currentUnrealized: number
   currentLiquid: number
   resize?: number
+  storageKey?: string
 }) {
   const ref = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
+  const [showSettings, setShowSettings] = useState(false)
+
+  // Load bounds from localStorage
+  const boundsKey = `escapemint-chart-bounds-${storageKey}`
+  const [bounds, setBounds] = useState<{ yMin?: number; yMax?: number }>(() => {
+    const stored = localStorage.getItem(boundsKey)
+    return stored ? JSON.parse(stored) : {}
+  })
+  const [localMin, setLocalMin] = useState(bounds.yMin?.toString() ?? '')
+  const [localMax, setLocalMax] = useState(bounds.yMax?.toString() ?? '')
+
+  const saveBounds = () => {
+    const newBounds: { yMin?: number; yMax?: number } = {}
+    if (localMin && !isNaN(parseFloat(localMin))) newBounds.yMin = parseFloat(localMin)
+    if (localMax && !isNaN(parseFloat(localMax))) newBounds.yMax = parseFloat(localMax)
+    setBounds(newBounds)
+    if (Object.keys(newBounds).length > 0) {
+      localStorage.setItem(boundsKey, JSON.stringify(newBounds))
+    } else {
+      localStorage.removeItem(boundsKey)
+    }
+    setShowSettings(false)
+  }
+
+  const clearBounds = () => {
+    setBounds({})
+    setLocalMin('')
+    setLocalMax('')
+    localStorage.removeItem(boundsKey)
+    setShowSettings(false)
+  }
 
   useEffect(() => {
     if (!ref.current || data.length === 0) return
@@ -690,7 +794,7 @@ function GainsChart({ data, currentRealized, currentLiquid, resize }: {
 
     const margin = { top: 10, right: 10, bottom: 20, left: 45 }
     const width = ref.current.clientWidth - margin.left - margin.right
-    const height = 120 - margin.top - margin.bottom
+    const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
       .append('g')
@@ -698,27 +802,43 @@ function GainsChart({ data, currentRealized, currentLiquid, resize }: {
 
     const values = data.map(d => ({
       date: new Date(d.date),
-      realized: d.totalRealizedGain,
-      liquid: d.totalGainUsd
+      realized: d.totalRealizedGain ?? 0,
+      unrealized: d.totalUnrealizedGain ?? 0,
+      liquid: d.totalGainUsd ?? 0
     }))
 
     const x = d3.scaleTime()
       .domain(d3.extent(values, d => d.date) as [Date, Date])
       .range([0, width])
 
-    const yMin = Math.min(
-      d3.min(values, d => Math.min(d.realized, d.liquid)) ?? 0,
+    // Calculate data-driven bounds
+    const dataMin = Math.min(
+      d3.min(values, d => Math.min(d.realized, d.unrealized, d.liquid)) ?? 0,
       0
     )
-    const yMax = Math.max(
-      d3.max(values, d => Math.max(d.realized, d.liquid)) ?? 0,
+    const dataMax = Math.max(
+      d3.max(values, d => Math.max(d.realized, d.unrealized, d.liquid)) ?? 0,
       0
     )
 
+    // Apply user bounds if set, otherwise use data bounds with padding
+    let yMin = bounds.yMin !== undefined ? bounds.yMin : dataMin * 1.1
+    let yMax = bounds.yMax !== undefined ? bounds.yMax : dataMax * 1.1
+
+    // Ensure yMin < yMax
+    if (yMin >= yMax) {
+      const padding = Math.abs(yMin) * 0.1 || 1000
+      yMin = yMin - padding
+      yMax = yMax + padding
+    }
+
     const y = d3.scaleLinear()
-      .domain([yMin * 1.1, yMax * 1.1])
+      .domain([yMin, yMax])
       .nice()
       .range([height, 0])
+
+    // Clamp function
+    const clamp = (val: number) => Math.max(yMin, Math.min(yMax, val))
 
     const tooltip = d3.select(tooltipRef.current)
 
@@ -738,7 +858,7 @@ function GainsChart({ data, currentRealized, currentLiquid, resize }: {
     const liquidArea = d3.area<typeof values[0]>()
       .x(d => x(d.date))
       .y0(y(Math.max(0, yMin)))
-      .y1(d => y(d.liquid))
+      .y1(d => y(clamp(d.liquid)))
       .curve(d3.curveMonotoneX)
 
     g.append('path')
@@ -749,7 +869,7 @@ function GainsChart({ data, currentRealized, currentLiquid, resize }: {
     // Line for realized gain (green)
     const realizedLine = d3.line<typeof values[0]>()
       .x(d => x(d.date))
-      .y(d => y(d.realized))
+      .y(d => y(clamp(d.realized)))
       .curve(d3.curveMonotoneX)
 
     g.append('path')
@@ -759,10 +879,23 @@ function GainsChart({ data, currentRealized, currentLiquid, resize }: {
       .attr('stroke-width', 2)
       .attr('d', realizedLine)
 
+    // Line for unrealized gain (orange/amber)
+    const unrealizedLine = d3.line<typeof values[0]>()
+      .x(d => x(d.date))
+      .y(d => y(clamp(d.unrealized)))
+      .curve(d3.curveMonotoneX)
+
+    g.append('path')
+      .datum(values)
+      .attr('fill', 'none')
+      .attr('stroke', '#f59e0b')
+      .attr('stroke-width', 2)
+      .attr('d', unrealizedLine)
+
     // Line for liquid gain (blue)
     const liquidLine = d3.line<typeof values[0]>()
       .x(d => x(d.date))
-      .y(d => y(d.liquid))
+      .y(d => y(clamp(d.liquid)))
       .curve(d3.curveMonotoneX)
 
     g.append('path')
@@ -778,16 +911,25 @@ function GainsChart({ data, currentRealized, currentLiquid, resize }: {
       // Realized dot
       g.append('circle')
         .attr('cx', x(lastDataPoint.date))
-        .attr('cy', y(lastDataPoint.realized))
+        .attr('cy', y(clamp(lastDataPoint.realized)))
         .attr('r', 4)
         .attr('fill', '#10b981')
+        .attr('stroke', 'white')
+        .attr('stroke-width', 1.5)
+
+      // Unrealized dot
+      g.append('circle')
+        .attr('cx', x(lastDataPoint.date))
+        .attr('cy', y(clamp(lastDataPoint.unrealized)))
+        .attr('r', 4)
+        .attr('fill', '#f59e0b')
         .attr('stroke', 'white')
         .attr('stroke-width', 1.5)
 
       // Liquid dot
       g.append('circle')
         .attr('cx', x(lastDataPoint.date))
-        .attr('cy', y(lastDataPoint.liquid))
+        .attr('cy', y(clamp(lastDataPoint.liquid)))
         .attr('r', 4)
         .attr('fill', '#3b82f6')
         .attr('stroke', 'white')
@@ -809,11 +951,23 @@ function GainsChart({ data, currentRealized, currentLiquid, resize }: {
         const i = bisect(values, date, 1)
         const d0 = values[i - 1]
         const d1 = values[i]
-        if (!d0 || !d1) return
-        const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
+        // Handle edge cases - use whichever value is available
+        let d: typeof values[0] | undefined
+        if (d0 && d1) {
+          d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
+        } else {
+          d = d0 || d1
+        }
+        if (!d) return
         tooltip
-          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/><span style="color:#10b981">Realized: ${formatCurrencyCompact(d.realized)}</span><br/><span style="color:#3b82f6">Liquid: ${formatCurrencyCompact(d.liquid)}</span>`)
-          .style('left', (event.pageX + 10) + 'px')
+          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/><span style="color:#10b981">Realized: ${formatCurrencyCompact(d.realized)}</span><br/><span style="color:#f59e0b">Unrealized: ${formatCurrencyCompact(d.unrealized)}</span><br/><span style="color:#3b82f6">Liquid: ${formatCurrencyCompact(d.liquid)}</span>`)
+        // Position tooltip - flip to left side if near right edge
+        const tooltipWidth = 150
+        const leftPos = event.pageX + tooltipWidth + 20 > window.innerWidth
+          ? event.pageX - tooltipWidth - 10
+          : event.pageX + 10
+        tooltip
+          .style('left', leftPos + 'px')
           .style('top', (event.pageY - 10) + 'px')
       })
       .on('mouseout', () => tooltip.style('opacity', 0))
@@ -836,27 +990,95 @@ function GainsChart({ data, currentRealized, currentLiquid, resize }: {
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
 
-  }, [data, resize])
+  }, [data, resize, bounds])
+
+  const hasBounds = bounds.yMin !== undefined || bounds.yMax !== undefined
 
   return (
     <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
       <div className="flex items-center justify-between mb-0.5">
-        <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white">Gain ($)</h3>
-        <div className="flex gap-1 xs:gap-1.5 sm:gap-2 text-[6px] xs:text-[7px] sm:text-[8px] md:text-[9px]">
+        <div className="flex items-center gap-1">
+          <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white">Gain ($)</h3>
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`p-0.5 rounded hover:bg-slate-700 ${hasBounds ? 'text-mint-400' : 'text-slate-500'}`}
+            title="Chart settings"
+          >
+            <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex gap-1.5 xs:gap-2 sm:gap-3 text-[6px] xs:text-[7px] sm:text-[8px] md:text-[9px]">
           <span className="flex items-center gap-0.5 text-emerald-400">
             <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500" />
-            {formatCurrencyCompact(currentRealized)}
+            <span className="text-slate-400">Real:</span> {formatCurrencyCompact(currentRealized)}
+          </span>
+          <span className="flex items-center gap-0.5 text-amber-400">
+            <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-amber-500" />
+            <span className="text-slate-400">Unreal:</span> {formatCurrencyCompact(currentUnrealized)}
           </span>
           <span className="flex items-center gap-0.5 text-blue-400">
             <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-blue-500" />
-            {formatCurrencyCompact(currentLiquid)}
+            <span className="text-slate-400">Liquid:</span> {formatCurrencyCompact(currentLiquid)}
           </span>
         </div>
       </div>
-      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+
+      {/* Settings popover */}
+      {showSettings && (
+        <div className="absolute top-8 left-0 z-50 bg-slate-900 border border-slate-600 rounded-lg p-2 shadow-xl">
+          <div className="text-[9px] sm:text-xs text-slate-300 mb-2">Y-Axis Bounds</div>
+          <div className="flex gap-2 items-center mb-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-[8px] sm:text-[10px] text-slate-400">Min ($)</label>
+              <input
+                type="number"
+                value={localMin}
+                onChange={e => setLocalMin(e.target.value)}
+                placeholder="Auto"
+                className="w-20 px-1.5 py-1 text-[10px] sm:text-xs bg-slate-800 border border-slate-600 rounded text-white"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[8px] sm:text-[10px] text-slate-400">Max ($)</label>
+              <input
+                type="number"
+                value={localMax}
+                onChange={e => setLocalMax(e.target.value)}
+                placeholder="Auto"
+                className="w-20 px-1.5 py-1 text-[10px] sm:text-xs bg-slate-800 border border-slate-600 rounded text-white"
+              />
+            </div>
+          </div>
+          <div className="flex gap-1.5">
+            <button
+              onClick={saveBounds}
+              className="px-2 py-1 text-[9px] sm:text-[10px] bg-mint-600 hover:bg-mint-500 text-white rounded"
+            >
+              Apply
+            </button>
+            <button
+              onClick={clearBounds}
+              className="px-2 py-1 text-[9px] sm:text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"
+            >
+              Clear
+            </button>
+            <button
+              onClick={() => setShowSettings(false)}
+              className="px-2 py-1 text-[9px] sm:text-[10px] text-slate-400 hover:text-slate-300"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
       <div
         ref={tooltipRef}
-        className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[200px]"
+        className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[220px]"
         style={{ opacity: 0 }}
       />
     </div>
@@ -864,14 +1086,46 @@ function GainsChart({ data, currentRealized, currentLiquid, resize }: {
 }
 
 // Combined Realized + Liquid APY Chart
-function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
+function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize, storageKey = 'apy' }: {
   data: TimeSeriesPoint[]
   currentRealizedAPY: number
   currentLiquidAPY: number
   resize?: number
+  storageKey?: string
 }) {
   const ref = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
+  const [showSettings, setShowSettings] = useState(false)
+
+  // Load bounds from localStorage
+  const boundsKey = `escapemint-chart-bounds-${storageKey}`
+  const [bounds, setBounds] = useState<{ yMin?: number; yMax?: number }>(() => {
+    const stored = localStorage.getItem(boundsKey)
+    return stored ? JSON.parse(stored) : {}
+  })
+  const [localMin, setLocalMin] = useState(bounds.yMin?.toString() ?? '')
+  const [localMax, setLocalMax] = useState(bounds.yMax?.toString() ?? '')
+
+  const saveBounds = () => {
+    const newBounds: { yMin?: number; yMax?: number } = {}
+    if (localMin && !isNaN(parseFloat(localMin))) newBounds.yMin = parseFloat(localMin)
+    if (localMax && !isNaN(parseFloat(localMax))) newBounds.yMax = parseFloat(localMax)
+    setBounds(newBounds)
+    if (Object.keys(newBounds).length > 0) {
+      localStorage.setItem(boundsKey, JSON.stringify(newBounds))
+    } else {
+      localStorage.removeItem(boundsKey)
+    }
+    setShowSettings(false)
+  }
+
+  const clearBounds = () => {
+    setBounds({})
+    setLocalMin('')
+    setLocalMax('')
+    localStorage.removeItem(boundsKey)
+    setShowSettings(false)
+  }
 
   useEffect(() => {
     if (!ref.current || data.length === 0) return
@@ -881,7 +1135,7 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
 
     const margin = { top: 10, right: 10, bottom: 20, left: 45 }
     const width = ref.current.clientWidth - margin.left - margin.right
-    const height = 120 - margin.top - margin.bottom
+    const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
       .append('g')
@@ -897,19 +1151,34 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
       .domain(d3.extent(values, d => d.date) as [Date, Date])
       .range([0, width])
 
-    const yMin = Math.min(
+    // Calculate data-driven bounds
+    const dataMin = Math.min(
       d3.min(values, d => Math.min(d.realized, d.liquid)) ?? 0,
       0
     )
-    const yMax = Math.max(
+    const dataMax = Math.max(
       d3.max(values, d => Math.max(d.realized, d.liquid)) ?? 0,
       0
     )
 
+    // Apply user bounds if set, otherwise use data bounds with padding
+    let yMin = bounds.yMin !== undefined ? bounds.yMin : dataMin * 1.1
+    let yMax = bounds.yMax !== undefined ? bounds.yMax : dataMax * 1.1
+
+    // Ensure yMin < yMax
+    if (yMin >= yMax) {
+      const padding = Math.abs(yMin) * 0.1 || 0.1
+      yMin = yMin - padding
+      yMax = yMax + padding
+    }
+
     const y = d3.scaleLinear()
-      .domain([yMin * 1.1, yMax * 1.1])
+      .domain([yMin, yMax])
       .nice()
       .range([height, 0])
+
+    // Clamp function
+    const clamp = (val: number) => Math.max(yMin, Math.min(yMax, val))
 
     const tooltip = d3.select(tooltipRef.current)
 
@@ -929,7 +1198,7 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
     const liquidArea = d3.area<typeof values[0]>()
       .x(d => x(d.date))
       .y0(y(Math.max(0, yMin)))
-      .y1(d => y(d.liquid))
+      .y1(d => y(clamp(d.liquid)))
       .curve(d3.curveMonotoneX)
 
     g.append('path')
@@ -940,7 +1209,7 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
     // Line for realized APY (green)
     const realizedLine = d3.line<typeof values[0]>()
       .x(d => x(d.date))
-      .y(d => y(d.realized))
+      .y(d => y(clamp(d.realized)))
       .curve(d3.curveMonotoneX)
 
     g.append('path')
@@ -953,7 +1222,7 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
     // Line for liquid APY (blue)
     const liquidLine = d3.line<typeof values[0]>()
       .x(d => x(d.date))
-      .y(d => y(d.liquid))
+      .y(d => y(clamp(d.liquid)))
       .curve(d3.curveMonotoneX)
 
     g.append('path')
@@ -968,7 +1237,7 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
     if (lastDataPoint) {
       g.append('circle')
         .attr('cx', x(lastDataPoint.date))
-        .attr('cy', y(lastDataPoint.realized))
+        .attr('cy', y(clamp(lastDataPoint.realized)))
         .attr('r', 4)
         .attr('fill', '#10b981')
         .attr('stroke', 'white')
@@ -976,7 +1245,7 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
 
       g.append('circle')
         .attr('cx', x(lastDataPoint.date))
-        .attr('cy', y(lastDataPoint.liquid))
+        .attr('cy', y(clamp(lastDataPoint.liquid)))
         .attr('r', 4)
         .attr('fill', '#3b82f6')
         .attr('stroke', 'white')
@@ -1002,7 +1271,13 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
         const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
         tooltip
           .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/><span style="color:#10b981">Realized: ${formatPercentSimple(d.realized)}</span><br/><span style="color:#3b82f6">Liquid: ${formatPercentSimple(d.liquid)}</span>`)
-          .style('left', (event.pageX + 10) + 'px')
+        // Position tooltip - flip to left side if near right edge
+        const tooltipWidth = 140
+        const leftPos = event.pageX + tooltipWidth + 20 > window.innerWidth
+          ? event.pageX - tooltipWidth - 10
+          : event.pageX + 10
+        tooltip
+          .style('left', leftPos + 'px')
           .style('top', (event.pageY - 10) + 'px')
       })
       .on('mouseout', () => tooltip.style('opacity', 0))
@@ -1025,12 +1300,26 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
 
-  }, [data, resize])
+  }, [data, resize, bounds])
+
+  const hasBounds = bounds.yMin !== undefined || bounds.yMax !== undefined
 
   return (
     <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
       <div className="flex items-center justify-between mb-0.5">
-        <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white">APY</h3>
+        <div className="flex items-center gap-1">
+          <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white">APY</h3>
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`p-0.5 rounded hover:bg-slate-700 ${hasBounds ? 'text-mint-400' : 'text-slate-500'}`}
+            title="Chart settings"
+          >
+            <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
         <div className="flex gap-1 xs:gap-1.5 sm:gap-2 text-[6px] xs:text-[7px] sm:text-[8px] md:text-[9px]">
           <span className="flex items-center gap-0.5 text-emerald-400">
             <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500" />
@@ -1042,7 +1331,59 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
           </span>
         </div>
       </div>
-      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+
+      {/* Settings popover */}
+      {showSettings && (
+        <div className="absolute top-8 left-0 z-50 bg-slate-900 border border-slate-600 rounded-lg p-2 shadow-xl">
+          <div className="text-[9px] sm:text-xs text-slate-300 mb-2">Y-Axis Bounds (decimal, e.g., 0.5 = 50%)</div>
+          <div className="flex gap-2 items-center mb-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-[8px] sm:text-[10px] text-slate-400">Min</label>
+              <input
+                type="number"
+                step="0.01"
+                value={localMin}
+                onChange={e => setLocalMin(e.target.value)}
+                placeholder="Auto"
+                className="w-20 px-1.5 py-1 text-[10px] sm:text-xs bg-slate-800 border border-slate-600 rounded text-white"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[8px] sm:text-[10px] text-slate-400">Max</label>
+              <input
+                type="number"
+                step="0.01"
+                value={localMax}
+                onChange={e => setLocalMax(e.target.value)}
+                placeholder="Auto"
+                className="w-20 px-1.5 py-1 text-[10px] sm:text-xs bg-slate-800 border border-slate-600 rounded text-white"
+              />
+            </div>
+          </div>
+          <div className="flex gap-1.5">
+            <button
+              onClick={saveBounds}
+              className="px-2 py-1 text-[9px] sm:text-[10px] bg-mint-600 hover:bg-mint-500 text-white rounded"
+            >
+              Apply
+            </button>
+            <button
+              onClick={clearBounds}
+              className="px-2 py-1 text-[9px] sm:text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 rounded"
+            >
+              Clear
+            </button>
+            <button
+              onClick={() => setShowSettings(false)}
+              className="px-2 py-1 text-[9px] sm:text-[10px] text-slate-400 hover:text-slate-300"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
       <div
         ref={tooltipRef}
         className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[200px]"
@@ -1070,7 +1411,7 @@ function MarginChart({ data, currentAccess, currentBorrowed, resize }: {
 
     const margin = { top: 10, right: 10, bottom: 20, left: 45 }
     const width = ref.current.clientWidth - margin.left - margin.right
-    const height = 120 - margin.top - margin.bottom
+    const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
       .append('g')
@@ -1189,7 +1530,13 @@ function MarginChart({ data, currentAccess, currentBorrowed, resize }: {
         const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
         tooltip
           .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/><span style="color:#10b981">Access: ${formatCurrencyCompact(d.access)}</span><br/><span style="color:#ef4444">Borrowed: ${formatCurrencyCompact(d.borrowed)}</span>`)
-          .style('left', (event.pageX + 10) + 'px')
+        // Position tooltip - flip to left side if near right edge
+        const tooltipWidth = 140
+        const leftPos = event.pageX + tooltipWidth + 20 > window.innerWidth
+          ? event.pageX - tooltipWidth - 10
+          : event.pageX + 10
+        tooltip
+          .style('left', leftPos + 'px')
           .style('top', (event.pageY - 10) + 'px')
       })
       .on('mouseout', () => tooltip.style('opacity', 0))
@@ -1229,7 +1576,7 @@ function MarginChart({ data, currentAccess, currentBorrowed, resize }: {
           </span>
         </div>
       </div>
-      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
       <div
         ref={tooltipRef}
         className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[200px]"
@@ -1253,6 +1600,7 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
   // Use aggregate totals for current values (consistent with header metrics)
   const currentLiquidGain = aggregateTotals?.totalGainUsd ?? timeSeries[timeSeries.length - 1]?.totalGainUsd ?? 0
   const currentRealizedGains = aggregateTotals?.totalRealizedGains ?? timeSeries[timeSeries.length - 1]?.totalRealizedGain ?? 0
+  const currentUnrealizedGains = aggregateTotals?.totalUnrealizedGains ?? timeSeries[timeSeries.length - 1]?.totalUnrealizedGain ?? 0
 
   // Get current APY values from aggregateTotals (properly filtered) or fall back to time series
   const lastTimeSeriesPoint = timeSeries[timeSeries.length - 1]
@@ -1286,16 +1634,18 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
 
   return (
     <div className="space-y-1.5 xs:space-y-2 sm:space-y-3">
-      {/* Pie Charts Row - Scrollable on mobile with fade indicator */}
-      <div className="relative">
-        <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-slate-900 to-transparent pointer-events-none z-10 sm:hidden" />
-        <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0 sm:overflow-x-visible pb-1 sm:pb-0 scroll-smooth scrollbar-thin snap-x snap-mandatory">
-          <div className="grid grid-cols-3 gap-1 xs:gap-1.5 sm:gap-2 min-w-[400px] sm:min-w-0">
-            <PieChart data={allocations} title="Fund Allocation" valueKey="fundSize" />
-            <PieChart data={allocations} title="Asset Allocation" valueKey="value" />
-            <PlatformPieChart data={platformAllocations} title="Platform Allocation" valueKey="value" />
-          </div>
-        </div>
+      {/* Mobile: Allocation Lists (compact, no pie charts) */}
+      <div className="grid grid-cols-1 gap-1.5 sm:hidden">
+        <AllocationList data={allocations} title="Fund Allocation" valueKey="fundSize" />
+        <AllocationList data={allocations} title="Asset Allocation" valueKey="value" />
+        <AllocationList data={platformAllocations} title="Platform Allocation" valueKey="value" showPlatformOnly />
+      </div>
+
+      {/* Desktop: Pie Charts Row */}
+      <div className="hidden sm:grid grid-cols-3 gap-2">
+        <PieChart data={allocations} title="Fund Allocation" valueKey="fundSize" />
+        <PieChart data={allocations} title="Asset Allocation" valueKey="value" />
+        <PlatformPieChart data={platformAllocations} title="Platform Allocation" valueKey="value" />
       </div>
 
       {/* Time Series Charts - Row 1: Key metrics */}
@@ -1309,6 +1659,7 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
         <GainsChart
           data={timeSeries}
           currentRealized={currentRealizedGains}
+          currentUnrealized={currentUnrealizedGains}
           currentLiquid={currentLiquidGain}
           resize={resize}
         />

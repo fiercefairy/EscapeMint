@@ -253,12 +253,12 @@ fundsRouter.get('/history', async (req, res, next) => {
 
   // Pre-compute derivatives state for each derivatives fund
   // This gives us per-entry equity values
-  const derivativesStateByFund = new Map<string, Map<string, { equity: number, costBasis: number, marginBalance: number, availableFunds: number, realizedPnl: number, cumInterest: number }>>()
+  const derivativesStateByFund = new Map<string, Map<string, { equity: number, costBasis: number, marginBalance: number, availableFunds: number, realizedPnl: number, unrealizedPnl: number, cumInterest: number }>>()
   for (const fund of funds) {
     if (fund.config.fund_type === 'derivatives' && fund.entries.length > 0) {
       const contractMultiplier = fund.config.contract_multiplier ?? 0.01
       const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier)
-      const dateMap = new Map<string, { equity: number, costBasis: number, marginBalance: number, availableFunds: number, realizedPnl: number, cumInterest: number }>()
+      const dateMap = new Map<string, { equity: number, costBasis: number, marginBalance: number, availableFunds: number, realizedPnl: number, unrealizedPnl: number, cumInterest: number }>()
       for (const entry of derivStates) {
         dateMap.set(entry.date, {
           equity: entry.equity,
@@ -266,6 +266,7 @@ fundsRouter.get('/history', async (req, res, next) => {
           marginBalance: entry.marginBalance,
           availableFunds: entry.availableFunds,
           realizedPnl: entry.realizedPnl,
+          unrealizedPnl: entry.unrealizedPnl,
           cumInterest: entry.cumInterest
         })
       }
@@ -301,6 +302,7 @@ fundsRouter.get('/history', async (req, res, next) => {
     totalExpenses: number
     totalCashInterest: number
     totalRealizedGain: number
+    totalUnrealizedGain: number
     realizedAPY: number
     liquidAPY: number
     totalGainUsd: number
@@ -321,6 +323,7 @@ fundsRouter.get('/history', async (req, res, next) => {
     let totalExpenses = 0
     let totalCashInterest = 0
     let totalRealizedGain = 0
+    let totalUnrealizedGain = 0
     let totalGainUsd = 0  // Track gain per-fund (handles cash funds properly)
     const fundBreakdown: Record<string, number> = {}
 
@@ -344,6 +347,7 @@ fundsRouter.get('/history', async (req, res, next) => {
         let derivCostBasis = 0
         let derivAvailableFunds = 0
         let derivRealizedPnl = 0
+        let derivUnrealizedPnl = 0
         let derivCumInterest = 0
         if (derivDateMap) {
           for (const entry of entriesUpToDate) {
@@ -353,6 +357,7 @@ fundsRouter.get('/history', async (req, res, next) => {
               derivCostBasis = state.costBasis
               derivAvailableFunds = state.availableFunds
               derivRealizedPnl = state.realizedPnl
+              derivUnrealizedPnl = state.unrealizedPnl
               derivCumInterest = state.cumInterest
             }
           }
@@ -360,12 +365,14 @@ fundsRouter.get('/history', async (req, res, next) => {
         totalValue += derivValue
         totalFundSize += derivValue
         totalStartInput += derivCostBasis
-        totalRealizedGain += derivRealizedPnl + derivCumInterest
+        // realizedPnl already includes funding, interest, rebates, and fees
+        totalRealizedGain += derivRealizedPnl
+        totalUnrealizedGain += derivUnrealizedPnl
         totalCashInterest += derivCumInterest
         totalCash += Math.max(0, derivAvailableFunds)
         fundBreakdown[fund.id] = derivValue
-        // Derivatives gain = unrealized (equity - costBasis) + realized P&L
-        totalGainUsd += (derivValue - derivCostBasis) + derivRealizedPnl
+        // Derivatives liquid gain = realized P&L + unrealized P&L
+        totalGainUsd += derivRealizedPnl + derivUnrealizedPnl
       } else {
         // For cash and trading funds, use engine's computeFundState
         const trades = entriesToTrades(entriesUpToDate)
@@ -400,9 +407,15 @@ fundsRouter.get('/history', async (req, res, next) => {
 
         // For gain calculation, match computeFundMetrics logic:
         // Cash funds: gain = interest earned (realized only, not full balance)
-        // Trading funds: gain = actual_value - start_input (unrealized)
+        // Trading funds: gain = actual_value - start_input (total liquid gain)
         const fundGain = isCashFund ? state.realized_gains_usd : state.gain_usd
         totalGainUsd += fundGain
+
+        // Unrealized gain for trading funds: total gain minus realized
+        // Cash funds have no unrealized (all gains are realized as interest)
+        if (!isCashFund) {
+          totalUnrealizedGain += state.gain_usd - state.realized_gains_usd
+        }
 
         // Track dividends and expenses for display
         for (const entry of entriesUpToDate) {
@@ -466,6 +479,7 @@ fundsRouter.get('/history', async (req, res, next) => {
       totalExpenses,
       totalCashInterest,
       totalRealizedGain,
+      totalUnrealizedGain,
       realizedAPY,
       liquidAPY,
       totalGainUsd: totalGainUsdForChart,  // Use totalValue - totalStartInput to match aggregate

@@ -71,7 +71,7 @@ export interface FundSummary {
 }
 
 // Action types for regular funds (trading, cash, crypto)
-export type RegularFundAction = 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
+export type RegularFundAction = 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW' | 'MARGIN'
 
 // Action types specific to derivatives funds
 export type DerivativesFundAction = 'FUNDING' | 'INTEREST' | 'REBATE' | 'FEE'
@@ -93,6 +93,7 @@ export interface FundEntry {
   fund_size?: number
   margin_available?: number
   margin_borrowed?: number
+  margin_expense?: number    // Margin interest expense for cash funds with margin
   notes?: string
 
   // Derivatives-specific fields
@@ -402,11 +403,14 @@ export interface TimeSeriesPoint {
   totalExpenses: number
   totalCashInterest: number
   totalRealizedGain: number
+  totalUnrealizedGain: number
   realizedAPY: number
   liquidAPY: number
   totalGainUsd: number
   totalGainPct: number
   fundBreakdown: Record<string, number>  // Per-fund breakdown of fund sizes
+  realizedGainBreakdown?: Record<string, number>  // Per-fund breakdown of realized gains
+  unrealizedGainBreakdown?: Record<string, number>  // Per-fund breakdown of unrealized gains
 }
 
 export interface AllocationData {

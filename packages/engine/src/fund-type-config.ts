@@ -171,7 +171,7 @@ export const FUND_TYPE_FEATURES: Record<FundType, FundTypeFeatures> = {
 /**
  * Valid entry actions by fund type.
  */
-export type CashFundAction = 'DEPOSIT' | 'WITHDRAW' | 'HOLD'
+export type CashFundAction = 'DEPOSIT' | 'WITHDRAW' | 'HOLD' | 'MARGIN'
 export type TradingFundAction = 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
 export type DerivativesFundAction =
   | 'BUY'
@@ -184,7 +184,7 @@ export type DerivativesFundAction =
   | 'WITHDRAW'
 
 export const ALLOWED_ACTIONS: Record<FundType, readonly string[]> = {
-  cash: ['DEPOSIT', 'WITHDRAW', 'HOLD'] as const,
+  cash: ['DEPOSIT', 'WITHDRAW', 'HOLD', 'MARGIN'] as const,
   stock: ['BUY', 'SELL', 'HOLD', 'DEPOSIT', 'WITHDRAW'] as const,
   crypto: ['BUY', 'SELL', 'HOLD', 'DEPOSIT', 'WITHDRAW'] as const,
   derivatives: [

@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type { SubFundConfig, Trade, CashFlow, Dividend, Expense } from '@escapemint/engine'
 
 // Action types for regular funds (trading, cash, crypto)
-export type RegularFundAction = 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW'
+export type RegularFundAction = 'BUY' | 'SELL' | 'HOLD' | 'DEPOSIT' | 'WITHDRAW' | 'MARGIN'
 
 // Action types specific to derivatives funds
 export type DerivativesFundAction = 'FUNDING' | 'INTEREST' | 'REBATE' | 'FEE'
@@ -30,6 +30,7 @@ export interface FundEntry {
   fund_size?: number
   margin_available?: number
   margin_borrowed?: number
+  margin_expense?: number    // Margin interest expense for cash funds with margin
   notes?: string
 
   // Derivatives-specific fields
@@ -56,7 +57,7 @@ export interface FundData {
   entries: FundEntry[]
 }
 
-const ENTRY_HEADERS = ['date', 'value', 'cash', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'notes', 'contracts', 'entry_price', 'liquidation_price', 'unrealized_pnl', 'funding_profit', 'funding_loss', 'margin_locked', 'fee', 'margin']
+const ENTRY_HEADERS = ['date', 'value', 'cash', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'margin_expense', 'notes', 'contracts', 'entry_price', 'liquidation_price', 'unrealized_pnl', 'funding_profit', 'funding_loss', 'margin_locked', 'fee', 'margin']
 
 /**
  * Get the JSON config file path for a TSV file.
@@ -116,7 +117,7 @@ function parseEntry(line: string, headers: string[]): FundEntry {
         break
       case 'action':
         // Regular actions and derivatives-specific actions
-        if (val === 'BUY' || val === 'SELL' || val === 'HOLD' || val === 'DEPOSIT' || val === 'WITHDRAW' ||
+        if (val === 'BUY' || val === 'SELL' || val === 'HOLD' || val === 'DEPOSIT' || val === 'WITHDRAW' || val === 'MARGIN' ||
             val === 'FUNDING' || val === 'INTEREST' || val === 'REBATE' || val === 'FEE') {
           entry.action = val as FundAction
         }

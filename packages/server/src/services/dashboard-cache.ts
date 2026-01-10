@@ -7,14 +7,10 @@
 
 import { join } from 'node:path'
 import { readdir } from 'node:fs/promises'
-import { readFund, type FundData, type FundEntry } from '@escapemint/storage'
+import { readFund, type FundData } from '@escapemint/storage'
 import {
-  computeFundState,
   computeDerivativesEntriesState,
-  type SubFundConfig,
-  type Trade,
-  type Dividend,
-  type Expense
+  type SubFundConfig
 } from '@escapemint/engine'
 import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
 
@@ -96,11 +92,14 @@ export interface TimeSeriesPoint {
   totalExpenses: number
   totalCashInterest: number
   totalRealizedGain: number
+  totalUnrealizedGain: number
   realizedAPY: number
   liquidAPY: number
   totalGainUsd: number
   totalGainPct: number
   fundBreakdown: Record<string, number>
+  realizedGainBreakdown: Record<string, number>
+  unrealizedGainBreakdown: Record<string, number>
 }
 
 export interface AllocationData {
@@ -204,42 +203,6 @@ async function loadAllFunds(includeTest = false): Promise<FundData[]> {
 
   // Filter based on test mode
   return funds.filter(f => includeTest ? isTestPlatform(f.platform) : !isTestPlatform(f.platform))
-}
-
-// Convert entries to trades
-function entriesToTrades(entries: FundEntry[]): Trade[] {
-  return entries
-    .filter(e => (e.action === 'BUY' || e.action === 'SELL') && e.amount)
-    .map(e => {
-      const trade: Trade = {
-        date: e.date,
-        type: e.action?.toLowerCase() as 'buy' | 'sell',
-        amount_usd: e.amount!
-      }
-      if (e.shares !== undefined) trade.shares = e.shares
-      if (e.value !== undefined) trade.value = e.value
-      return trade
-    })
-}
-
-// Convert entries to dividends
-function entriesToDividends(entries: FundEntry[]): Dividend[] {
-  return entries
-    .filter(e => e.dividend && e.dividend > 0)
-    .map(e => ({
-      date: e.date,
-      amount_usd: e.dividend!
-    }))
-}
-
-// Convert entries to expenses
-function entriesToExpenses(entries: FundEntry[]): Expense[] {
-  return entries
-    .filter(e => e.expense && e.expense > 0)
-    .map(e => ({
-      date: e.date,
-      amount_usd: e.expense!
-    }))
 }
 
 // Get fund summaries (fast, for fund list)
@@ -462,10 +425,11 @@ function computeHistory(funds: FundData[]): DashboardHistory {
   }
 
   const sortedDates = [...allDates].sort()
+  const lastDate = sortedDates[sortedDates.length - 1]
   const timeSeries: TimeSeriesPoint[] = []
 
   // Pre-compute derivatives state for each derivatives fund (matches REST API)
-  type DerivState = { equity: number; costBasis: number; marginBalance: number; availableFunds: number; realizedPnl: number; cumInterest: number }
+  type DerivState = { equity: number; costBasis: number; marginBalance: number; availableFunds: number; realizedPnl: number; unrealizedPnl: number; cumFunding: number; cumInterest: number; cumRebates: number; cumFees: number }
   const derivativesStateByFund = new Map<string, Map<string, DerivState>>()
   for (const fund of funds) {
     if (fund.config.fund_type === 'derivatives' && fund.entries.length > 0) {
@@ -477,6 +441,10 @@ function computeHistory(funds: FundData[]): DashboardHistory {
           equity: entry.equity,
           costBasis: entry.costBasis,
           marginBalance: entry.marginBalance,
+          unrealizedPnl: entry.unrealizedPnl,
+          cumFunding: entry.cumFunding,
+          cumRebates: entry.cumRebates,
+          cumFees: entry.cumFees,
           availableFunds: entry.availableFunds,
           realizedPnl: entry.realizedPnl,
           cumInterest: entry.cumInterest
@@ -506,8 +474,11 @@ function computeHistory(funds: FundData[]): DashboardHistory {
     let totalExpenses = 0
     let totalCashInterest = 0
     let totalRealizedGain = 0
+    let totalUnrealizedGain = 0
     let totalGainUsd = 0
     const fundBreakdown: Record<string, number> = {}
+    const realizedGainBreakdown: Record<string, number> = {}
+    const unrealizedGainBreakdown: Record<string, number> = {}
 
     for (const fund of funds) {
       const entriesUpToDate = fund.entries.filter(e => e.date <= date)
@@ -516,7 +487,6 @@ function computeHistory(funds: FundData[]): DashboardHistory {
       const sortedEntries = [...entriesUpToDate].sort(
         (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
       )
-      const latestEntry = sortedEntries[sortedEntries.length - 1]!
 
       const isCashFund = fund.config.fund_type === 'cash'
       const isDerivativesFund = fund.config.fund_type === 'derivatives'
@@ -528,7 +498,11 @@ function computeHistory(funds: FundData[]): DashboardHistory {
         let derivCostBasis = 0
         let derivAvailableFunds = 0
         let derivRealizedPnl = 0
+        let derivUnrealizedPnl = 0
+        let derivCumFunding = 0
         let derivCumInterest = 0
+        let derivCumRebates = 0
+        let derivCumFees = 0
         if (derivDateMap) {
           for (const entry of sortedEntries) {
             const state = derivDateMap.get(entry.date)
@@ -537,65 +511,91 @@ function computeHistory(funds: FundData[]): DashboardHistory {
               derivCostBasis = state.costBasis
               derivAvailableFunds = state.availableFunds
               derivRealizedPnl = state.realizedPnl
+              derivUnrealizedPnl = state.unrealizedPnl
+              derivCumFunding = state.cumFunding
               derivCumInterest = state.cumInterest
+              derivCumRebates = state.cumRebates
+              derivCumFees = state.cumFees
             }
           }
         }
         totalValue += derivValue
         totalFundSize += derivValue
         totalStartInput += derivCostBasis
-        totalRealizedGain += derivRealizedPnl + derivCumInterest
+        // Realized = closed trade P&L + funding + interest + rebates - fees
+        const derivRealized = derivRealizedPnl + derivCumFunding + derivCumInterest + derivCumRebates - derivCumFees
+        totalRealizedGain += derivRealized
         totalCashInterest += derivCumInterest
         totalCash += Math.max(0, derivAvailableFunds)
         fundBreakdown[fund.id] = derivValue
-        // Derivatives gain = unrealized (equity - costBasis) + realized P&L
-        totalGainUsd += (derivValue - derivCostBasis) + derivRealizedPnl
+        // Unrealized = actual unrealized P&L on open positions (from state)
+        totalUnrealizedGain += derivUnrealizedPnl
+        // Track per-fund breakdown
+        realizedGainBreakdown[fund.id] = derivRealized
+        unrealizedGainBreakdown[fund.id] = derivUnrealizedPnl
+        // Derivatives liquid gain = unrealized + realized
+        totalGainUsd += derivUnrealizedPnl + derivRealized
       } else {
-        // Cash and trading funds - use original logic
-        const actualFundSize = latestEntry.fund_size ?? fund.config.fund_size_usd
-        totalFundSize += actualFundSize
-        totalValue += latestEntry.value
-        fundBreakdown[fund.id] = latestEntry.value
+        // Cash and trading funds - use computeFundFinalMetrics for realized gains
+        // For historical points, override the status to 'active' so closed funds
+        // show their actual historical values (not forced to 0)
+        const isLastDate = date === lastDate
+        const configForSnapshot = isLastDate
+          ? fund.config
+          : { ...fund.config, status: 'active' as const }
+        const fundSnapshot = {
+          ...fund,
+          config: configForSnapshot,
+          entries: sortedEntries
+        }
+        const metrics = computeFundFinalMetrics(fundSnapshot)
+        const latestEntry = sortedEntries[sortedEntries.length - 1]!
 
-        // Compute state for this fund at this date
-        const trades = entriesToTrades(sortedEntries)
-        const dividends = entriesToDividends(sortedEntries)
-        const expenses = entriesToExpenses(sortedEntries)
+        totalFundSize += metrics.fundSize
 
-        const configWithActualFundSize = { ...fund.config, fund_size_usd: actualFundSize }
-        const state = computeFundState(
-          configWithActualFundSize,
-          trades,
-          [],
-          dividends,
-          expenses,
-          latestEntry.value,
-          date
-        )
+        // For the final date, use post-action value (matches header widgets)
+        // For historical dates, use entry value directly to avoid over-counting
+        const valueForCalc = isLastDate ? metrics.currentValue : latestEntry.value
+        totalValue += valueForCalc
+        fundBreakdown[fund.id] = valueForCalc
 
-        totalStartInput += state.start_input_usd
-        totalRealizedGain += state.realized_gains_usd
-        totalCashInterest += state.cash_interest_usd
+        totalStartInput += metrics.totalInvested
+        totalRealizedGain += metrics.realized
+        totalCashInterest += metrics.cumCashInterest
 
-        const fundGain = isCashFund ? state.realized_gains_usd : state.gain_usd
-        totalGainUsd += fundGain
+        // Track per-fund realized gains
+        realizedGainBreakdown[fund.id] = metrics.realized
 
-        // Track dividends and expenses
-        for (const entry of sortedEntries) {
-          if (entry.dividend) totalDividends += Math.abs(entry.dividend)
-          if (entry.expense) totalExpenses += Math.abs(entry.expense)
+        // Unrealized calculation
+        if (!isCashFund) {
+          // For final date: use metrics.unrealized (post-action value - cost basis)
+          // For historical: use entry value - cost basis
+          // Special case: if costBasis is 0, there are no open positions so unrealized is 0
+          // (the position is fully closed, there's nothing to have unrealized gains on, even if currentValue > 0 from cash)
+          const isFullyLiquidated = metrics.costBasis === 0
+          const fundUnrealized = isFullyLiquidated ? 0 : (isLastDate ? metrics.unrealized : (latestEntry.value - metrics.costBasis))
+          totalUnrealizedGain += fundUnrealized
+          unrealizedGainBreakdown[fund.id] = fundUnrealized
+          // Liquid = unrealized + realized
+          totalGainUsd += fundUnrealized + metrics.realized
+        } else {
+          unrealizedGainBreakdown[fund.id] = 0
+          // Cash funds: all gains are realized
+          totalGainUsd += metrics.realized
         }
 
-        // Cash
-        const cash = isCashFund
-          ? (latestEntry.cash ?? latestEntry.value)
-          : (latestEntry.cash ?? 0)
-        totalCash += cash
+        // Track dividends and expenses
+        totalDividends += metrics.cumDividends
+        totalExpenses += metrics.cumExpenses
+
+        // Cash - use computed cash from metrics
+        totalCash += metrics.cash
       }
 
-      // Margin
-      if (latestEntry.margin_borrowed) {
-        totalMarginBorrowed += latestEntry.margin_borrowed
+      // Margin - still need to get from entry
+      const latestForMargin = sortedEntries[sortedEntries.length - 1]
+      if (latestForMargin?.margin_borrowed) {
+        totalMarginBorrowed += latestForMargin.margin_borrowed
       }
       if (fund.config.margin_access_usd) {
         totalMarginAccess += fund.config.margin_access_usd
@@ -630,11 +630,14 @@ function computeHistory(funds: FundData[]): DashboardHistory {
       totalExpenses,
       totalCashInterest,
       totalRealizedGain,
+      totalUnrealizedGain,
       realizedAPY,
       liquidAPY,
       totalGainUsd,
       totalGainPct,
-      fundBreakdown
+      fundBreakdown,
+      realizedGainBreakdown,
+      unrealizedGainBreakdown
     })
   }
 
