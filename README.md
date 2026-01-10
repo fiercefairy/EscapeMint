@@ -53,7 +53,7 @@ pnpm install
 # Build packages
 pnpm run build:packages
 
-# Copy example data to get started (optional - creates sample funds)
+# Create data directory (the test data generator on the Settings page can populate sample data)
 pnpm run setup:data
 
 # Start the development servers
@@ -155,8 +155,6 @@ escapemint/
 │   └── web/        # React frontend (port 5550)
 ├── data/
 │   └── funds/      # Your fund files (gitignored)
-├── data.example/
-│   └── funds/      # Sample fund files
 ├── ecosystem.config.cjs  # PM2 configuration
 └── package.json
 ```
