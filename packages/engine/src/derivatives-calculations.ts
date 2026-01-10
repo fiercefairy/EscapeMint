@@ -672,21 +672,25 @@ export const computeDerivativesEntriesState = (
       case 'FUNDING':
         cumFunding += amount
         marginBalance += amount  // Funding affects margin balance
+        realizedPnl += amount    // Funding is realized gain/loss
         break
 
       case 'INTEREST':
         cumInterest += amount
         marginBalance += amount  // Interest adds to margin
+        realizedPnl += amount    // Interest is realized gain
         break
 
       case 'REBATE':
         cumRebates += amount
         marginBalance += amount  // Rebates add to margin
+        realizedPnl += amount    // Rebates are realized gain
         break
 
       case 'FEE':
         cumFees += Math.abs(amount)
         marginBalance -= Math.abs(amount)  // Fees reduce margin
+        realizedPnl -= Math.abs(amount)    // Fees reduce realized P&L
         break
 
       case 'BUY': {

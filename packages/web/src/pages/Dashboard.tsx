@@ -132,8 +132,8 @@ export function Dashboard() {
 
     const filteredAllocations = history.currentAllocations.filter(a => a.platform === filterPlatform)
 
-    // Filter time series - fundBreakdown contains per-fund values which we can filter
-    // First pass: filter and scale values, excluding points with no platform data
+    // Filter time series - use per-fund breakdowns for accurate platform filtering
+    // First pass: filter and sum per-fund values, excluding points with no platform data
     const rawFilteredTimeSeries = history.timeSeries
       .map(point => {
         // Filter fundBreakdown to only include funds from selected platform
@@ -152,14 +152,35 @@ export function Dashboard() {
           return null
         }
 
-        // Calculate scaling ratio using server's totalValue as base
+        // Sum realized gains from per-fund breakdown (accurate per-platform)
+        let filteredRealizedGain = 0
+        if (point.realizedGainBreakdown) {
+          for (const [fundId, value] of Object.entries(point.realizedGainBreakdown)) {
+            if (platformFundIds.has(fundId)) {
+              filteredRealizedGain += value
+            }
+          }
+        }
+
+        // Sum unrealized gains from per-fund breakdown (accurate per-platform)
+        let filteredUnrealizedGain = 0
+        if (point.unrealizedGainBreakdown) {
+          for (const [fundId, value] of Object.entries(point.unrealizedGainBreakdown)) {
+            if (platformFundIds.has(fundId)) {
+              filteredUnrealizedGain += value
+            }
+          }
+        }
+
+        // Calculate scaling ratio for values without per-fund breakdown
         const rawRatio = point.totalValue > 0 ? filteredTotalValue / point.totalValue : 0
         const ratio = Math.max(0, Math.min(1, rawRatio))
 
-        // Scale monetary values by ratio
-        const scaledStartInput = point.totalStartInput * ratio
-        const scaledRealizedGain = point.totalRealizedGain * ratio
-        const scaledGainUsd = point.totalGainUsd * ratio
+        // Scale other monetary values by ratio (for those without per-fund breakdown)
+        const scaledStartInput = (point.totalStartInput ?? 0) * ratio
+
+        // Liquid gain = realized + unrealized
+        const filteredGainUsd = filteredRealizedGain + filteredUnrealizedGain
 
         return {
           ...point,
@@ -173,9 +194,10 @@ export function Dashboard() {
           totalDividends: point.totalDividends * ratio,
           totalExpenses: point.totalExpenses * ratio,
           totalCashInterest: point.totalCashInterest * ratio,
-          totalRealizedGain: scaledRealizedGain,
-          totalGainUsd: scaledGainUsd,
-          totalGainPct: scaledStartInput > 0 ? scaledGainUsd / scaledStartInput : 0,
+          totalRealizedGain: filteredRealizedGain,
+          totalUnrealizedGain: filteredUnrealizedGain,
+          totalGainUsd: filteredGainUsd,
+          totalGainPct: scaledStartInput > 0 ? filteredGainUsd / scaledStartInput : 0,
           // APY will be calculated in second pass
           realizedAPY: 0,
           liquidAPY: 0
@@ -270,8 +292,9 @@ export function Dashboard() {
       .filter(f => f.currentValue > 0)
       .reduce((sum, f) => sum + f.projectedAnnualReturn, 0)
 
-    const totalGainUsd = totalValue - totalStartInput
-    const totalGainPct = totalStartInput > 0 ? (totalValue / totalStartInput - 1) : 0
+    // Liquid gain = realized + unrealized (not just value - startInput)
+    const totalGainUsd = totalRealizedGains + totalUnrealizedGains
+    const totalGainPct = totalStartInput > 0 ? totalGainUsd / totalStartInput : 0
     const unrealizedGainPct = totalStartInput > 0 ? totalUnrealizedGains / totalStartInput : 0
 
     const avgDaysActive = fundsWithSharesPct.length > 0 ? totalDaysActive / fundsWithSharesPct.length : 1
@@ -415,6 +438,10 @@ export function Dashboard() {
                 totals={filteredHistory.totals}
                 aggregateTotals={{
                   ...filteredHistory.aggregateTotals,
+                  // Use filteredMetrics values for current display (matches header widgets)
+                  totalRealizedGains: filteredMetrics?.totalRealizedGains ?? filteredHistory.aggregateTotals.totalRealizedGains,
+                  totalUnrealizedGains: filteredMetrics?.totalUnrealizedGains ?? 0,
+                  totalGainUsd: filteredMetrics?.totalGainUsd ?? filteredHistory.aggregateTotals.totalGainUsd,
                   realizedAPY: filteredMetrics?.realizedAPY ?? 0,
                   liquidAPY: filteredMetrics?.liquidAPY ?? 0
                 }}

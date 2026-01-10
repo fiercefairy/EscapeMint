@@ -69,14 +69,16 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
       ))
 
-      const liquidPnl = lastState.unrealizedPnl + lastState.realizedPnl
+      // Realized = all cash gains: closed trades + funding + interest + rebates - fees
+      const realized = lastState.realizedPnl + lastState.cumFunding + lastState.cumInterest + lastState.cumRebates - lastState.cumFees
+      const liquidPnl = lastState.unrealizedPnl + realized
       const denominator = lastState.costBasis > 0 ? lastState.costBasis : 1
 
       // Calculate APY
       let realizedApy = 0
       let liquidApy = 0
       if (daysActive > 0 && denominator > 0) {
-        const realizedReturnPct = lastState.realizedPnl / denominator
+        const realizedReturnPct = realized / denominator
         const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
         realizedApy = Math.pow(1 + clampedRealizedPct, 365 / daysActive) - 1
 
@@ -95,7 +97,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         cumCashInterest: lastState.cumInterest,
         cumExtracted: lastState.realizedPnl,
         unrealized: lastState.unrealizedPnl,
-        realized: lastState.realizedPnl,
+        realized,
         liquidPnl,
         realizedApy,
         liquidApy,

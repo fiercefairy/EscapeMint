@@ -22,6 +22,7 @@ export interface FundMetrics {
   daysActive: number
   timeWeightedFundSize: number
   realizedGains: number
+  unrealizedGains: number
   realizedAPY: number
   liquidAPY: number
   projectedAnnualReturn: number
@@ -38,6 +39,7 @@ export interface AggregateMetrics {
   totalTimeWeightedFundSize: number
   totalDaysActive: number
   totalRealizedGains: number
+  totalUnrealizedGains: number
   realizedAPY: number
   liquidAPY: number
   projectedAnnualReturn: number
@@ -235,9 +237,15 @@ export function computeFundMetrics(
   const projectedAnnualReturn = computeProjectedAnnualReturn(currentValue, realizedAPY)
 
   // For cash funds, gain is just the interest earned (no unrealized gains from assets)
-  // For trading funds, gain is actual value - start input
+  // For trading funds, gain is actual value - start input (paper gain on positions)
   const gainUsd = isCashFund ? realizedGains : (state?.gain_usd ?? 0)
   const liquidAPY = computeLiquidAPY(gainUsd, timeWeightedFundSize, daysActive)
+
+  // Unrealized gains = paper gain on positions (value - cost basis)
+  // For cash funds: no unrealized (all gains are realized as interest)
+  // For trading funds: unrealized = gainUsd (value - start_input IS the unrealized paper gain)
+  // Realized gains (dividends, interest) are ADDITIONAL gains, not subtracted from unrealized
+  const unrealizedGains = isCashFund ? 0 : gainUsd
 
   return {
     id,
@@ -251,6 +259,7 @@ export function computeFundMetrics(
     daysActive,
     timeWeightedFundSize,
     realizedGains,
+    unrealizedGains,
     realizedAPY,
     liquidAPY,
     projectedAnnualReturn,
@@ -278,6 +287,7 @@ export function computeAggregateMetrics(fundMetrics: FundMetrics[]): AggregateMe
   let totalTimeWeightedFundSize = 0
   let totalDaysActive = 0
   let totalRealizedGains = 0
+  let totalUnrealizedGains = 0
   let activeFunds = 0
   let closedFunds = 0
 
@@ -289,6 +299,7 @@ export function computeAggregateMetrics(fundMetrics: FundMetrics[]): AggregateMe
     totalTimeWeightedFundSize += fund.timeWeightedFundSize
     totalDaysActive += fund.daysActive
     totalRealizedGains += fund.realizedGains
+    totalUnrealizedGains += fund.unrealizedGains
 
     if (fund.status === 'closed') {
       closedFunds++
@@ -328,8 +339,9 @@ export function computeAggregateMetrics(fundMetrics: FundMetrics[]): AggregateMe
   }
 
   // Compute aggregate liquid APY directly from totals (not weighted average)
-  // This gives intuitive results: positive gain = positive APY
-  const totalGainUsd = totalValue - totalStartInput
+  // Liquid gain = unrealized (paper gain) + realized (dividends, interest, etc.)
+  // This gives the total gain if you liquidated everything
+  const totalGainUsd = (totalValue - totalStartInput) + totalRealizedGains
   const avgDaysActive = fundMetrics.length > 0 ? totalDaysActive / fundMetrics.length : 1
   const aggregateLiquidAPY = computeLiquidAPY(totalGainUsd, totalTimeWeightedFundSize, avgDaysActive)
 
@@ -347,6 +359,7 @@ export function computeAggregateMetrics(fundMetrics: FundMetrics[]): AggregateMe
     totalTimeWeightedFundSize,
     totalDaysActive,
     totalRealizedGains,
+    totalUnrealizedGains,
     realizedAPY: weightedRealizedAPY,
     liquidAPY: aggregateLiquidAPY,
     projectedAnnualReturn,

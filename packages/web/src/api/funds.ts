@@ -402,11 +402,14 @@ export interface TimeSeriesPoint {
   totalExpenses: number
   totalCashInterest: number
   totalRealizedGain: number
+  totalUnrealizedGain: number
   realizedAPY: number
   liquidAPY: number
   totalGainUsd: number
   totalGainPct: number
   fundBreakdown: Record<string, number>  // Per-fund breakdown of fund sizes
+  realizedGainBreakdown?: Record<string, number>  // Per-fund breakdown of realized gains
+  unrealizedGainBreakdown?: Record<string, number>  // Per-fund breakdown of unrealized gains
 }
 
 export interface AllocationData {
