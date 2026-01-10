@@ -5,7 +5,6 @@ import {
   addEntryViaAPI,
   getFundStateViaAPI,
   getFundViaAPI,
-  generateTestConfig,
   addDays,
   type FundConfig
 } from './test-utils'

@@ -4,12 +4,9 @@ import {
   deleteFundViaAPI,
   addEntryViaAPI,
   listFundsViaAPI,
-  generateTestConfig,
-  addDays,
-  type FundConfig,
-  API_BASE
+  generateTestConfig
 } from './test-utils'
-import { TEST_PLATFORM, TEST_TICKERS } from './test-fixtures'
+import { TEST_PLATFORM } from './test-fixtures'
 
 // Web app base URL
 const WEB_BASE = 'http://localhost:5550'
@@ -95,8 +92,11 @@ test.describe('Dashboard UI Workflows', () => {
       // Look for welcome text or "Create your first fund" type content
       const welcomeContent = page.locator('text=/welcome|get started|create.*fund/i')
 
-      // Note: This test may be flaky if other funds exist in the system
-      // For a complete test, we'd need to completely isolate test data
+      // Skip assertion if other non-test funds exist in the system
+      // This test verifies the welcome panel behavior in isolation
+      if (await welcomeContent.count() > 0) {
+        await expect(welcomeContent.first()).toBeVisible()
+      }
     })
   })
 
@@ -278,12 +278,18 @@ test.describe('Fund Creation via UI', () => {
     const submitButton = page.locator('button[type="submit"]:has-text("Create")')
     await submitButton.click()
 
-    // Should show validation error (toast or inline error)
-    // Look for error indicator
-    const errorIndicator = page.locator('.error, [data-testid="error"], .toast-error, text=/required|invalid/i')
-
     // Give time for toast to appear
     await page.waitForTimeout(500)
+
+    // Should show validation error (toast or inline error) OR modal should stay open
+    // Look for error indicator
+    const errorIndicator = page.locator('.error, [data-testid="error"], .toast-error, text=/required|invalid/i')
+    const modalStillOpen = page.locator('[role="dialog"], .modal')
+
+    // Validation should either show error message or keep modal open (preventing submission)
+    const hasError = await errorIndicator.count() > 0
+    const modalOpen = await modalStillOpen.isVisible()
+    expect(hasError || modalOpen).toBe(true)
 
     // Close modal if still open
     const closeButton = page.locator('button:has-text("Cancel"), button:has-text("Close"), [aria-label="Close"]')
@@ -466,9 +472,9 @@ test.describe('Fund Detail Page Interactions', () => {
     // Verify entries table exists
     await expect(page.locator('table, [data-testid="entries-table"]')).toBeVisible()
 
-    // Verify stats section exists
-    const statsSection = page.locator('.stats, [data-testid="fund-stats"]')
-    // Stats may be part of the page layout
+    // Verify stats section exists (may be part of the main layout)
+    const statsSection = page.locator('.stats, [data-testid="fund-stats"], .grid')
+    await expect(statsSection.first()).toBeVisible()
 
     await deleteFundViaAPI(page, fund.id)
   })
@@ -709,8 +715,16 @@ test.describe('Form Validation', () => {
     const submitButton = page.locator('button[type="submit"]:has-text("Add"), button[type="submit"]:has-text("Save")')
     await submitButton.click()
 
-    // Should show validation error (either toast or inline)
+    // Should show validation error (either toast or inline) OR modal should stay open
     await page.waitForTimeout(500)
+
+    // Validation should either show error message or keep modal open (preventing submission)
+    const errorIndicator = page.locator('.error, [data-testid="error"], .toast-error, text=/required|invalid/i')
+    const modalStillOpen = page.locator('[role="dialog"], .modal')
+
+    const hasError = await errorIndicator.count() > 0
+    const modalOpen = await modalStillOpen.isVisible()
+    expect(hasError || modalOpen).toBe(true)
 
     // Close modal
     const closeButton = page.locator('button:has-text("Cancel"), button:has-text("Close"), [aria-label="Close"]')
@@ -770,30 +784,33 @@ test.describe('Toast Notifications', () => {
     const submitButton = page.locator('button[type="submit"]:has-text("Add")')
     await submitButton.click()
 
-    // Wait for toast
+    // Wait for toast or modal to close (indicating success)
     await page.waitForTimeout(500)
 
-    // Look for toast notification
+    // Look for toast notification or verify modal closed (success indicator)
     const toast = page.locator('.toast, [data-sonner-toast], .Toastify, [role="alert"]')
-    // Toast should appear
+    const modalClosed = !(await page.locator('[role="dialog"], .modal').isVisible())
+
+    // Either toast appeared or modal closed (both indicate success)
+    const hasToast = await toast.count() > 0
+    expect(hasToast || modalClosed).toBe(true)
 
     await deleteFundViaAPI(page, fund.id)
   })
 })
 
 test.describe('Responsive Layout', () => {
-  test('mobile viewport shows hamburger menu', async ({ page }) => {
+  test('mobile viewport renders without errors', async ({ page }) => {
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 667 })
 
     await page.goto(WEB_BASE)
     await waitForPageReady(page)
 
-    // Look for mobile menu button
-    const menuButton = page.locator('button[aria-label="menu" i], button[aria-label="toggle" i], .hamburger, [data-testid="mobile-menu"]')
-
-    // On mobile, there might be a hamburger menu
-    // This is implementation-dependent
+    // Verify page loads and main content is visible at mobile viewport
+    // The specific UI (hamburger menu vs responsive layout) is implementation-dependent
+    const mainContent = page.locator('main, #root, [data-testid="app"]')
+    await expect(mainContent.first()).toBeVisible()
   })
 
   test('desktop viewport shows full navigation', async ({ page }) => {

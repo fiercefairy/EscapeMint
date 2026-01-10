@@ -6,7 +6,7 @@
   "description": "A local-first, open-source capital allocation engine for rules-based fund management",
   "scripts": {
     "setup": "npm install && npm run build:packages && npm run setup:data",
-    "setup:data": "mkdir -p data/funds",
+    "setup:data": "mkdir -p data/funds && echo 'Created data/funds directory. Use Settings > Generate Test Data to populate sample data.'",
     "dev": "pm2 start ecosystem.config.cjs && pm2 logs",
     "dev:stop": "pm2 stop ecosystem.config.cjs",
     "dev:restart": "pm2 restart ecosystem.config.cjs",

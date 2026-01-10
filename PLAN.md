@@ -107,7 +107,7 @@ Replace static sample data with dynamic test data generation using real historic
 - [x] Create test data generator utility
 - [x] Add API endpoint `POST /api/v1/test-data/generate`
 - [x] Add UI button to load test data (Settings page)
-- [x] Remove `data.example/` directory (no longer needed - using test data generator)
+- [x] Removed `data.example/` directory - new users run `npm run setup:data` to create data directory, then use Settings > Generate Test Data
 
 ### Future Features (v1.1+)
 - Tax Lot Tracking (FIFO/LIFO/specific lot)

@@ -325,42 +325,41 @@ test.describe('Export/Import UI', () => {
     // Look for export button
     const exportButton = page.locator('button:has-text("Export"), a:has-text("Export"), [data-testid="export"]')
 
-    if (await exportButton.count() > 0) {
-      // Set up download listener
-      const [download] = await Promise.all([
-        page.waitForEvent('download'),
-        exportButton.first().click()
-      ]).catch(() => [null])
+    // Export button must be present for this test to be meaningful
+    await expect(exportButton.first()).toBeVisible()
 
-      // If download happened, verify
-      if (download) {
-        expect(download.suggestedFilename()).toContain('.json')
-      }
-    }
+    // Set up download listener and trigger export
+    const downloadPromise = page.waitForEvent('download')
+    await exportButton.first().click()
+    const download = await downloadPromise
+
+    // Verify the downloaded file name
+    expect(download.suggestedFilename()).toContain('.json')
 
     await deleteFundViaAPI(page, fund.id)
   })
 
   test('import wizard shows in UI', async ({ page }) => {
-    await page.goto(WEB_BASE)
+    await page.goto(`${WEB_BASE}/settings`)
     await waitForPageReady(page)
 
-    // Look for import button on dashboard or settings
+    // Look for import button on settings page
     const importButton = page.locator('button:has-text("Import"), [data-testid="import"]')
 
-    if (await importButton.count() > 0) {
-      await importButton.first().click()
-      await page.waitForTimeout(300)
+    // Import button must be visible for this test to be meaningful
+    await expect(importButton.first()).toBeVisible()
 
-      // Import wizard/modal should appear
-      const importModal = page.locator('[role="dialog"], .modal, [data-testid="import-wizard"]')
-      await expect(importModal.first()).toBeVisible()
+    await importButton.first().click()
+    await page.waitForTimeout(300)
 
-      // Close it
-      const closeButton = page.locator('button:has-text("Cancel"), button:has-text("Close")')
-      if (await closeButton.count() > 0) {
-        await closeButton.first().click()
-      }
+    // Import wizard/modal should appear
+    const importModal = page.locator('[role="dialog"], .modal, [data-testid="import-wizard"]')
+    await expect(importModal.first()).toBeVisible()
+
+    // Close it (best-effort cleanup)
+    const closeButton = page.locator('button:has-text("Cancel"), button:has-text("Close")')
+    if (await closeButton.count() > 0) {
+      await closeButton.first().click()
     }
   })
 })

@@ -5,7 +5,6 @@ import {
   generateTestConfig,
   API_BASE
 } from './test-utils'
-import { TEST_PLATFORM } from './test-fixtures'
 
 const WEB_BASE = 'http://localhost:5550'
 

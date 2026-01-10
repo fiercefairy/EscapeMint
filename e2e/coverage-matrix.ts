@@ -346,6 +346,7 @@ export const FEATURE_COVERAGE: Record<string, FeatureCategory> = {
         tested: false,
         spec: null,
         priority: 'high'
+        // TODO: Add test for derivatives liquidation price calculation
       },
       'funding-payment-pnl': {
         tested: true,
@@ -564,6 +565,7 @@ export const FEATURE_COVERAGE: Record<string, FeatureCategory> = {
         tested: false,
         spec: null,
         priority: 'high'
+        // TODO: Add test for fund deletion confirmation dialog
       }
     }
   },
@@ -633,6 +635,7 @@ export const FEATURE_COVERAGE: Record<string, FeatureCategory> = {
         tested: false,
         spec: null,
         priority: 'high'
+        // TODO: Add test to verify duplicate ticker prevention on same platform
       },
       'platform-id-format': {
         tested: true,
@@ -859,7 +862,7 @@ function calculatePriorityStats() {
 export function getUntestedFeatures(priority?: 'critical' | 'high' | 'medium' | 'low') {
   const untested: Array<{ category: string; feature: string; priority: string }> = []
 
-  for (const [categoryId, category] of Object.entries(FEATURE_COVERAGE)) {
+  for (const category of Object.values(FEATURE_COVERAGE)) {
     for (const [featureId, feature] of Object.entries(category.features)) {
       if (!feature.tested && (!priority || feature.priority === priority)) {
         untested.push({
