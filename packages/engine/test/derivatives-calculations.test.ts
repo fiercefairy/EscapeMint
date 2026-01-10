@@ -28,7 +28,7 @@ describe('processTrade', () => {
     const result = processTrade('BUY', 100, 100000, 0.01, 0.20, [])
 
     expect(result.realizedGain).toBe(0)
-    expect(result.marginChange).toBe(200) // 100 contracts * 0.01 * 100000 * 0.20 = $200
+    expect(result.marginChange).toBe(20000) // 100 contracts * 0.01 * 100000 * 0.20 = $20,000
     expect(result.newQueue).toHaveLength(1)
     expect(result.newQueue[0]?.contracts).toBe(100)
     expect(result.newQueue[0]?.pricePerContract).toBe(100000)
@@ -36,7 +36,7 @@ describe('processTrade', () => {
 
   it('adds multiple BUY trades to queue', () => {
     const queue: CostBasisLot[] = [
-      { contracts: 50, pricePerContract: 90000, totalCost: 450, margin: 90, timestamp: '2024-01-01' }
+      { contracts: 50, pricePerContract: 90000, totalCost: 45000, margin: 9000, timestamp: '2024-01-01' }
     ]
 
     const result = processTrade('BUY', 100, 100000, 0.01, 0.20, queue)
@@ -48,48 +48,48 @@ describe('processTrade', () => {
 
   it('SELL trade realizes gain using FIFO', () => {
     const queue: CostBasisLot[] = [
-      { contracts: 100, pricePerContract: 90000, totalCost: 900, margin: 180, timestamp: '2024-01-01' }
+      { contracts: 100, pricePerContract: 90000, totalCost: 90000, margin: 18000, timestamp: '2024-01-01' }
     ]
 
     // Sell all 100 contracts at higher price
     const result = processTrade('SELL', 100, 100000, 0.01, 0.20, queue)
 
-    // Proceeds = 100 * 0.01 * 100000 = $1000
-    // Cost basis = $900
-    // Realized gain = $1000 - $900 = $100
-    expect(result.realizedGain).toBe(100)
-    expect(result.marginChange).toBe(-180) // Returns margin
+    // Proceeds = 100 * 0.01 * 100000 = $100,000
+    // Cost basis = $90,000
+    // Realized gain = $100,000 - $90,000 = $10,000
+    expect(result.realizedGain).toBe(10000)
+    expect(result.marginChange).toBe(-18000) // Returns margin
     expect(result.newQueue).toHaveLength(0)
   })
 
   it('SELL trade realizes loss when price drops', () => {
     const queue: CostBasisLot[] = [
-      { contracts: 100, pricePerContract: 100000, totalCost: 1000, margin: 200, timestamp: '2024-01-01' }
+      { contracts: 100, pricePerContract: 100000, totalCost: 100000, margin: 20000, timestamp: '2024-01-01' }
     ]
 
     // Sell at lower price
     const result = processTrade('SELL', 100, 80000, 0.01, 0.20, queue)
 
-    // Proceeds = 100 * 0.01 * 80000 = $800
-    // Cost basis = $1000
-    // Realized gain = $800 - $1000 = -$200
-    expect(result.realizedGain).toBe(-200)
+    // Proceeds = 100 * 0.01 * 80000 = $80,000
+    // Cost basis = $100,000
+    // Realized gain = $80,000 - $100,000 = -$20,000
+    expect(result.realizedGain).toBe(-20000)
     expect(result.newQueue).toHaveLength(0)
   })
 
   it('partial SELL consumes from FIFO queue correctly', () => {
     const queue: CostBasisLot[] = [
-      { contracts: 100, pricePerContract: 90000, totalCost: 900, margin: 180, timestamp: '2024-01-01' },
-      { contracts: 100, pricePerContract: 95000, totalCost: 950, margin: 190, timestamp: '2024-01-02' }
+      { contracts: 100, pricePerContract: 90000, totalCost: 90000, margin: 18000, timestamp: '2024-01-01' },
+      { contracts: 100, pricePerContract: 95000, totalCost: 95000, margin: 19000, timestamp: '2024-01-02' }
     ]
 
     // Sell 50 contracts - should come from first lot (FIFO)
     const result = processTrade('SELL', 50, 100000, 0.01, 0.20, queue)
 
-    // Proceeds = 50 * 0.01 * 100000 = $500
-    // Cost basis = 50/100 * $900 = $450
-    // Realized gain = $500 - $450 = $50
-    expect(result.realizedGain).toBe(50)
+    // Proceeds = 50 * 0.01 * 100000 = $50,000
+    // Cost basis = 50/100 * $90,000 = $45,000
+    // Realized gain = $50,000 - $45,000 = $5,000
+    expect(result.realizedGain).toBe(5000)
 
     // First lot should have 50 remaining
     expect(result.newQueue).toHaveLength(2)
@@ -99,17 +99,17 @@ describe('processTrade', () => {
 
   it('SELL across multiple lots uses FIFO', () => {
     const queue: CostBasisLot[] = [
-      { contracts: 50, pricePerContract: 90000, totalCost: 450, margin: 90, timestamp: '2024-01-01' },
-      { contracts: 100, pricePerContract: 95000, totalCost: 950, margin: 190, timestamp: '2024-01-02' }
+      { contracts: 50, pricePerContract: 90000, totalCost: 45000, margin: 9000, timestamp: '2024-01-01' },
+      { contracts: 100, pricePerContract: 95000, totalCost: 95000, margin: 19000, timestamp: '2024-01-02' }
     ]
 
     // Sell 100 contracts - consumes all of first lot and 50 from second
     const result = processTrade('SELL', 100, 100000, 0.01, 0.20, queue)
 
-    // Proceeds = 100 * 0.01 * 100000 = $1000
-    // Cost basis = $450 (all of lot 1) + $475 (half of lot 2) = $925
-    // Realized gain = $1000 - $925 = $75
-    expect(result.realizedGain).toBe(75)
+    // Proceeds = 100 * 0.01 * 100000 = $100,000
+    // Cost basis = $45,000 (all of lot 1) + $47,500 (half of lot 2) = $92,500
+    // Realized gain = $100,000 - $92,500 = $7,500
+    expect(result.realizedGain).toBe(7500)
 
     // Only second lot should remain with 50 contracts
     expect(result.newQueue).toHaveLength(1)
@@ -145,19 +145,19 @@ describe('calculateLiquidationPrice', () => {
       currentPrice: 100000,
       liquidationPrice: 0,
       unrealizedPnl: 0,
-      marginLocked: 250, // $250 in margin
-      marginAvailable: 200,
-      maintenanceMargin: 50, // 5% of $1000 notional
+      marginLocked: 25000, // $25,000 in margin
+      marginAvailable: 20000,
+      maintenanceMargin: 5000, // 5% of $100,000 notional
       costBasisQueue: [
-        { contracts: 100, pricePerContract: 100000, totalCost: 1000, margin: 200, timestamp: '2024-01-01' }
+        { contracts: 100, pricePerContract: 100000, totalCost: 100000, margin: 20000, timestamp: '2024-01-01' }
       ],
-      totalCostBasis: 1000,
+      totalCostBasis: 100000,
       contractMultiplier: 0.01
     }
 
     // Liq price = (maintenanceMargin + costBasis - totalCash) / btcSize
-    // = (50 + 1000 - 250) / (100 * 0.01)
-    // = 800 / 1 = $80,000
+    // = (5000 + 100000 - 25000) / (100 * 0.01)
+    // = 80000 / 1 = $80,000
     const liqPrice = calculateLiquidationPrice(position)
     expect(liqPrice).toBe(80000)
   })
@@ -170,17 +170,17 @@ describe('calculateLiquidationPrice', () => {
       currentPrice: 100000,
       liquidationPrice: 0,
       unrealizedPnl: 0,
-      marginLocked: 2000, // More than cost basis
-      marginAvailable: 1000,
-      maintenanceMargin: 50,
+      marginLocked: 200000, // More than cost basis
+      marginAvailable: 100000,
+      maintenanceMargin: 5000,
       costBasisQueue: [
-        { contracts: 100, pricePerContract: 100000, totalCost: 1000, margin: 200, timestamp: '2024-01-01' }
+        { contracts: 100, pricePerContract: 100000, totalCost: 100000, margin: 20000, timestamp: '2024-01-01' }
       ],
-      totalCostBasis: 1000,
+      totalCostBasis: 100000,
       contractMultiplier: 0.01
     }
 
-    // Liq price = (50 + 1000 - 2000) / 1 = -950 -> clamped to 0
+    // Liq price = (5000 + 100000 - 200000) / 1 = -95000 -> clamped to 0
     expect(calculateLiquidationPrice(position)).toBe(0)
   })
 })
@@ -194,19 +194,19 @@ describe('calculateEquityAtPrice', () => {
       currentPrice: 100000,
       liquidationPrice: 0,
       unrealizedPnl: 0,
-      marginLocked: 1000,
-      marginAvailable: 800,
-      maintenanceMargin: 50,
+      marginLocked: 100000,
+      marginAvailable: 80000,
+      maintenanceMargin: 5000,
       costBasisQueue: [
-        { contracts: 100, pricePerContract: 100000, totalCost: 1000, margin: 200, timestamp: '2024-01-01' }
+        { contracts: 100, pricePerContract: 100000, totalCost: 100000, margin: 20000, timestamp: '2024-01-01' }
       ],
-      totalCostBasis: 1000,
+      totalCostBasis: 100000,
       contractMultiplier: 0.01
     }
 
     // At entry price, unrealized PnL = 0
-    // Equity = marginLocked + unrealizedPnl = 1000 + 0 = 1000
-    expect(calculateEquityAtPrice(position, 100000)).toBe(1000)
+    // Equity = marginLocked + unrealizedPnl = 100000 + 0 = 100000
+    expect(calculateEquityAtPrice(position, 100000)).toBe(100000)
   })
 
   it('calculates equity at higher price (profit)', () => {
@@ -217,20 +217,20 @@ describe('calculateEquityAtPrice', () => {
       currentPrice: 100000,
       liquidationPrice: 0,
       unrealizedPnl: 0,
-      marginLocked: 1000,
-      marginAvailable: 800,
-      maintenanceMargin: 50,
+      marginLocked: 100000,
+      marginAvailable: 80000,
+      maintenanceMargin: 5000,
       costBasisQueue: [
-        { contracts: 100, pricePerContract: 100000, totalCost: 1000, margin: 200, timestamp: '2024-01-01' }
+        { contracts: 100, pricePerContract: 100000, totalCost: 100000, margin: 20000, timestamp: '2024-01-01' }
       ],
-      totalCostBasis: 1000,
+      totalCostBasis: 100000,
       contractMultiplier: 0.01
     }
 
-    // At 110000: notional = 100 * 0.01 * 110000 = 1100
-    // Unrealized PnL = 1100 - 1000 = 100
-    // Equity = 1000 + 100 = 1100
-    expect(calculateEquityAtPrice(position, 110000)).toBe(1100)
+    // At 110000: notional = 100 * 0.01 * 110000 = 110000
+    // Unrealized PnL = 110000 - 100000 = 10000
+    // Equity = 100000 + 10000 = 110000
+    expect(calculateEquityAtPrice(position, 110000)).toBe(110000)
   })
 
   it('calculates equity at lower price (loss)', () => {
@@ -241,20 +241,20 @@ describe('calculateEquityAtPrice', () => {
       currentPrice: 100000,
       liquidationPrice: 0,
       unrealizedPnl: 0,
-      marginLocked: 1000,
-      marginAvailable: 800,
-      maintenanceMargin: 50,
+      marginLocked: 100000,
+      marginAvailable: 80000,
+      maintenanceMargin: 5000,
       costBasisQueue: [
-        { contracts: 100, pricePerContract: 100000, totalCost: 1000, margin: 200, timestamp: '2024-01-01' }
+        { contracts: 100, pricePerContract: 100000, totalCost: 100000, margin: 20000, timestamp: '2024-01-01' }
       ],
-      totalCostBasis: 1000,
+      totalCostBasis: 100000,
       contractMultiplier: 0.01
     }
 
-    // At 90000: notional = 100 * 0.01 * 90000 = 900
-    // Unrealized PnL = 900 - 1000 = -100
-    // Equity = 1000 - 100 = 900
-    expect(calculateEquityAtPrice(position, 90000)).toBe(900)
+    // At 90000: notional = 100 * 0.01 * 90000 = 90000
+    // Unrealized PnL = 90000 - 100000 = -10000
+    // Equity = 100000 - 10000 = 90000
+    expect(calculateEquityAtPrice(position, 90000)).toBe(90000)
   })
 })
 
@@ -452,10 +452,10 @@ describe('processTradeHistory', () => {
     expect(result).toHaveLength(2)
 
     // SELL trade should have realized gain
-    // Proceeds = 100 * 0.01 * 110000 = 1100
-    // Cost = 100 * 0.01 * 100000 = 1000
-    // Gain = 100
-    expect(result[1]?.realizedPnl).toBe(100)
+    // Proceeds = 100 * 0.01 * 110000 = 110000
+    // Cost = 100 * 0.01 * 100000 = 100000
+    // Gain = 10000
+    expect(result[1]?.realizedPnl).toBe(10000)
     expect(result[1]?.cumulativeContracts).toBe(0)
   })
 
@@ -504,12 +504,12 @@ describe('computeDerivativesState', () => {
         contracts: 100,
         btcSize: 1,
         price: 100000,
-        total: 1000,
+        total: 100000,
         commission: 5,
-        marginChange: 200,
+        marginChange: 20000,
         realizedPnl: 0,
         cumulativeContracts: 100,
-        cumulativeMargin: 200
+        cumulativeMargin: 20000
       }
     ]
 
@@ -517,9 +517,9 @@ describe('computeDerivativesState', () => {
 
     expect(result.contracts).toBe(100)
     expect(result.avgEntryPrice).toBe(100000)
-    expect(result.totalCostBasis).toBe(1000)
-    // Unrealized = (100 * 0.01 * 105000) - 1000 = 1050 - 1000 = 50
-    expect(result.unrealizedPnl).toBe(50)
+    expect(result.totalCostBasis).toBe(100000)
+    // Unrealized = (100 * 0.01 * 105000) - 100000 = 105000 - 100000 = 5000
+    expect(result.unrealizedPnl).toBe(5000)
   })
 
   it('computes zero position after full close', () => {
@@ -532,12 +532,12 @@ describe('computeDerivativesState', () => {
         contracts: 100,
         btcSize: 1,
         price: 100000,
-        total: 1000,
+        total: 100000,
         commission: 5,
-        marginChange: 200,
+        marginChange: 20000,
         realizedPnl: 0,
         cumulativeContracts: 100,
-        cumulativeMargin: 200
+        cumulativeMargin: 20000
       },
       {
         timestamp: '2024-01-02T10:00:00Z',
@@ -547,10 +547,10 @@ describe('computeDerivativesState', () => {
         contracts: 100,
         btcSize: 1,
         price: 110000,
-        total: 1100,
+        total: 110000,
         commission: 5,
-        marginChange: -200,
-        realizedPnl: 100,
+        marginChange: -20000,
+        realizedPnl: 10000,
         cumulativeContracts: 0,
         cumulativeMargin: 0
       }
@@ -701,21 +701,21 @@ describe('calculateSafeLimitOrders', () => {
       currentPrice: 100000,
       liquidationPrice: 0,
       unrealizedPnl: 0,
-      marginLocked: 2000, // Enough margin
-      marginAvailable: 1000,
-      maintenanceMargin: 50,
+      marginLocked: 200000, // Enough margin
+      marginAvailable: 100000,
+      maintenanceMargin: 5000,
       costBasisQueue: [
-        { contracts: 100, pricePerContract: 100000, totalCost: 1000, margin: 200, timestamp: '2024-01-01' }
+        { contracts: 100, pricePerContract: 100000, totalCost: 100000, margin: 20000, timestamp: '2024-01-01' }
       ],
-      totalCostBasis: 1000,
+      totalCostBasis: 100000,
       contractMultiplier: 0.01
     }
 
-    const result = calculateSafeLimitOrders(position, 95000, 1000, 500, 5)
+    const result = calculateSafeLimitOrders(position, 95000, 1000, 5000, 5)
 
     expect(result.startPrice).toBe(95000)
     expect(result.priceIncrement).toBe(1000)
-    expect(result.dollarPerOrder).toBe(500)
+    expect(result.dollarPerOrder).toBe(5000)
     expect(result.orders.length).toBeGreaterThan(0)
     expect(result.orders.length).toBeLessThanOrEqual(5)
   })
@@ -728,15 +728,15 @@ describe('calculateSafeLimitOrders', () => {
       currentPrice: 100000,
       liquidationPrice: 0,
       unrealizedPnl: 0,
-      marginLocked: 5000, // Large margin for safety
-      marginAvailable: 5000,
+      marginLocked: 50000, // Large margin for safety
+      marginAvailable: 50000,
       maintenanceMargin: 0,
       costBasisQueue: [],
       totalCostBasis: 0,
       contractMultiplier: 0.01
     }
 
-    const result = calculateSafeLimitOrders(position, 95000, 1000, 500, 3)
+    const result = calculateSafeLimitOrders(position, 95000, 1000, 5000, 3)
 
     // With enough margin and low orders, should be safe
     for (const order of result.orders) {
