@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { randomUUID } from 'crypto'
 import {
   createFundViaAPI,
   deleteFundViaAPI,
@@ -10,6 +11,13 @@ import { TEST_PLATFORM } from './test-fixtures'
 
 // Web app base URL
 const WEB_BASE = 'http://localhost:5550'
+
+/**
+ * Generate a unique ticker suffix for test isolation
+ */
+function uniqueTicker(prefix: string): string {
+  return `${prefix}${randomUUID().slice(0, 8)}`
+}
 
 /**
  * Helper to wait for page to be ready
@@ -227,7 +235,7 @@ test.describe('Fund Creation via UI', () => {
     await expect(page.locator('[role="dialog"], .modal, [data-testid="create-fund-modal"]')).toBeVisible()
 
     // Fill in form
-    const ticker = 'uicreate' + Date.now().toString(36).slice(-4)
+    const ticker = uniqueTicker('uicreate')
 
     // Select platform (first available or test)
     const platformSelect = page.locator('select').first()
@@ -536,16 +544,17 @@ test.describe('Fund Detail Page Interactions', () => {
     const chartsToggle = page.locator('button:has-text("Charts"), button:has-text("Hide Charts"), button:has-text("Show Charts"), [data-testid="charts-toggle"]')
 
     if (await chartsToggle.count() > 0) {
-      // Get initial visibility of chart canvas/SVG
+      // Toggle charts off
+      await chartsToggle.first().click()
+      await page.waitForTimeout(300)
+
+      // Toggle charts back on
+      await chartsToggle.first().click()
+      await page.waitForTimeout(300)
+
+      // Verify chart element is visible after toggling
       const chartElement = page.locator('canvas, svg.chart, [data-testid="chart"]')
-
-      // Toggle charts
-      await chartsToggle.first().click()
-      await page.waitForTimeout(300)
-
-      // Toggle again
-      await chartsToggle.first().click()
-      await page.waitForTimeout(300)
+      await expect(chartElement.first()).toBeVisible()
     }
 
     await deleteFundViaAPI(page, fund.id)

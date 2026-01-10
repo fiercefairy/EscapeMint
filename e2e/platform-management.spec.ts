@@ -77,11 +77,29 @@ test.describe('Platform Management API', () => {
     })
 
     test('platform ID must be lowercase with hyphens', async ({ page }) => {
-      // Valid IDs
+      // Valid ID should be accepted
       const validId = 'my-platform-123'
       const platform = await createPlatformViaAPI(page, validId)
       expect(platform.id).toBe(validId)
       await deletePlatformViaAPI(page, validId)
+    })
+
+    test('rejects invalid platform ID formats', async ({ page }) => {
+      // Test invalid formats that should be rejected
+      const invalidIds = [
+        'MyPlatform',      // Contains uppercase
+        'my_platform',     // Contains underscore
+        'my platform',     // Contains space
+        'my.platform'      // Contains period
+      ]
+
+      for (const invalidId of invalidIds) {
+        const response = await page.request.post(`${API_BASE}/platforms`, {
+          data: { id: invalidId, name: 'Invalid Platform' }
+        })
+        // Should reject invalid format
+        expect(response.ok()).toBeFalsy()
+      }
     })
 
     test('rejects duplicate platform ID', async ({ page }) => {

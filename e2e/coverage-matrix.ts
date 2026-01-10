@@ -346,7 +346,7 @@ export const FEATURE_COVERAGE: Record<string, FeatureCategory> = {
         tested: false,
         spec: null,
         priority: 'high'
-        // TODO: Add test for derivatives liquidation price calculation
+        // TODO: Add test for derivatives liquidation price calculation - requires implementing liquidation price display in UI first
       },
       'funding-payment-pnl': {
         tested: true,
@@ -565,7 +565,7 @@ export const FEATURE_COVERAGE: Record<string, FeatureCategory> = {
         tested: false,
         spec: null,
         priority: 'high'
-        // TODO: Add test for fund deletion confirmation dialog
+        // TODO: Add test for fund deletion confirmation dialog - verify ConfirmDialog prevents accidental deletions
       }
     }
   },
@@ -635,7 +635,7 @@ export const FEATURE_COVERAGE: Record<string, FeatureCategory> = {
         tested: false,
         spec: null,
         priority: 'high'
-        // TODO: Add test to verify duplicate ticker prevention on same platform
+        // TODO: Add test to verify API rejects duplicate ticker on same platform (data integrity)
       },
       'platform-id-format': {
         tested: true,

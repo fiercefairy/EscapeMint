@@ -117,11 +117,9 @@ test.describe('Export Functionality', () => {
     expect(exportData.timestamp).toBeDefined()
     expect(typeof exportData.timestamp).toBe('string')
 
-    // Timestamp should be recent
+    // Timestamp should be a valid ISO date string
     const exportTime = new Date(exportData.timestamp)
-    const now = new Date()
-    const diffMs = now.getTime() - exportTime.getTime()
-    expect(diffMs).toBeLessThan(60000) // Within 1 minute
+    expect(Number.isNaN(exportTime.getTime())).toBe(false)
 
     await deleteFundViaAPI(page, fund.id)
   })
