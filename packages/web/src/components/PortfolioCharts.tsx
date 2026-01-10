@@ -342,7 +342,7 @@ function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = for
 
     const margin = { top: 10, right: 10, bottom: 20, left: 45 }
     const width = ref.current.clientWidth - margin.left - margin.right
-    const height = 120 - margin.top - margin.bottom
+    const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
       .append('g')
@@ -438,7 +438,7 @@ function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = for
   return (
     <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
       <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white mb-0.5">{title}</h3>
-      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
       <div
         ref={tooltipRef}
         className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[180px]"
@@ -461,7 +461,7 @@ function StackedAreaChart({ data, resize }: { data: TimeSeriesPoint[]; resize?: 
 
     const margin = { top: 10, right: 10, bottom: 20, left: 45 }
     const width = ref.current.clientWidth - margin.left - margin.right
-    const height = 120 - margin.top - margin.bottom
+    const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
       .append('g')
@@ -555,7 +555,7 @@ function StackedAreaChart({ data, resize }: { data: TimeSeriesPoint[]; resize?: 
   return (
     <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
       <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white mb-0.5">Cash vs Asset</h3>
-      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
       <div
         ref={tooltipRef}
         className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[200px]"
@@ -598,7 +598,7 @@ function FundsStackedAreaChart({ data, allocations, resize }: {
 
     const margin = { top: 10, right: 10, bottom: 20, left: 45 }
     const width = ref.current.clientWidth - margin.left - margin.right
-    const height = 120 - margin.top - margin.bottom
+    const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
       .append('g')
@@ -706,7 +706,7 @@ function FundsStackedAreaChart({ data, allocations, resize }: {
   return (
     <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
       <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white mb-0.5">Total Fund Size</h3>
-      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
       <div
         ref={tooltipRef}
         className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[250px]"
@@ -748,7 +748,7 @@ function GainsChart({ data, currentRealized, currentLiquid, resize }: {
 
     const margin = { top: 10, right: 10, bottom: 20, left: 45 }
     const width = ref.current.clientWidth - margin.left - margin.right
-    const height = 120 - margin.top - margin.bottom
+    const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
       .append('g')
@@ -911,7 +911,7 @@ function GainsChart({ data, currentRealized, currentLiquid, resize }: {
           </span>
         </div>
       </div>
-      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
       <div
         ref={tooltipRef}
         className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[200px]"
@@ -939,7 +939,7 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
 
     const margin = { top: 10, right: 10, bottom: 20, left: 45 }
     const width = ref.current.clientWidth - margin.left - margin.right
-    const height = 120 - margin.top - margin.bottom
+    const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
       .append('g')
@@ -1100,7 +1100,7 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize }: {
           </span>
         </div>
       </div>
-      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
       <div
         ref={tooltipRef}
         className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[200px]"
@@ -1128,7 +1128,7 @@ function MarginChart({ data, currentAccess, currentBorrowed, resize }: {
 
     const margin = { top: 10, right: 10, bottom: 20, left: 45 }
     const width = ref.current.clientWidth - margin.left - margin.right
-    const height = 120 - margin.top - margin.bottom
+    const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
       .append('g')
@@ -1287,7 +1287,7 @@ function MarginChart({ data, currentAccess, currentBorrowed, resize }: {
           </span>
         </div>
       </div>
-      <svg ref={ref} className="w-full h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px]" style={{ overflow: 'visible' }} />
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
       <div
         ref={tooltipRef}
         className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[200px]"

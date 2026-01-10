@@ -804,18 +804,21 @@ export const computeDerivativesEntriesState = (
     // Unrealized P&L at this snapshot using the BTC price at this moment
     // unrealizedPnl = (position * contractMultiplier * snapshotBtcPrice) - costBasis
     let unrealizedPnl = 0
-    if (position > 0 && costBasisTotal > 0 && snapshotBtcPrice > 0) {
-      const currentPositionValue = position * contractMultiplier * snapshotBtcPrice
-      unrealizedPnl = currentPositionValue - costBasisTotal
+    let currentNotionalValue = 0
+    if (position > 0 && snapshotBtcPrice > 0) {
+      currentNotionalValue = position * contractMultiplier * snapshotBtcPrice
+      if (costBasisTotal > 0) {
+        unrealizedPnl = currentNotionalValue - costBasisTotal
+      }
     }
 
     // Equity = total account value = marginBalance + unrealizedPnl
     // This is what your account would be worth if you closed all positions
     const equity = marginBalance + unrealizedPnl
 
-    // Dynamic leverage = Total Notional / Margin Locked
-    // This matches Coinbase's leverage display: how leveraged the position is relative to collateral
-    const leverage = marginLocked > 0 ? notionalValue / marginLocked : 0
+    // Dynamic leverage = Current Notional Position Size / Margin Locked
+    // This matches Coinbase's leverage display: notional value divided by actual margin required
+    const leverage = marginLocked > 0 ? currentNotionalValue / marginLocked : 0
 
     // Liquidation price calculation for long positions
     // At liquidation: equity = maintenanceMargin

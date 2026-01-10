@@ -4847,17 +4847,75 @@ const findCoinbaseTransactionsPage = async (browser: Browser): Promise<Page | nu
   for (let i = 0; i < contexts.length; i++) {
     const context = contexts[i]!
     const pages = context.pages()
+    console.log(`[Coinbase TX] Context ${i} has ${pages.length} pages`)
+
     for (const page of pages) {
       const pageUrl = page.url()
-      if (pageUrl.includes('coinbase.com/transactions') &&
+      console.log(`[Coinbase TX]   Page URL: ${pageUrl}`)
+
+      // Match any Coinbase page (not just /transactions) so we can handle modals
+      if (pageUrl.includes('coinbase.com') &&
           !pageUrl.includes('/signin') && !pageUrl.includes('/login')) {
-        console.log(`[Coinbase TX] Found Coinbase transactions page: ${pageUrl}`)
+        console.log(`[Coinbase TX] Found Coinbase page: ${pageUrl}`)
         return page
       }
     }
   }
 
   return null
+}
+
+/**
+ * Handles the Coinbase "Advanced Trade" modal that blocks the transactions page.
+ * If the modal is present, clicks "Turn off Advanced" to dismiss it.
+ * Returns true if modal was handled, false if no modal was present.
+ */
+const handleAdvancedTradeModal = async (
+  page: Page,
+  sendEvent?: (event: string, data: Record<string, unknown>) => void
+): Promise<boolean> => {
+  const modalSelector = '[data-testid="simple-mode-feature-nux-modal"]'
+  const confirmButtonSelector = '[data-testid="simple-nux-confirm-button"]'
+
+  console.log('[Coinbase TX] Checking for Advanced Trade modal...')
+
+  // Wait a moment for the modal to potentially appear (it may load after page)
+  await page.waitForTimeout(1000)
+
+  // Try to wait for the modal with a short timeout
+  const modal = await page.waitForSelector(modalSelector, { timeout: 3000 }).catch(() => null)
+  if (!modal) {
+    console.log('[Coinbase TX] No Advanced Trade modal detected')
+    return false
+  }
+
+  console.log('[Coinbase TX] Advanced Trade modal detected, turning off Advanced mode...')
+  sendEvent?.('status', { message: 'Turning off Advanced Trade mode...', phase: 'navigating' })
+
+  // Wait for the confirm button to be visible and clickable
+  const confirmButton = await page.waitForSelector(confirmButtonSelector, {
+    state: 'visible',
+    timeout: 5000
+  }).catch(() => null)
+
+  if (confirmButton) {
+    // Use page.click for more reliable clicking
+    await page.click(confirmButtonSelector)
+    console.log('[Coinbase TX] Clicked "Turn off Advanced" button')
+
+    // Wait for navigation/reload after clicking
+    await page.waitForTimeout(2000)
+
+    // Wait for the transactions page to be ready
+    await page.waitForLoadState('networkidle').catch(() => null)
+
+    console.log('[Coinbase TX] Advanced Trade mode disabled')
+    sendEvent?.('status', { message: 'Advanced Trade mode disabled', phase: 'navigating' })
+    return true
+  }
+
+  console.log('[Coinbase TX] Could not find confirm button in modal')
+  return false
 }
 
 /**
@@ -6063,14 +6121,33 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
 
   // Try to find existing transactions page
   let page = await findCoinbaseTransactionsPage(browser)
-  let pageCreated = false
 
   if (page) {
-    console.log(`[Coinbase TX] Using existing transactions page: ${page.url()}`)
-    sendEvent('status', { message: 'Found Coinbase transactions page', phase: 'navigating' })
+    console.log(`[Coinbase TX] Using existing Coinbase page: ${page.url()}`)
+    sendEvent('status', { message: 'Found Coinbase page', phase: 'navigating' })
+
+    // If not on transactions page, navigate there
+    if (!page.url().includes('/transactions')) {
+      console.log('[Coinbase TX] Navigating existing page to transactions...')
+      sendEvent('status', { message: 'Navigating to transactions...', phase: 'navigating' })
+
+      const navResult = await page.goto('https://www.coinbase.com/transactions', {
+        waitUntil: 'load',
+        timeout: 30000
+      }).catch((err: Error) => err)
+
+      if (navResult instanceof Error) {
+        console.log(`[Coinbase TX] Navigation failed: ${navResult.message}`)
+        sendEvent('error', { message: `Navigation failed: ${navResult.message}` })
+        res.end()
+        return
+      }
+
+      await page.waitForTimeout(2000)
+    }
   } else {
     // No existing page - create new one
-    console.log('[Coinbase TX] No transactions page found, creating new one')
+    console.log('[Coinbase TX] No Coinbase page found, creating new one')
     sendEvent('status', { message: 'Opening Coinbase transactions...', phase: 'navigating' })
 
     page = await createNewPage(browser).catch((err: Error) => {
@@ -6083,13 +6160,14 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
       return
     }
 
-    pageCreated = true
-
     // Navigate to Coinbase transactions
+    console.log('[Coinbase TX] Navigating new page to transactions...')
     const navResult = await page.goto('https://www.coinbase.com/transactions', {
-      waitUntil: 'networkidle',
+      waitUntil: 'load',
       timeout: 30000
     }).catch((err: Error) => err)
+
+    console.log(`[Coinbase TX] Navigation result: ${navResult instanceof Error ? navResult.message : 'success'}`)
 
     if (navResult instanceof Error) {
       sendEvent('error', { message: `Navigation failed: ${navResult.message}` })
@@ -6099,6 +6177,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     }
 
     await page.waitForTimeout(2000)
+    console.log(`[Coinbase TX] After navigation, URL: ${page.url()}`)
 
     // Check if redirected to login
     if (page.url().includes('/signin') || page.url().includes('/login')) {
@@ -6110,6 +6189,9 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
       return
     }
   }
+
+  // Check for and handle the Advanced Trade modal that blocks the transactions page
+  await handleAdvancedTradeModal(page, sendEvent)
 
   // Determine stop date
   let stopDate = stopDateParam
@@ -6249,8 +6331,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     }
   }
 
-  // Only close the page if we created it
-  if (pageCreated) await page.close().catch(() => {})
+  // Keep the Coinbase page open for user reference (don't close it)
 
   if (result) {
     // Calculate summary of scraped data

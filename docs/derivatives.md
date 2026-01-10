@@ -66,7 +66,7 @@ These fields are computed at runtime, not stored in the TSV:
 | `cum_fees` | Running sum of FEE amounts and per-trade fees | Total trading fees |
 | `equity` | `margin_balance + unrealized_pnl` | Total account value |
 | `margin_locked` | Sum of `margin` in open cost basis lots | Actual margin locked in positions |
-| `leverage` | `notional_value / equity` | Dynamic leverage ratio |
+| `leverage` | `current_notional / margin_locked` | Dynamic leverage ratio (Current Notional ÷ Margin Locked) |
 | `available_funds` | `margin_balance - margin_locked` | Free margin for new trades |
 
 ## P&L Calculations
@@ -105,7 +105,7 @@ Coinbase (and similar exchanges) use dynamic leverage, not fixed leverage. The `
 ### Why Track Per-Trade Margin?
 
 On Coinbase Advanced Trade:
-- **Leverage is dynamic**: `leverage = notional_value / equity`
+- **Leverage is dynamic**: `leverage = current_notional / margin_locked`
 - **Leverage changes with**: BTC price, unrealized P&L, collateral changes
 - **Margin required is fixed at entry**: The margin locked when opening a position stays constant
 
