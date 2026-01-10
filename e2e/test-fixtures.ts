@@ -86,7 +86,57 @@ export const TEST_TICKERS = {
   // Derivatives test tickers (for perp futures)
   DERIVATIVES: {
     BTC_PERP: 'btc-perp-fake',
-    ETH_PERP: 'eth-perp-fake'
+    ETH_PERP: 'eth-perp-fake',
+    // Additional derivatives test tickers
+    DEPOSIT_TEST: 'deriv-deposit-test',
+    WITHDRAW_TEST: 'deriv-withdraw-test',
+    FUNDING_TEST: 'deriv-funding-test',
+    INTEREST_TEST: 'deriv-interest-test',
+    FEE_TEST: 'deriv-fee-test',
+    REBATE_TEST: 'deriv-rebate-test',
+    BUY_TEST: 'deriv-buy-test',
+    SELL_TEST: 'deriv-sell-test',
+    FIFO_TEST: 'deriv-fifo-test',
+    ACCUM_TEST: 'deriv-accum-test',
+    MARGIN_TRACK: 'deriv-margin-track',
+    CASH_CONSTRAINT: 'deriv-cash-constraint',
+    UNREALIZED_PNL: 'deriv-unrealized-pnl',
+    REALIZED_PNL: 'deriv-realized-pnl',
+    FUNDING_PNL: 'deriv-funding-pnl',
+    LIFECYCLE: 'deriv-lifecycle',
+    VOLATILE: 'deriv-volatile',
+    ZERO_POS: 'deriv-zero-pos',
+    SMALL_AMT: 'deriv-small-amt',
+    LARGE_POS: 'deriv-large-pos'
+  },
+
+  // UI Workflow test tickers
+  UI_WORKFLOWS: {
+    DASHBOARD: 'ui-dashboard',
+    CREATE_FUND: 'ui-create',
+    ENTRY_CRUD: 'ui-entry',
+    NAVIGATION: 'ui-nav'
+  },
+
+  // Platform management test tickers
+  PLATFORMS: {
+    CREATE: 'plat-create',
+    EDIT: 'plat-edit',
+    DELETE: 'plat-delete'
+  },
+
+  // Import/Export test tickers
+  IMPORT_EXPORT: {
+    EXPORT_TEST: 'ie-export',
+    IMPORT_MERGE: 'ie-merge',
+    IMPORT_REPLACE: 'ie-replace'
+  },
+
+  // Cash fund test tickers
+  CASH_FUNDS: {
+    BASIC: 'cash-basic',
+    INTEREST: 'cash-interest',
+    TWAB: 'cash-twab'
   }
 } as const
 

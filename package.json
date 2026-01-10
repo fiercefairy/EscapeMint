@@ -26,6 +26,7 @@
     "test:e2e": "npx playwright test",
     "test:e2e:ui": "npx playwright test --ui",
     "test:e2e:headed": "npx playwright test --headed",
+    "test:coverage-report": "npx tsx e2e/generate-coverage-report.ts",
     "lint": "eslint packages --ext .ts,.tsx",
     "lint:fix": "eslint packages --ext .ts,.tsx --fix",
     "typecheck": "tsc --noEmit",

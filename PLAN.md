@@ -61,6 +61,12 @@ See the [docs/](./docs/) folder for detailed documentation:
 - [ ] API Reference (OpenAPI/Swagger)
 
 ### Testing Gaps
+- [x] Feature coverage tracking system (`e2e/coverage-matrix.ts`)
+- [x] Derivatives fund E2E tests (`e2e/derivatives-funds.spec.ts`)
+- [x] UI workflow E2E tests (`e2e/ui-workflows.spec.ts`)
+- [x] Platform management tests (`e2e/platform-management.spec.ts`)
+- [x] Import/export tests (`e2e/import-export.spec.ts`)
+- [x] Cash fund tests (`e2e/cash-funds.spec.ts`)
 - [ ] Server route unit tests (`packages/server/test/routes/`)
 - [ ] Aggregate calculation tests (`packages/engine/test/aggregate.test.ts`)
 - [ ] Input validation tests
@@ -125,13 +131,43 @@ Replace static sample data with dynamic test data generation using real historic
 
 ## Test Coverage Summary
 
+### Feature Coverage Report (Updated)
+
+```
+Overall: 85% (97/114 features)
+Critical: 100% (23/23)
+High: 93% (42/45)
+Medium: 82% (31/38)
+Low: 13% (1/8)
+```
+
+Run `npm run test:coverage-report` to generate the HTML report at `coverage-report/index.html`.
+
+### E2E Test Files
+
+| File | Tests | Coverage Area |
+|------|-------|---------------|
+| `fund-configurations.spec.ts` | 18 | All fund config flag combinations |
+| `yearly-simulation.spec.ts` | 9 | Year-long DCA market simulations |
+| `integrity-tests.spec.ts` | 22 | Historical edits and data integrity |
+| `derivatives-funds.spec.ts` | 20+ | Derivatives fund CRUD, entries, calculations |
+| `ui-workflows.spec.ts` | 25+ | Dashboard, fund detail, entry CRUD, navigation |
+| `platform-management.spec.ts` | 15+ | Platform CRUD, cash tracking |
+| `import-export.spec.ts` | 12+ | Export/import with merge/replace modes |
+| `cash-funds.spec.ts` | 15+ | Cash fund lifecycle, interest, expenses |
+
+### Unit Test Coverage
+
 | Package | Tests | Status |
 |---------|-------|--------|
 | Engine | 135 tests | Passing |
 | Storage | 9 tests | Passing |
-| E2E | 49 tests | Passing |
 
-### E2E Test Files
-- `fund-configurations.spec.ts` - 18 tests for all config combinations
-- `yearly-simulation.spec.ts` - 9 tests for year-long DCA simulations
-- `integrity-tests.spec.ts` - 22 tests for historical edits and data integrity
+### Testing System Audit Conclusions
+
+**Recommendation: Keep Playwright/Vitest approach** - well-designed with:
+- Real formula testing (no mocking)
+- Test data isolation via "test" platform
+- Deterministic historical market data
+
+**BDD/Gherkin NOT adopted** - current tests are already readable, solo project doesn't need stakeholder specs, and would add maintenance overhead.
