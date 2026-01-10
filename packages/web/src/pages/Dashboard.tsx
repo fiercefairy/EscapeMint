@@ -504,9 +504,7 @@ export function Dashboard() {
                   <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1.5 xs:gap-2 sm:gap-3">
                     {platformFunds.map(fund => {
                       const fundMetrics = filteredMetrics?.funds.find(f => f.id === fund.id)
-                      const fundPath = fund.config.fund_type === 'derivatives'
-                        ? `/derivatives/${fund.id}`
-                        : `/fund/${fund.id}`
+                      const fundPath = `/fund/${fund.id}`
                       return (
                         <Link key={fund.id} to={fundPath} className="touch-manipulation">
                           <FundCard
@@ -593,7 +591,7 @@ function ChartsSkeleton() {
           {[1, 2].map(i => (
             <div key={i} className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 animate-pulse">
               <div className="h-2 w-20 bg-slate-700 rounded mb-1" />
-              <div className="h-[70px] xs:h-[80px] sm:h-[100px] md:h-[120px] bg-slate-700/50 rounded" />
+              <div className="h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px] bg-slate-700/50 rounded" />
             </div>
           ))}
         </div>

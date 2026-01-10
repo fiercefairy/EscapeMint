@@ -10,6 +10,7 @@ import { FundCharts } from '../components/FundCharts'
 import { ChartSettings } from '../components/ChartSettings'
 import { SIDEBAR_TOGGLED_EVENT } from '../components/Layout'
 import { EntriesTable, type ComputedEntry, type ColumnId } from '../components/entriesTable'
+import { CoinbaseScrapeButton } from '../components/CoinbaseScrapeButton'
 import { formatCurrency, formatPercent } from '../utils/format'
 import {
   isCashFund as checkIsCashFund,
@@ -1190,7 +1191,15 @@ export function FundDetail() {
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
+              {/* Scrape Button for Derivatives Funds */}
+              {isDerivativesFund && (
+                <CoinbaseScrapeButton
+                  fundId={fund.id}
+                  variant="secondary"
+                  onComplete={() => loadData()}
+                />
+              )}
               {/* Edit Button */}
               <Link
                 to={`/fund/${fund.id}/edit`}
