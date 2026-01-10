@@ -23,9 +23,9 @@ function uniqueTicker(prefix: string): string {
 }
 
 // Configurable hydration delay for CI environments (can be set via env var)
-const HYDRATION_DELAY_MS = process.env.UI_WAIT_HYDRATION_MS
-  ? parseInt(process.env.UI_WAIT_HYDRATION_MS, 10)
-  : 300
+const rawHydrationDelay = process.env.UI_WAIT_HYDRATION_MS
+const parsedHydrationDelay = rawHydrationDelay ? parseInt(rawHydrationDelay, 10) : NaN
+const HYDRATION_DELAY_MS = Number.isNaN(parsedHydrationDelay) ? 300 : parsedHydrationDelay
 
 /**
  * Helper to wait for page to be ready
@@ -238,47 +238,62 @@ test.describe('Dashboard UI Workflows', () => {
 
 test.describe('Fund Creation via UI', () => {
   test('can create a new fund through the create modal', async ({ page }) => {
-    await page.goto(WEB_BASE)
-    await waitForPageReady(page)
+    let fundId: string | null = null
 
-    // Click create fund button
-    const createButton = page.locator('button:has-text("Create"), button:has-text("New Fund"), button:has-text("Add Fund"), [data-testid="create-fund"]')
-    await createButton.first().click()
+    try {
+      await page.goto(WEB_BASE)
+      await waitForPageReady(page)
 
-    // Wait for modal to appear
-    await expect(page.locator('[role="dialog"], .modal, [data-testid="create-fund-modal"]')).toBeVisible()
+      // Click create fund button
+      const createButton = page.locator('button:has-text("Create"), button:has-text("New Fund"), button:has-text("Add Fund"), [data-testid="create-fund"]')
+      await createButton.first().click()
 
-    // Fill in form
-    const ticker = uniqueTicker('uicreate')
+      // Wait for modal to appear
+      await expect(page.locator('[role="dialog"], .modal, [data-testid="create-fund-modal"]')).toBeVisible()
 
-    // Select platform (first available)
-    const platformSelect = page.locator('select').first()
-    await expect(platformSelect).toBeVisible()
-    await platformSelect.selectOption({ index: 0 })
+      // Fill in form
+      const ticker = uniqueTicker('uicreate')
 
-    // Enter ticker (use specific selectors, fallback to data-testid if available)
-    const tickerInput = page.locator('input[placeholder*="ticker" i], input[name="ticker"], #ticker, [data-testid="ticker-input"]').first()
-    await expect(tickerInput).toBeVisible()
-    await tickerInput.fill(ticker)
+      // Select platform (first available)
+      const platformSelect = page.locator('select').first()
+      await expect(platformSelect).toBeVisible()
+      await platformSelect.selectOption({ index: 0 })
 
-    // Fill fund size
-    const fundSizeInput = page.locator('input[name*="fund_size" i], input[placeholder*="fund size" i], input[type="number"]').first()
-    await expect(fundSizeInput).toBeVisible()
-    await fundSizeInput.fill('5000')
+      // Enter ticker (use specific selectors, fallback to data-testid if available)
+      const tickerInput = page.locator('input[placeholder*="ticker" i], input[name="ticker"], #ticker, [data-testid="ticker-input"]').first()
+      await expect(tickerInput).toBeVisible()
+      await tickerInput.fill(ticker)
 
-    // Submit the form
-    const submitButton = page.locator('button[type="submit"]:has-text("Create"), button:has-text("Create Fund")')
-    await submitButton.click()
+      // Fill fund size
+      const fundSizeInput = page.locator('input[name*="fund_size" i], input[placeholder*="fund size" i], input[type="number"]').first()
+      await expect(fundSizeInput).toBeVisible()
+      await fundSizeInput.fill('5000')
 
-    // Should navigate to the new fund page
-    await page.waitForURL(/\/fund\//)
+      // Submit the form
+      const submitButton = page.locator('button[type="submit"]:has-text("Create"), button:has-text("Create Fund")')
+      await submitButton.click()
 
-    // Clean up - extract fund ID from URL and delete
-    const url = page.url()
-    const fundIdMatch = url.match(/\/fund\/([^/]+)/)
-    if (fundIdMatch) {
-      const fundId = fundIdMatch[1]
-      await deleteFundViaAPI(page, fundId)
+      // Should navigate to the new fund page
+      await page.waitForURL(/\/fund\//)
+
+      // Extract fund ID from URL
+      const url = page.url()
+      const fundIdMatch = url.match(/\/fund\/([^/]+)/)
+      if (fundIdMatch) {
+        fundId = fundIdMatch[1]
+      }
+    } finally {
+      // Ensure cleanup even if assertions fail after fund creation
+      if (!fundId) {
+        const currentUrl = page.url()
+        const currentMatch = currentUrl.match(/\/fund\/([^/]+)/)
+        if (currentMatch) {
+          fundId = currentMatch[1]
+        }
+      }
+      if (fundId) {
+        await deleteFundViaAPI(page, fundId)
+      }
     }
   })
 

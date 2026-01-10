@@ -311,7 +311,7 @@ function generateHTML(): string {
         <span>&#9888;</span> Untested Critical Features (${untestedCritical.length})
       </div>
       <ul class="alert-list">
-        ${untestedCritical.map(f => `<li>${f.category}: <strong>${f.feature}</strong></li>`).join('')}
+        ${untestedCritical.map(f => `<li>${escapeHtml(f.category)}: <strong>${escapeHtml(f.feature)}</strong></li>`).join('')}
       </ul>
     </div>
     ` : ''}
@@ -322,7 +322,7 @@ function generateHTML(): string {
         <span>&#9888;</span> Untested High Priority Features (${untestedHigh.length})
       </div>
       <ul class="alert-list">
-        ${untestedHigh.slice(0, 10).map(f => `<li>${f.category}: <strong>${f.feature}</strong></li>`).join('')}
+        ${untestedHigh.slice(0, 10).map(f => `<li>${escapeHtml(f.category)}: <strong>${escapeHtml(f.feature)}</strong></li>`).join('')}
         ${untestedHigh.length > 10 ? `<li><em>...and ${untestedHigh.length - 10} more</em></li>` : ''}
       </ul>
     </div>
