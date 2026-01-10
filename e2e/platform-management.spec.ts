@@ -9,6 +9,14 @@ import {
 
 const WEB_BASE = 'http://localhost:5550'
 
+// Invalid platform ID formats for validation testing
+const INVALID_PLATFORM_ID_FORMATS = [
+  { id: 'MyPlatform', reason: 'Contains uppercase' },
+  { id: 'my_platform', reason: 'Contains underscore' },
+  { id: 'my platform', reason: 'Contains space' },
+  { id: 'my.platform', reason: 'Contains period' }
+]
+
 /**
  * Generate a unique platform ID for test isolation
  */
@@ -93,20 +101,12 @@ test.describe('Platform Management API', () => {
     })
 
     test('rejects invalid platform ID formats', async ({ page }) => {
-      // Test invalid formats that should be rejected
-      const invalidIds = [
-        'MyPlatform',      // Contains uppercase
-        'my_platform',     // Contains underscore
-        'my platform',     // Contains space
-        'my.platform'      // Contains period
-      ]
-
-      for (const invalidId of invalidIds) {
+      for (const { id, reason } of INVALID_PLATFORM_ID_FORMATS) {
         const response = await page.request.post(`${API_BASE}/platforms`, {
-          data: { id: invalidId, name: 'Invalid Platform' }
+          data: { id, name: 'Invalid Platform' }
         })
         // Should reject invalid format
-        expect(response.ok()).toBeFalsy()
+        expect(response.ok(), `Platform ID "${id}" should be rejected: ${reason}`).toBeFalsy()
       }
     })
 

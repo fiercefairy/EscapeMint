@@ -346,7 +346,7 @@ export const FEATURE_COVERAGE: Record<string, FeatureCategory> = {
         tested: false,
         spec: null,
         priority: 'high'
-        // TODO: Add test for derivatives liquidation price calculation - requires implementing liquidation price display in UI first
+        // NOTE: Requires implementing liquidation price display in UI before E2E test can be added
       },
       'funding-payment-pnl': {
         tested: true,
@@ -565,7 +565,7 @@ export const FEATURE_COVERAGE: Record<string, FeatureCategory> = {
         tested: false,
         spec: null,
         priority: 'high'
-        // TODO: Add test for fund deletion confirmation dialog - verify ConfirmDialog prevents accidental deletions
+        // NOTE: Test needed to verify ConfirmDialog prevents accidental fund deletions
       }
     }
   },

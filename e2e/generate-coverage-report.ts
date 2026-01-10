@@ -13,6 +13,18 @@ import { FEATURE_COVERAGE, calculateCoverageStats, getUntestedFeatures } from '.
 const OUTPUT_DIR = join(process.cwd(), 'coverage-report')
 const OUTPUT_FILE = join(OUTPUT_DIR, 'index.html')
 
+/**
+ * HTML-escape a string to prevent XSS (defense-in-depth for future data sources)
+ */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
 function getStatusColor(percentage: number): string {
   if (percentage >= 80) return '#22c55e' // green
   if (percentage >= 50) return '#eab308' // yellow
@@ -330,7 +342,7 @@ function generateHTML(): string {
         return `
         <div class="category">
           <div class="category-header">
-            <span class="category-name">${category.name}</span>
+            <span class="category-name">${escapeHtml(category.name)}</span>
             <div class="category-stats">
               <span style="color: ${getStatusColor(catStats.percentage)}">${catStats.percentage}%</span>
               <span style="color: #64748b">(${catStats.tested}/${catStats.total})</span>
@@ -341,11 +353,11 @@ function generateHTML(): string {
             <div class="feature">
               <div class="feature-name">
                 <span class="feature-status" style="background: ${feature.tested ? '#22c55e' : '#ef4444'}"></span>
-                <span>${featureId}</span>
+                <span>${escapeHtml(featureId)}</span>
               </div>
               <div class="feature-meta">
-                <span class="priority-badge" style="background: ${getPriorityColor(feature.priority)}20; color: ${getPriorityColor(feature.priority)}">${feature.priority}</span>
-                ${feature.spec ? `<a class="spec-link" href="#">${feature.spec}</a>` : '<span style="color: #64748b; font-size: 0.75rem">no spec</span>'}
+                <span class="priority-badge" style="background: ${getPriorityColor(feature.priority)}20; color: ${getPriorityColor(feature.priority)}">${escapeHtml(feature.priority)}</span>
+                ${feature.spec ? `<a class="spec-link" href="#">${escapeHtml(feature.spec)}</a>` : '<span style="color: #64748b; font-size: 0.75rem">no spec</span>'}
               </div>
             </div>
             `).join('')}

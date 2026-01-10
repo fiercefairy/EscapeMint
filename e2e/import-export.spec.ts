@@ -117,9 +117,10 @@ test.describe('Export Functionality', () => {
     expect(exportData.timestamp).toBeDefined()
     expect(typeof exportData.timestamp).toBe('string')
 
-    // Timestamp should be a valid ISO date string
+    // Timestamp should be a valid ISO date string and not in the future
     const exportTime = new Date(exportData.timestamp)
     expect(Number.isNaN(exportTime.getTime())).toBe(false)
+    expect(exportTime.getTime()).toBeLessThanOrEqual(Date.now())
 
     await deleteFundViaAPI(page, fund.id)
   })
@@ -241,8 +242,12 @@ test.describe('Import Functionality', () => {
       data: { data: invalidData, mode: 'merge' }
     })
 
-    // Should fail validation
+    // Should fail validation with appropriate error
     expect(response.ok()).toBeFalsy()
+
+    // Verify error response indicates validation failure
+    const errorBody = await response.json()
+    expect(errorBody.error || errorBody.message).toBeDefined()
   })
 })
 

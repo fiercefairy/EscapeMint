@@ -13,10 +13,13 @@ import { TEST_PLATFORM } from './test-fixtures'
 const WEB_BASE = 'http://localhost:5550'
 
 /**
- * Generate a unique ticker suffix for test isolation
+ * Generate a unique ticker for test isolation.
+ * Ensures ticker format matches typical financial conventions:
+ * lowercase alphanumeric only (matching app's ticker validation).
  */
 function uniqueTicker(prefix: string): string {
-  return `${prefix}${randomUUID().slice(0, 8)}`
+  const suffix = randomUUID().replace(/[^a-z0-9]/gi, '').slice(0, 8).toLowerCase()
+  return `${prefix}${suffix}`
 }
 
 // Configurable hydration delay for CI environments (can be set via env var)
@@ -253,8 +256,9 @@ test.describe('Fund Creation via UI', () => {
     await expect(platformSelect).toBeVisible()
     await platformSelect.selectOption({ index: 0 })
 
-    // Enter ticker
-    const tickerInput = page.locator('input[placeholder*="ticker" i], input[name="ticker"], #ticker, input').filter({ hasText: '' }).first()
+    // Enter ticker (use specific selectors, fallback to data-testid if available)
+    const tickerInput = page.locator('input[placeholder*="ticker" i], input[name="ticker"], #ticker, [data-testid="ticker-input"]').first()
+    await expect(tickerInput).toBeVisible()
     await tickerInput.fill(ticker)
 
     // Fill fund size
