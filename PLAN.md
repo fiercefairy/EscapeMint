@@ -101,7 +101,7 @@ Replace static sample data with dynamic test data generation using real historic
 - [x] Create test data generator utility
 - [x] Add API endpoint `POST /api/v1/test-data/generate`
 - [x] Add UI button to load test data (Settings page)
-- [x] Clear `data.example/funds/` of sample data
+- [x] Remove `data.example/` directory (no longer needed - using test data generator)
 
 ### Future Features (v1.1+)
 - Tax Lot Tracking (FIFO/LIFO/specific lot)

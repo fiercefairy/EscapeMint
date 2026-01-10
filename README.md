@@ -155,8 +155,6 @@ escapemint/
 │   └── web/        # React frontend (port 5550)
 ├── data/
 │   └── funds/      # Your fund files (gitignored)
-├── data.example/
-│   └── funds/      # Sample fund files
 ├── ecosystem.config.cjs  # PM2 configuration
 └── package.json
 ```
