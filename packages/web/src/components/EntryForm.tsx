@@ -5,6 +5,7 @@ import {
   isCashFund as checkIsCashFund,
   getFundTypeFeatures
 } from '@escapemint/engine'
+import { formatCurrency } from '../utils/format'
 
 export type ActionType = '' | 'BUY' | 'SELL' | 'HOLD'
 
@@ -42,6 +43,7 @@ export interface EntryFormProps {
   fundType?: FundType | undefined
   manageCash?: boolean | undefined
   marginEnabled?: boolean | undefined
+  platform?: string | undefined
 }
 
 // Parse deposit/withdrawal from notes (legacy format)
@@ -101,7 +103,7 @@ export const parseFormulaValue = (input: string): number => {
   return parseFloat(trimmed) || 0
 }
 
-export function EntryForm({ formData, setFormData, existingEntries = [], baseFundSize = 0, showFundSizeAdjustment = false, cashAvailable, marginAvailable, currentFundSize, fundType = 'stock', manageCash = true, marginEnabled = false }: EntryFormProps) {
+export function EntryForm({ formData, setFormData, existingEntries = [], baseFundSize = 0, showFundSizeAdjustment = false, cashAvailable, marginAvailable, currentFundSize, fundType = 'stock', manageCash = true, marginEnabled = false, platform }: EntryFormProps) {
   const isCashFund = checkIsCashFund(fundType)
   const _features = getFundTypeFeatures(fundType)
   const isCryptoFund = fundType === 'crypto'
@@ -395,12 +397,17 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               const amount = parseFloat(formData.amount) || 0
               const shortfall = amount - cashAvailable
               if (shortfall > 0.01) {
+                const isM1Platform = platform?.toLowerCase() === 'm1'
+                const shortfallMessage = isM1Platform
+                  ? `Shortfall: ${formatCurrency(shortfall)} - will be borrowed from margin`
+                  : `Shortfall: ${formatCurrency(shortfall)} - deposit to platform cash fund`
+
                 return (
                   <div className="mt-1 flex gap-2 flex-wrap items-center">
-                    <span className="text-xs text-amber-400">
-                      Shortfall: ${Math.ceil(shortfall)} - deposit to platform cash fund
+                    <span className={`text-xs ${isM1Platform ? 'text-purple-400' : 'text-amber-400'}`}>
+                      {shortfallMessage}
                     </span>
-                    {(marginAvailable ?? 0) > 0 && (
+                    {!isM1Platform && (marginAvailable ?? 0) > 0 && (
                       <button
                         type="button"
                         onClick={() => {
@@ -409,7 +416,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                             ...prev,
                             margin_borrowed: (parseFloat(prev.margin_borrowed || '0') + borrowAmount).toFixed(2)
                           }))
-                          toast.success(`Margin borrow $${borrowAmount} added`)
+                          toast.success(`Margin borrow ${formatCurrency(borrowAmount)} added`)
                         }}
                         className="px-2 py-0.5 text-xs bg-purple-700 hover:bg-purple-600 text-white rounded transition-colors"
                       >
@@ -440,6 +447,42 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               />
               <p className="text-xs text-slate-500 mt-1">
                 Actual margin required by exchange (from trade confirmation)
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Margin tracking inputs for funds with margin enabled */}
+        {marginEnabled && !isCashFund && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Margin Available ($)</label>
+              <input
+                type="number"
+                value={formData.margin_available}
+                onChange={e => setFormData(prev => ({ ...prev, margin_available: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                placeholder="Current margin available"
+                step="0.01"
+                min="0"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Current margin available from platform (changes with equity)
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Margin Borrowed ($)</label>
+              <input
+                type="number"
+                value={formData.margin_borrowed}
+                onChange={e => setFormData(prev => ({ ...prev, margin_borrowed: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                placeholder="0"
+                step="0.01"
+                min="0"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Margin borrowed in this entry (auto-calculated for M1)
               </p>
             </div>
           </div>

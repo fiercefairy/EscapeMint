@@ -156,4 +156,32 @@ describe('computeRecommendation', () => {
     expect(result?.amount).toBe(150)
     expect(result?.insufficient_cash).toBe(true)
   })
+
+  it('recommends BUY when cash + margin available (M1 scenario)', () => {
+    // For M1 funds, server adds margin_available to cash_available before calling this
+    // Test verifies that when combined cash is sufficient, recommendation is correct
+    const state = makeState({
+      gain_usd: -200,
+      gain_pct: -0.20,
+      target_diff_usd: -200,
+      cash_available_usd: 250  // e.g., -50 cash + 300 margin = 250 effective cash
+    })
+    const result = computeRecommendation(baseConfig, state)
+    expect(result?.action).toBe('BUY')
+    expect(result?.amount).toBe(200)  // Mid amount for moderate loss
+    expect(result?.insufficient_cash).toBe(false)
+  })
+
+  it('recommends HOLD when cash + margin still insufficient', () => {
+    const state = makeState({
+      gain_usd: -300,
+      gain_pct: -0.30,
+      target_diff_usd: -300,
+      cash_available_usd: 0  // e.g., -500 cash + 500 margin = 0
+    })
+    const result = computeRecommendation(baseConfig, state)
+    expect(result?.action).toBe('HOLD')
+    expect(result?.amount).toBe(0)
+    expect(result?.insufficient_cash).toBe(true)
+  })
 })

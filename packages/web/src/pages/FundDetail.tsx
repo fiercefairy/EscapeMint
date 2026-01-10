@@ -1556,6 +1556,7 @@ export function FundDetail() {
             manageCash={fund.config.manage_cash}
             fundType={fund.config.fund_type}
             marginEnabled={fund.config.margin_enabled}
+            platform={fund.platform}
             onClose={() => {
               setShowAddEntry(false)
               if (isAdding) navigate(`/fund/${fund.id}`, { replace: true })
@@ -1576,6 +1577,7 @@ export function FundDetail() {
             fundType={fund.config.fund_type}
             manageCash={fund.config.manage_cash}
             marginEnabled={fund.config.margin_enabled}
+            platform={fund.platform}
             onClose={() => setEditingEntry(null)}
             onUpdated={handleFundUpdate}
           />
