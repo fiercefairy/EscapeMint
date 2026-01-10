@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { randomUUID } from 'crypto'
 import {
   createFundViaAPI,
   deleteFundViaAPI,
@@ -7,6 +8,13 @@ import {
 } from './test-utils'
 
 const WEB_BASE = 'http://localhost:5550'
+
+/**
+ * Generate a unique platform ID for test isolation
+ */
+function uniquePlatformId(prefix: string): string {
+  return `${prefix}-${randomUUID().slice(0, 8)}`
+}
 
 /**
  * Create a platform via API
@@ -65,7 +73,7 @@ async function waitForPageReady(page: Page) {
 test.describe('Platform Management API', () => {
   test.describe('Create Platform', () => {
     test('can create a new platform', async ({ page }) => {
-      const platformId = `test-plat-${Date.now()}`
+      const platformId = uniquePlatformId('test-plat')
 
       const platform = await createPlatformViaAPI(page, platformId, 'Test Platform')
 
@@ -103,7 +111,7 @@ test.describe('Platform Management API', () => {
     })
 
     test('rejects duplicate platform ID', async ({ page }) => {
-      const platformId = `test-dup-${Date.now()}`
+      const platformId = uniquePlatformId('test-dup')
 
       // Create first
       await createPlatformViaAPI(page, platformId)
@@ -122,7 +130,7 @@ test.describe('Platform Management API', () => {
 
   test.describe('Read Platform', () => {
     test('can list all platforms', async ({ page }) => {
-      const platformId = `test-list-${Date.now()}`
+      const platformId = uniquePlatformId('test-list')
       await createPlatformViaAPI(page, platformId)
 
       const platforms = await listPlatformsViaAPI(page)
@@ -134,7 +142,7 @@ test.describe('Platform Management API', () => {
     })
 
     test('can get single platform', async ({ page }) => {
-      const platformId = `test-get-${Date.now()}`
+      const platformId = uniquePlatformId('test-get')
       await createPlatformViaAPI(page, platformId, 'Get Test')
 
       const platform = await getPlatformViaAPI(page, platformId)
@@ -148,7 +156,7 @@ test.describe('Platform Management API', () => {
 
   test.describe('Update Platform', () => {
     test('can update platform name', async ({ page }) => {
-      const platformId = `test-update-${Date.now()}`
+      const platformId = uniquePlatformId('test-update')
       await createPlatformViaAPI(page, platformId, 'Original Name')
 
       const response = await updatePlatformViaAPI(page, platformId, { name: 'Updated Name' })
@@ -163,7 +171,7 @@ test.describe('Platform Management API', () => {
 
   test.describe('Delete Platform', () => {
     test('can delete empty platform', async ({ page }) => {
-      const platformId = `test-delete-${Date.now()}`
+      const platformId = uniquePlatformId('test-delete')
       await createPlatformViaAPI(page, platformId)
 
       const response = await deletePlatformViaAPI(page, platformId)
@@ -175,7 +183,7 @@ test.describe('Platform Management API', () => {
     })
 
     test('cannot delete platform with funds', async ({ page }) => {
-      const platformId = `test-del-funds-${Date.now()}`
+      const platformId = uniquePlatformId('test-del-funds')
       await createPlatformViaAPI(page, platformId)
 
       // Create a fund on this platform
@@ -196,7 +204,7 @@ test.describe('Platform Management API', () => {
 
 test.describe('Platform Management UI', () => {
   test('platforms page lists all platforms', async ({ page }) => {
-    const platformId = `test-ui-list-${Date.now()}`
+    const platformId = uniquePlatformId('test-ui-list')
     await createPlatformViaAPI(page, platformId, 'UI Test Platform')
 
     await page.goto(`${WEB_BASE}/platforms`)
@@ -214,42 +222,45 @@ test.describe('Platform Management UI', () => {
 
     // Click create button
     const createButton = page.locator('button:has-text("Create"), button:has-text("Add Platform"), button:has-text("New")')
-    if (await createButton.count() > 0) {
-      await createButton.first().click()
 
-      // Wait for modal/form
-      await page.waitForTimeout(300)
-
-      const platformId = `ui-create-${Date.now()}`
-
-      // Fill form
-      const idInput = page.locator('input[name="id"], input[placeholder*="id" i], #id')
-      if (await idInput.count() > 0) {
-        await idInput.fill(platformId)
-
-        const nameInput = page.locator('input[name="name"], input[placeholder*="name" i], #name')
-        if (await nameInput.count() > 0) {
-          await nameInput.fill('Created via UI')
-        }
-
-        // Submit
-        const submitButton = page.locator('button[type="submit"], button:has-text("Create")')
-        await submitButton.click()
-
-        await page.waitForTimeout(500)
-
-        // Verify platform was created
-        const platform = await getPlatformViaAPI(page, platformId)
-        if (platform) {
-          expect(platform.id).toBe(platformId)
-          await deletePlatformViaAPI(page, platformId)
-        }
-      }
+    // Skip if create button not available
+    if (await createButton.count() === 0) {
+      test.skip(true, 'Platform creation UI not available')
+      return
     }
+
+    await createButton.first().click()
+
+    // Wait for modal/form
+    await page.waitForTimeout(300)
+
+    const platformId = uniquePlatformId('ui-create')
+
+    // Fill form
+    const idInput = page.locator('input[name="id"], input[placeholder*="id" i], #id')
+    await expect(idInput.first()).toBeVisible()
+    await idInput.fill(platformId)
+
+    const nameInput = page.locator('input[name="name"], input[placeholder*="name" i], #name')
+    if (await nameInput.count() > 0) {
+      await nameInput.fill('Created via UI')
+    }
+
+    // Submit
+    const submitButton = page.locator('button[type="submit"], button:has-text("Create")')
+    await submitButton.click()
+
+    await page.waitForTimeout(500)
+
+    // Verify platform was created
+    const platform = await getPlatformViaAPI(page, platformId)
+    expect(platform).not.toBeNull()
+    expect(platform.id).toBe(platformId)
+    await deletePlatformViaAPI(page, platformId)
   })
 
   test('can navigate to platform detail', async ({ page }) => {
-    const platformId = `test-ui-nav-${Date.now()}`
+    const platformId = uniquePlatformId('test-ui-nav')
     await createPlatformViaAPI(page, platformId, 'Nav Test Platform')
 
     await page.goto(`${WEB_BASE}/platforms`)
@@ -268,7 +279,7 @@ test.describe('Platform Management UI', () => {
   })
 
   test('platform detail shows funds on platform', async ({ page }) => {
-    const platformId = `test-ui-detail-${Date.now()}`
+    const platformId = uniquePlatformId('test-ui-detail')
     await createPlatformViaAPI(page, platformId)
 
     // Create a fund on this platform
@@ -287,7 +298,7 @@ test.describe('Platform Management UI', () => {
 
 test.describe('Platform Cash Tracking', () => {
   test('can enable cash tracking on platform', async ({ page }) => {
-    const platformId = `test-cash-enable-${Date.now()}`
+    const platformId = uniquePlatformId('test-cash-enable')
     await createPlatformViaAPI(page, platformId)
 
     // Enable cash tracking via API
@@ -305,7 +316,7 @@ test.describe('Platform Cash Tracking', () => {
   })
 
   test('can disable cash tracking on platform', async ({ page }) => {
-    const platformId = `test-cash-disable-${Date.now()}`
+    const platformId = uniquePlatformId('test-cash-disable')
     await createPlatformViaAPI(page, platformId)
 
     // Enable first
@@ -326,7 +337,7 @@ test.describe('Platform Cash Tracking', () => {
 
 test.describe('Platform Metrics', () => {
   test('platform metrics aggregate fund values', async ({ page }) => {
-    const platformId = `test-metrics-${Date.now()}`
+    const platformId = uniquePlatformId('test-metrics')
     await createPlatformViaAPI(page, platformId)
 
     // Create funds with entries

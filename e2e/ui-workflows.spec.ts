@@ -19,13 +19,18 @@ function uniqueTicker(prefix: string): string {
   return `${prefix}${randomUUID().slice(0, 8)}`
 }
 
+// Configurable hydration delay for CI environments (can be set via env var)
+const HYDRATION_DELAY_MS = process.env.UI_WAIT_HYDRATION_MS
+  ? parseInt(process.env.UI_WAIT_HYDRATION_MS, 10)
+  : 300
+
 /**
  * Helper to wait for page to be ready
  */
 async function waitForPageReady(page: Page) {
   await page.waitForLoadState('networkidle')
-  // Wait a bit for React hydration
-  await page.waitForTimeout(300)
+  // Wait for React hydration (configurable via UI_WAIT_HYDRATION_MS env var)
+  await page.waitForTimeout(HYDRATION_DELAY_MS)
 }
 
 test.describe('Dashboard UI Workflows', () => {
@@ -93,18 +98,19 @@ test.describe('Dashboard UI Workflows', () => {
         await deleteFundViaAPI(page, f.id)
       }
 
+      // Check if non-test funds exist which would prevent welcome panel
+      const nonTestFunds = funds.filter(f => f.platform !== TEST_PLATFORM)
+      if (nonTestFunds.length > 0) {
+        test.skip(true, 'Cannot test empty dashboard with existing non-test funds')
+        return
+      }
+
       await page.goto(`${WEB_BASE}?include_test=true`)
       await waitForPageReady(page)
 
       // With no funds, welcome panel should appear
-      // Look for welcome text or "Create your first fund" type content
       const welcomeContent = page.locator('text=/welcome|get started|create.*fund/i')
-
-      // Skip assertion if other non-test funds exist in the system
-      // This test verifies the welcome panel behavior in isolation
-      if (await welcomeContent.count() > 0) {
-        await expect(welcomeContent.first()).toBeVisible()
-      }
+      await expect(welcomeContent.first()).toBeVisible()
     })
   })
 
@@ -157,26 +163,31 @@ test.describe('Dashboard UI Workflows', () => {
       // Look for charts toggle button
       const chartsToggle = page.locator('button:has-text("Charts"), button:has-text("Hide Charts"), button:has-text("Show Charts"), [data-testid="charts-toggle"]')
 
-      if (await chartsToggle.count() > 0) {
-        // Get initial state
-        const initialText = await chartsToggle.first().textContent()
-
-        // Click to toggle
-        await chartsToggle.first().click()
-        await page.waitForTimeout(300)
-
-        // Verify state changed
-        const newText = await chartsToggle.first().textContent()
-        expect(newText).not.toBe(initialText)
-
-        // Reload page
-        await page.reload()
-        await waitForPageReady(page)
-
-        // Verify preference persisted (localStorage)
-        const persistedText = await chartsToggle.first().textContent()
-        expect(persistedText).toBe(newText)
+      // Skip if charts toggle feature is not implemented
+      if (await chartsToggle.count() === 0) {
+        await deleteFundViaAPI(page, fund.id)
+        test.skip(true, 'Charts toggle feature not available in current UI')
+        return
       }
+
+      // Get initial state
+      const initialText = await chartsToggle.first().textContent()
+
+      // Click to toggle
+      await chartsToggle.first().click()
+      await page.waitForTimeout(300)
+
+      // Verify state changed
+      const newText = await chartsToggle.first().textContent()
+      expect(newText).not.toBe(initialText)
+
+      // Reload page
+      await page.reload()
+      await waitForPageReady(page)
+
+      // Verify preference persisted (localStorage)
+      const persistedText = await chartsToggle.first().textContent()
+      expect(persistedText).toBe(newText)
 
       await deleteFundViaAPI(page, fund.id)
     })
@@ -237,15 +248,10 @@ test.describe('Fund Creation via UI', () => {
     // Fill in form
     const ticker = uniqueTicker('uicreate')
 
-    // Select platform (first available or test)
+    // Select platform (first available)
     const platformSelect = page.locator('select').first()
-    if (await platformSelect.count() > 0) {
-      // Get available options
-      const options = await platformSelect.locator('option').allTextContents()
-      if (options.length > 0) {
-        await platformSelect.selectOption({ index: 0 })
-      }
-    }
+    await expect(platformSelect).toBeVisible()
+    await platformSelect.selectOption({ index: 0 })
 
     // Enter ticker
     const tickerInput = page.locator('input[placeholder*="ticker" i], input[name="ticker"], #ticker, input').filter({ hasText: '' }).first()
@@ -253,9 +259,8 @@ test.describe('Fund Creation via UI', () => {
 
     // Fill fund size
     const fundSizeInput = page.locator('input[name*="fund_size" i], input[placeholder*="fund size" i], input[type="number"]').first()
-    if (await fundSizeInput.count() > 0) {
-      await fundSizeInput.fill('5000')
-    }
+    await expect(fundSizeInput).toBeVisible()
+    await fundSizeInput.fill('5000')
 
     // Submit the form
     const submitButton = page.locator('button[type="submit"]:has-text("Create"), button:has-text("Create Fund")')
@@ -379,23 +384,21 @@ test.describe('Entry Management via UI', () => {
     const entryRow = page.locator('table tbody tr, [data-testid="entry-row"]').first()
     await entryRow.click()
 
-    // Wait for edit modal
-    await page.waitForTimeout(300)
-
-    // Check if edit modal/panel appeared
+    // Wait for edit modal to appear
     const editModal = page.locator('[role="dialog"], .modal, [data-testid="edit-entry-modal"]')
-    if (await editModal.count() > 0) {
-      // Modify the amount
-      const amountInput = page.locator('input[name="amount"], #amount')
-      await amountInput.clear()
-      await amountInput.fill('200')
+    await expect(editModal.first()).toBeVisible({ timeout: 5000 })
 
-      // Save
-      const saveButton = page.locator('button[type="submit"]:has-text("Save"), button:has-text("Update")')
-      await saveButton.click()
+    // Modify the amount
+    const amountInput = page.locator('input[name="amount"], #amount')
+    await amountInput.clear()
+    await amountInput.fill('200')
 
-      await page.waitForTimeout(500)
-    }
+    // Save
+    const saveButton = page.locator('button[type="submit"]:has-text("Save"), button:has-text("Update")')
+    await saveButton.click()
+
+    // Wait for modal to close
+    await expect(editModal).not.toBeVisible({ timeout: 5000 })
 
     await deleteFundViaAPI(page, fund.id)
   })

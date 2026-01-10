@@ -22,8 +22,16 @@ interface DerivativesEntry extends FundEntry {
 // Contract multiplier for BTC perpetuals (0.01 BTC per contract)
 const CONTRACT_MULTIPLIER = 0.01
 
-// Use dates in the future to ensure test data remains valid
-const TEST_START_DATE = '2027-01-01'
+// Use a start date one year in the future to ensure test data remains valid
+const TEST_START_DATE = addDays(new Date().toISOString().slice(0, 10), 365)
+
+/**
+ * Get a test date relative to TEST_START_DATE
+ * @param daysOffset - Days after TEST_START_DATE (e.g., 0 = start, 1 = next day, 7 = week later)
+ */
+function testDate(daysOffset: number): string {
+  return addDays(TEST_START_DATE, daysOffset)
+}
 
 /**
  * Generate a derivatives fund configuration
@@ -94,7 +102,7 @@ test.describe('Derivatives Entry Types', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 50000
@@ -107,7 +115,7 @@ test.describe('Derivatives Entry Types', () => {
 
     // Add another deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-15',
+      date: testDate(14),
       value: 0,
       action: 'DEPOSIT',
       amount: 25000
@@ -127,7 +135,7 @@ test.describe('Derivatives Entry Types', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -135,7 +143,7 @@ test.describe('Derivatives Entry Types', () => {
 
     // Withdraw some margin
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-15',
+      date: testDate(14),
       value: 0,
       action: 'WITHDRAW',
       amount: 30000
@@ -155,7 +163,7 @@ test.describe('Derivatives Entry Types', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -164,7 +172,7 @@ test.describe('Derivatives Entry Types', () => {
     // Positive funding received (shorts pay longs)
     // Funding payments are recorded as HOLD entries with dividend field for income
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 0,
       action: 'HOLD',
       amount: 0,
@@ -178,7 +186,7 @@ test.describe('Derivatives Entry Types', () => {
 
     // Negative funding paid (longs pay shorts)
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-03',
+      date: testDate(2),
       value: 0,
       action: 'HOLD',
       amount: 0,
@@ -201,7 +209,7 @@ test.describe('Derivatives Entry Types', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -209,7 +217,7 @@ test.describe('Derivatives Entry Types', () => {
 
     // Interest earned on USDC balance
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-08',
+      date: testDate(7),
       value: 0,
       action: 'HOLD',
       amount: 0,
@@ -234,7 +242,7 @@ test.describe('Derivatives Entry Types', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -242,7 +250,7 @@ test.describe('Derivatives Entry Types', () => {
 
     // Trading fee
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 0,
       action: 'HOLD',
       amount: 0,
@@ -265,7 +273,7 @@ test.describe('Derivatives Entry Types', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -273,7 +281,7 @@ test.describe('Derivatives Entry Types', () => {
 
     // Rebate from exchange (modeled as negative expense or dividend)
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 0,
       action: 'HOLD',
       amount: 0,
@@ -298,7 +306,7 @@ test.describe('Position Tracking', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -311,7 +319,7 @@ test.describe('Position Tracking', () => {
     const contractValue = contractCount * CONTRACT_MULTIPLIER * btcPrice
 
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: contractValue,  // Position value
       action: 'BUY',
       amount: contractValue,
@@ -338,7 +346,7 @@ test.describe('Position Tracking', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -350,7 +358,7 @@ test.describe('Position Tracking', () => {
     const buyValue = contractCount * CONTRACT_MULTIPLIER * buyPrice  // $10,000
 
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: buyValue,
       action: 'BUY',
       amount: buyValue,
@@ -363,7 +371,7 @@ test.describe('Position Tracking', () => {
     const sellValue = contractCount * CONTRACT_MULTIPLIER * sellPrice  // $10,500
 
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-10',
+      date: testDate(9),
       value: 0,  // Position closed
       action: 'SELL',
       amount: sellValue,
@@ -388,7 +396,7 @@ test.describe('Position Tracking', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -396,7 +404,7 @@ test.describe('Position Tracking', () => {
 
     // First buy: 5 contracts at $100,000
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 5000,  // 5 * 0.01 * 100000
       action: 'BUY',
       amount: 5000,
@@ -406,7 +414,7 @@ test.describe('Position Tracking', () => {
 
     // Second buy: 5 contracts at $110,000
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-05',
+      date: testDate(4),
       value: 10500,  // Total position value at current price
       action: 'BUY',
       amount: 5500,  // 5 * 0.01 * 110000
@@ -416,7 +424,7 @@ test.describe('Position Tracking', () => {
 
     // Sell 5 contracts at $115,000 (should use FIFO - close first lot at $100k)
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-10',
+      date: testDate(9),
       value: 5750,  // Remaining 5 contracts
       action: 'SELL',
       amount: 5750,  // 5 * 0.01 * 115000
@@ -440,7 +448,7 @@ test.describe('Position Tracking', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -448,7 +456,7 @@ test.describe('Position Tracking', () => {
 
     // First buy: 10 contracts
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 10000,
       action: 'BUY',
       amount: 10000,
@@ -458,7 +466,7 @@ test.describe('Position Tracking', () => {
 
     // Second buy: 20 contracts
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-05',
+      date: testDate(4),
       value: 30000,  // 30 contracts total
       action: 'BUY',
       amount: 20000,
@@ -468,7 +476,7 @@ test.describe('Position Tracking', () => {
 
     // Third buy: 5 contracts
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-08',
+      date: testDate(7),
       value: 35000,  // 35 contracts total
       action: 'BUY',
       amount: 5000,
@@ -494,7 +502,7 @@ test.describe('Margin Calculations', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -503,7 +511,7 @@ test.describe('Margin Calculations', () => {
     // Buy position worth $20,000
     // With 20% initial margin, this locks $4,000
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 20000,
       action: 'BUY',
       amount: 20000,
@@ -533,7 +541,7 @@ test.describe('Margin Calculations', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 10000
@@ -541,7 +549,7 @@ test.describe('Margin Calculations', () => {
 
     // Buy position worth $8,000
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 8000,
       action: 'BUY',
       amount: 8000,
@@ -573,7 +581,7 @@ test.describe('P&L Calculations', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -581,7 +589,7 @@ test.describe('P&L Calculations', () => {
 
     // Buy position at $100k
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 10000,
       action: 'BUY',
       amount: 10000,
@@ -591,7 +599,7 @@ test.describe('P&L Calculations', () => {
 
     // Price increases - mark position at $110k (10% gain)
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-10',
+      date: testDate(9),
       value: 11000,  // Current position value
       action: 'HOLD',
       amount: 0
@@ -614,7 +622,7 @@ test.describe('P&L Calculations', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -622,7 +630,7 @@ test.describe('P&L Calculations', () => {
 
     // Trade 1: Buy at $1000, Sell at $1100 (10% gain)
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 10000,
       action: 'BUY',
       amount: 10000,
@@ -631,7 +639,7 @@ test.describe('P&L Calculations', () => {
     })
 
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-05',
+      date: testDate(4),
       value: 0,
       action: 'SELL',
       amount: 11000,
@@ -641,7 +649,7 @@ test.describe('P&L Calculations', () => {
 
     // Trade 2: Buy at $1050, Sell at $1000 (loss)
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-10',
+      date: testDate(9),
       value: 10500,
       action: 'BUY',
       amount: 10500,
@@ -650,7 +658,7 @@ test.describe('P&L Calculations', () => {
     })
 
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-15',
+      date: testDate(14),
       value: 0,
       action: 'SELL',
       amount: 10000,
@@ -674,7 +682,7 @@ test.describe('P&L Calculations', () => {
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -683,7 +691,7 @@ test.describe('P&L Calculations', () => {
     // Accumulate funding over several days
     // Day 1: Receive $10 funding
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 0,
       action: 'HOLD',
       dividend: 10
@@ -691,7 +699,7 @@ test.describe('P&L Calculations', () => {
 
     // Day 2: Receive $15 funding
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-03',
+      date: testDate(2),
       value: 0,
       action: 'HOLD',
       dividend: 15
@@ -699,7 +707,7 @@ test.describe('P&L Calculations', () => {
 
     // Day 3: Pay $5 funding
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-04',
+      date: testDate(3),
       value: 0,
       action: 'HOLD',
       expense: 5
@@ -723,7 +731,7 @@ test.describe('Full Derivatives Lifecycle', () => {
 
     // Step 1: Initial deposit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 100000
@@ -731,7 +739,7 @@ test.describe('Full Derivatives Lifecycle', () => {
 
     // Step 2: Open position
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 20000,
       action: 'BUY',
       amount: 20000,
@@ -741,7 +749,7 @@ test.describe('Full Derivatives Lifecycle', () => {
 
     // Step 3: Receive funding
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-03',
+      date: testDate(2),
       value: 20000,
       action: 'HOLD',
       dividend: 50
@@ -749,7 +757,7 @@ test.describe('Full Derivatives Lifecycle', () => {
 
     // Step 4: Receive interest
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-04',
+      date: testDate(3),
       value: 20100,
       action: 'HOLD',
       cash_interest: 87.76
@@ -757,7 +765,7 @@ test.describe('Full Derivatives Lifecycle', () => {
 
     // Step 5: Add to position
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-05',
+      date: testDate(4),
       value: 30000,
       action: 'BUY',
       amount: 10000,
@@ -767,7 +775,7 @@ test.describe('Full Derivatives Lifecycle', () => {
 
     // Step 6: Pay trading fee
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-05',
+      date: testDate(4),
       value: 30000,
       action: 'HOLD',
       expense: 8.30
@@ -775,7 +783,7 @@ test.describe('Full Derivatives Lifecycle', () => {
 
     // Step 7: Partial close at profit
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-10',
+      date: testDate(9),
       value: 16500,  // 15 contracts remaining at higher price
       action: 'SELL',
       amount: 16500,  // 15 contracts at $1100
@@ -785,7 +793,7 @@ test.describe('Full Derivatives Lifecycle', () => {
 
     // Step 8: More funding
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-15',
+      date: testDate(14),
       value: 16500,
       action: 'HOLD',
       dividend: 25
@@ -793,7 +801,7 @@ test.describe('Full Derivatives Lifecycle', () => {
 
     // Step 9: Close remaining position
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-20',
+      date: testDate(19),
       value: 0,
       action: 'SELL',
       amount: 16500,  // 15 contracts at $1100
@@ -803,7 +811,7 @@ test.describe('Full Derivatives Lifecycle', () => {
 
     // Step 10: Withdraw profits
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-25',
+      date: testDate(24),
       value: 0,
       action: 'WITHDRAW',
       amount: 10000
@@ -833,7 +841,7 @@ test.describe('Full Derivatives Lifecycle', () => {
     const config = generateDerivativesConfig()
 
     const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
-    let date = '2027-01-01'
+    let date = testDate(0)
 
     // Initial deposit
     await addDerivativesEntry(page, fund.id, {
@@ -856,7 +864,7 @@ test.describe('Full Derivatives Lifecycle', () => {
     let totalPosition = 0
 
     for (const trade of trades) {
-      date = addDays('2027-01-01', trade.day)
+      date = addDays(testDate(0), trade.day)
       const tradeValue = trade.contracts * trade.price
 
       if (trade.action === 'BUY') {
@@ -897,14 +905,14 @@ test.describe('Edge Cases', () => {
 
     // Deposit and trade
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 50000
     })
 
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 10000,
       action: 'BUY',
       amount: 10000,
@@ -913,7 +921,7 @@ test.describe('Edge Cases', () => {
     })
 
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-05',
+      date: testDate(4),
       value: 0,
       action: 'SELL',
       amount: 10000,
@@ -937,7 +945,7 @@ test.describe('Edge Cases', () => {
     const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
 
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 1000
@@ -945,7 +953,7 @@ test.describe('Edge Cases', () => {
 
     // Buy just 1 contract (worth about $1000 at 100k BTC)
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 1000,
       action: 'BUY',
       amount: 1000,
@@ -969,7 +977,7 @@ test.describe('Edge Cases', () => {
     const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
 
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-01',
+      date: testDate(0),
       value: 0,
       action: 'DEPOSIT',
       amount: 1000000
@@ -977,7 +985,7 @@ test.describe('Edge Cases', () => {
 
     // Large position: 500 contracts = 5 BTC = ~$500k position
     await addDerivativesEntry(page, fund.id, {
-      date: '2027-01-02',
+      date: testDate(1),
       value: 500000,
       action: 'BUY',
       amount: 500000,

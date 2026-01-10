@@ -635,7 +635,8 @@ export const FEATURE_COVERAGE: Record<string, FeatureCategory> = {
         tested: false,
         spec: null,
         priority: 'high'
-        // TODO: Add test to verify API rejects duplicate ticker on same platform (data integrity)
+        // Untested: Verify API rejects duplicate ticker on same platform (data integrity)
+        // Track in project management system when implementing
       },
       'platform-id-format': {
         tested: true,
