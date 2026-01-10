@@ -236,16 +236,19 @@ export function computeFundMetrics(
   const currentValue = state?.actual_value_usd ?? 0
   const projectedAnnualReturn = computeProjectedAnnualReturn(currentValue, realizedAPY)
 
-  // For cash funds, gain is just the interest earned (no unrealized gains from assets)
-  // For trading funds, gain is actual value - start input (paper gain on positions)
-  const gainUsd = isCashFund ? realizedGains : (state?.gain_usd ?? 0)
-  const liquidAPY = computeLiquidAPY(gainUsd, timeWeightedFundSize, daysActive)
-
   // Unrealized gains = paper gain on positions (value - cost basis)
   // For cash funds: no unrealized (all gains are realized as interest)
-  // For trading funds: unrealized = gainUsd (value - start_input IS the unrealized paper gain)
-  // Realized gains (dividends, interest) are ADDITIONAL gains, not subtracted from unrealized
-  const unrealizedGains = isCashFund ? 0 : gainUsd
+  // For trading funds: unrealized = value - start_input (the paper gain on positions)
+  const unrealizedGains = isCashFund ? 0 : (state?.gain_usd ?? 0)
+
+  // Liquid gain = total gain if we sold everything now
+  // For cash funds: liquid = realized (just interest, no assets to sell)
+  // For trading funds: liquid = unrealized + realized (paper gain + dividends/interest)
+  const liquidGain = unrealizedGains + realizedGains
+  const liquidAPY = computeLiquidAPY(liquidGain, timeWeightedFundSize, daysActive)
+
+  // gainUsd stores the component relevant to fund type for backward compatibility
+  const gainUsd = isCashFund ? realizedGains : unrealizedGains
 
   return {
     id,
@@ -341,7 +344,7 @@ export function computeAggregateMetrics(fundMetrics: FundMetrics[]): AggregateMe
   // Compute aggregate liquid APY directly from totals (not weighted average)
   // Liquid gain = unrealized (paper gain) + realized (dividends, interest, etc.)
   // This gives the total gain if you liquidated everything
-  const totalGainUsd = (totalValue - totalStartInput) + totalRealizedGains
+  const totalGainUsd = totalRealizedGains + totalUnrealizedGains
   const avgDaysActive = fundMetrics.length > 0 ? totalDaysActive / fundMetrics.length : 1
   const aggregateLiquidAPY = computeLiquidAPY(totalGainUsd, totalTimeWeightedFundSize, avgDaysActive)
 

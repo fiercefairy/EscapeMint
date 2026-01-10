@@ -634,22 +634,29 @@ export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType)
   if (isCashFund) {
     const signedAmount = parseFormulaValue(formData.amount)
     const marginExpense = parseFloat(formData.margin_expense) || 0
+
+    // Store margin expense in a structured field if present
     if (marginExpense > 0) {
-      // MARGIN action takes priority when margin expense is set
-      entry.action = 'MARGIN'
-      entry.amount = marginExpense
-      // If there's also a deposit/withdraw, add it to notes
-      if (signedAmount > 0) {
-        notes = (notes ? notes + ' | ' : '') + `Deposit: $${signedAmount}`
-      } else if (signedAmount < 0) {
-        notes = (notes ? notes + ' | ' : '') + `Withdrawal: $${Math.abs(signedAmount)}`
-      }
-    } else if (signedAmount > 0) {
+      ;(entry as Partial<FundEntry> & { margin_expense?: number }).margin_expense = marginExpense
+    }
+
+    // Determine action: deposit/withdraw takes priority over pure margin expense
+    if (signedAmount > 0) {
       entry.action = 'DEPOSIT'
       entry.amount = signedAmount
+      if (marginExpense > 0) {
+        notes = (notes ? notes + ' | ' : '') + `Margin expense: $${marginExpense}`
+      }
     } else if (signedAmount < 0) {
       entry.action = 'WITHDRAW'
       entry.amount = signedAmount // Store as negative
+      if (marginExpense > 0) {
+        notes = (notes ? notes + ' | ' : '') + `Margin expense: $${marginExpense}`
+      }
+    } else if (marginExpense > 0) {
+      // Pure margin expense with no external cash flow
+      entry.action = 'MARGIN'
+      entry.amount = marginExpense
     } else {
       entry.action = 'HOLD'
     }

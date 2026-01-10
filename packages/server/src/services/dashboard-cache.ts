@@ -570,9 +570,9 @@ function computeHistory(funds: FundData[]): DashboardHistory {
         if (!isCashFund) {
           // For final date: use metrics.unrealized (post-action value - cost basis)
           // For historical: use entry value - cost basis
-          // Special case: if costBasis is 0 and the fund was fully liquidated, unrealized is 0
-          // (the position is closed, there's nothing to have unrealized gains on)
-          const isFullyLiquidated = metrics.costBasis === 0 && metrics.currentValue === 0
+          // Special case: if costBasis is 0, there are no open positions so unrealized is 0
+          // (the position is fully closed, there's nothing to have unrealized gains on, even if currentValue > 0 from cash)
+          const isFullyLiquidated = metrics.costBasis === 0
           const fundUnrealized = isFullyLiquidated ? 0 : (isLastDate ? metrics.unrealized : (latestEntry.value - metrics.costBasis))
           totalUnrealizedGain += fundUnrealized
           unrealizedGainBreakdown[fund.id] = fundUnrealized
