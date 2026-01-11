@@ -88,6 +88,33 @@ export interface Recommendation {
 }
 
 // API helper functions
+
+/**
+ * Create a platform via API (needed for test platforms that don't exist)
+ */
+export async function createPlatformViaAPI(
+  page: Page,
+  id: string,
+  name?: string
+): Promise<{ id: string; name: string }> {
+  const response = await page.request.post(`${API_BASE}/platforms`, {
+    data: { id, name: name ?? id }
+  })
+  // Platform might already exist, which is fine
+  if (response.ok()) {
+    return response.json()
+  }
+  return { id, name: name ?? id }
+}
+
+/**
+ * Delete a platform via API
+ */
+export async function deletePlatformViaAPI(page: Page, id: string): Promise<void> {
+  await page.request.delete(`${API_BASE}/platforms/${id}`)
+  // Don't assert - platform might have funds or might not exist
+}
+
 export async function createFundViaAPI(
   page: Page,
   platform: string,
