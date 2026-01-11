@@ -5,7 +5,7 @@ import {
   isCashFund as checkIsCashFund,
   getFundTypeFeatures
 } from '@escapemint/engine'
-import { formatCurrency } from '../utils/format'
+import { formatCurrency, formatLocalDate } from '../utils/format'
 
 export type ActionType = '' | 'BUY' | 'SELL' | 'HOLD'
 
@@ -753,7 +753,7 @@ export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType)
 // Helper to create initial form data for new entry
 export function createEmptyFormData(): EntryFormData {
   return {
-    date: new Date().toISOString().split('T')[0] as string,
+    date: formatLocalDate(new Date()),
     value: '',
     cash: '',
     action: '' as ActionType,

@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { updatePlatformConfig, type PlatformFundMetrics } from '../../api/platforms'
 import { updateFundConfig } from '../../api/funds'
 import { ALL_FUND_COLUMNS, getDefaultFundColumns, getDefaultFundColumnOrder, type FundColumnId } from './types'
+import { formatLocalDate } from '../../utils/format'
 
 export interface FundsTableProps {
   platformId: string
@@ -93,7 +94,7 @@ export function FundsTable({
   // Toggle audit status for a fund
   const toggleAudit = async (fundId: string, currentAudited: string | undefined, e: React.MouseEvent) => {
     e.stopPropagation()
-    const newValue = currentAudited ? undefined : new Date().toISOString().split('T')[0]
+    const newValue = currentAudited ? undefined : formatLocalDate(new Date())
     const result = await updateFundConfig(fundId, { audited: newValue ?? '' })
     if (result.error) {
       toast.error(result.error)
