@@ -1,6 +1,7 @@
 /**
- * Derivatives calculation engine for BTC perpetual futures.
+ * Derivatives calculation engine for perpetual futures contracts.
  *
+ * Asset-agnostic implementation that supports any underlying asset.
  * Provides FIFO cost basis tracking, liquidation price calculations,
  * position state computation, and safe order ladder suggestions.
  */
@@ -26,8 +27,8 @@ const DEFAULT_CONTRACT_MULTIPLIER = 0.01  // BIP micro-futures
  *
  * @param side - 'BUY' or 'SELL'
  * @param contracts - Number of contracts
- * @param price - Price per BTC
- * @param contractMultiplier - BTC per contract (0.01 for BIP)
+ * @param price - Price per unit of underlying asset
+ * @param contractMultiplier - Units of underlying asset per contract (e.g., 0.01 for BTC micro-futures)
  * @param marginRate - Initial margin rate (default 0.20)
  * @param costBasisQueue - Current FIFO queue (will be mutated)
  * @returns Trade result with realized gain and margin change
@@ -44,8 +45,8 @@ export const processTrade = (
   marginChange: number
   newQueue: CostBasisLot[]
 } => {
-  const btcSize = contracts * contractMultiplier
-  const dollarValue = btcSize * price
+  const notionalSize = contracts * contractMultiplier
+  const dollarValue = notionalSize * price
   const marginRequired = dollarValue * marginRate
 
   if (side === 'BUY') {
@@ -126,29 +127,29 @@ export const calculateLiquidationPrice = (
   if (contracts <= 0) return 0
 
   const totalCostBasis = costBasisQueue.reduce((sum, lot) => sum + lot.totalCost, 0)
-  const btcSize = contracts * contractMultiplier
+  const notionalSize = contracts * contractMultiplier
 
   // Liquidation price formula:
-  // LiqPrice = (MaintenanceMargin + CostBasis - TotalCash) / btcSize
-  const liqPrice = (maintenanceMargin + totalCostBasis - marginLocked) / btcSize
+  // LiqPrice = (MaintenanceMargin + CostBasis - TotalCash) / notionalSize
+  const liqPrice = (maintenanceMargin + totalCostBasis - marginLocked) / notionalSize
 
   return Math.max(0, liqPrice)
 }
 
 /**
- * Calculate equity at a given BTC price.
+ * Calculate equity at a given asset price.
  *
  * @param position - Current position
- * @param btcPrice - BTC price to calculate equity at
+ * @param assetPrice - Underlying asset price to calculate equity at
  * @returns Equity value in USD
  */
 export const calculateEquityAtPrice = (
   position: DerivativesPosition,
-  btcPrice: number
+  assetPrice: number
 ): number => {
   const { contracts, costBasisQueue, marginLocked, contractMultiplier } = position
   const totalCostBasis = costBasisQueue.reduce((sum, lot) => sum + lot.totalCost, 0)
-  const currentNotional = contracts * contractMultiplier * btcPrice
+  const currentNotional = contracts * contractMultiplier * assetPrice
   const unrealizedPnl = currentNotional - totalCostBasis
   return marginLocked + unrealizedPnl
 }
@@ -226,7 +227,7 @@ export const calculateSafeLimitOrders = (
     const estimatedNewMaintMargin = newContracts * contractMultiplier * orderPrice * maintenanceRate
     const newLiqPrice = (estimatedNewMaintMargin + newCostBasis - totalCash) / (newContracts * contractMultiplier)
 
-    // Equity at BTC = $0
+    // Equity at asset price = $0
     const equityAtZero = totalCash - newCostBasis
 
     const isSafe = equityAtZero > 0
@@ -390,7 +391,7 @@ export const calculateDailyPnL = (
  * Process raw Coinbase fills into trade records with FIFO tracking.
  *
  * @param fills - Array of Coinbase fill objects
- * @param contractMultiplier - BTC per contract
+ * @param contractMultiplier - Units of underlying asset per contract
  * @param marginRate - Initial margin rate
  * @returns Processed trades with cumulative position tracking
  */
@@ -412,8 +413,8 @@ export const processTradeHistory = (
     const contracts = parseFloat(fill.size)
     const price = parseFloat(fill.price)
     const commission = parseFloat(fill.commission)
-    const btcSize = contracts * contractMultiplier
-    const total = btcSize * price
+    const notionalSize = contracts * contractMultiplier
+    const total = notionalSize * price
 
     const result = processTrade(
       fill.side,
@@ -442,7 +443,7 @@ export const processTradeHistory = (
       orderId: fill.orderId,
       side: fill.side,
       contracts,
-      btcSize,
+      notionalSize,
       price,
       total,
       commission,
@@ -458,9 +459,9 @@ export const processTradeHistory = (
  * Compute full derivatives position state from trade history.
  *
  * @param trades - Processed trade history
- * @param currentPrice - Current BTC price
+ * @param currentPrice - Current asset price
  * @param productId - Coinbase product ID
- * @param contractMultiplier - BTC per contract
+ * @param contractMultiplier - Units of underlying asset per contract
  * @returns Current position state
  */
 export const computeDerivativesState = (
@@ -553,7 +554,7 @@ export interface DerivativesEntryState {
   // Running calculations
   marginBalance: number      // Running cash/margin balance (funds for margin)
   position: number           // Running net contracts
-  avgEntry: number           // Weighted average entry price (BTC price)
+  avgEntry: number           // Weighted average entry price (asset price)
   costBasis: number          // Total cost basis of open position
   unrealizedPnl: number      // Unrealized P&L (0 for historical, calculated for current)
   realizedPnl: number        // Running realized P&L from closed trades
@@ -604,7 +605,7 @@ interface DerivativesFundEntry {
  * Returns an array of entry states with running calculations.
  *
  * @param entries - Fund entries from TSV
- * @param contractMultiplier - BTC per contract (default 0.01)
+ * @param contractMultiplier - Units of underlying asset per contract (default 0.01)
  * @returns Array of entry states with running calculations
  */
 export const computeDerivativesEntriesState = (
@@ -645,7 +646,7 @@ export const computeDerivativesEntriesState = (
   let cumInterest = 0
   let cumRebates = 0
   let cumFees = 0
-  let snapshotBtcPrice = 0  // BTC price at each snapshot (derived from trade prices)
+  let currentAssetPrice = 0  // Asset price at each snapshot (derived from trade prices)
 
   // FIFO cost basis queue for realized P&L calculation (includes margin per lot)
   const costBasisQueue: { contracts: number; price: number; cost: number; margin: number }[] = []
@@ -697,8 +698,8 @@ export const computeDerivativesEntriesState = (
         // Add to position
         position += contracts
         // Update average entry price (weighted average)
-        // Note: price is "cost per contract" (e.g., $1056 when BTC = $105,600)
-        // We want avgEntry to be BTC price = totalDollarCost / (position * contractMultiplier)
+        // Note: price is "cost per contract" (e.g., $1056 when asset = $105,600)
+        // We want avgEntry to be asset price = totalDollarCost / (position * contractMultiplier)
         if (position > 0) {
           const oldCost = avgEntry * (position - contracts) * contractMultiplier
           const newCost = price * contracts  // Total dollar cost (price is already per contract)
@@ -720,10 +721,10 @@ export const computeDerivativesEntriesState = (
           cumFees += fee
           marginBalance -= fee  // Fees reduce margin
         }
-        // Update snapshot BTC price from trade price
-        // BTC price = contract price / contractMultiplier
+        // Update snapshot asset price from trade price
+        // Asset price = contract price / contractMultiplier
         if (price > 0) {
-          snapshotBtcPrice = price / contractMultiplier
+          currentAssetPrice = price / contractMultiplier
         }
         break
       }
@@ -774,23 +775,23 @@ export const computeDerivativesEntriesState = (
           cumFees += fee
           marginBalance -= fee  // Fees reduce margin
         }
-        // Update snapshot BTC price from trade price
-        // BTC price = contract price / contractMultiplier
+        // Update snapshot asset price from trade price
+        // Asset price = contract price / contractMultiplier
         if (price > 0) {
-          snapshotBtcPrice = price / contractMultiplier
+          currentAssetPrice = price / contractMultiplier
         }
         break
       }
 
       case 'HOLD': {
         // HOLD entries can mark position to market via the value field
-        // If value is provided and we have an open position, derive BTC price
+        // If value is provided and we have an open position, derive asset price
         const entryValue = (entry as { value?: number }).value
         if (entryValue && entryValue > 0 && position > 0) {
           // Value represents current position value
-          // Derive implied BTC price: btcPrice = value / (position * contractMultiplier)
-          const btcSize = position * contractMultiplier
-          snapshotBtcPrice = entryValue / btcSize
+          // Derive implied asset price: assetPrice = value / (position * contractMultiplier)
+          const notionalSize = position * contractMultiplier
+          currentAssetPrice = entryValue / notionalSize
         }
         break
       }
@@ -818,12 +819,12 @@ export const computeDerivativesEntriesState = (
     // Lower is safer (Coinbase shows this as a percentage)
     const marginRatio = marginBalance > 0 ? maintenanceMargin / marginBalance : 0
 
-    // Unrealized P&L at this snapshot using the BTC price at this moment
-    // unrealizedPnl = (position * contractMultiplier * snapshotBtcPrice) - costBasis
+    // Unrealized P&L at this snapshot using the asset price at this moment
+    // unrealizedPnl = (position * contractMultiplier * currentAssetPrice) - costBasis
     let unrealizedPnl = 0
     let currentNotionalValue = 0
-    if (position > 0 && snapshotBtcPrice > 0) {
-      currentNotionalValue = position * contractMultiplier * snapshotBtcPrice
+    if (position > 0 && currentAssetPrice > 0) {
+      currentNotionalValue = position * contractMultiplier * currentAssetPrice
       if (costBasisTotal > 0) {
         unrealizedPnl = currentNotionalValue - costBasisTotal
       }
@@ -839,20 +840,20 @@ export const computeDerivativesEntriesState = (
 
     // Liquidation price calculation for long positions
     // At liquidation: equity = maintenanceMargin
-    // equity = marginBalance + (liqPrice - avgEntry) * btcSize
-    // So: liqPrice = avgEntry - (marginBalance - maintenanceMargin) / btcSize
-    // For short positions, the formula is: liqPrice = avgEntry + (marginBalance - maintenanceMargin) / btcSize
-    const btcSize = position * contractMultiplier
+    // equity = marginBalance + (liqPrice - avgEntry) * notionalSize
+    // So: liqPrice = avgEntry - (marginBalance - maintenanceMargin) / notionalSize
+    // For short positions, the formula is: liqPrice = avgEntry + (marginBalance - maintenanceMargin) / notionalSize
+    const notionalSize = position * contractMultiplier
     let liquidationPrice = 0
-    if (position > 0 && btcSize > 0) {
+    if (position > 0 && notionalSize > 0) {
       // Long position: price going down triggers liquidation
       // Negative values indicate position is over-collateralized (safer than 0)
       const buffer = marginBalance - maintenanceMargin
-      liquidationPrice = avgEntry - (buffer / btcSize)
-    } else if (position < 0 && btcSize < 0) {
+      liquidationPrice = avgEntry - (buffer / notionalSize)
+    } else if (position < 0 && notionalSize < 0) {
       // Short position: price going up triggers liquidation
       const buffer = marginBalance - maintenanceMargin
-      liquidationPrice = avgEntry - (buffer / btcSize)  // btcSize is negative, so this adds
+      liquidationPrice = avgEntry - (buffer / notionalSize)  // notionalSize is negative, so this adds
     }
 
     // Margin health: how much buffer above liquidation (higher is safer)
@@ -914,7 +915,7 @@ export const computeDerivativesEntriesState = (
  */
 export const formatPositionSummary = (position: DerivativesPosition): {
   contracts: string
-  btcSize: string
+  notionalSize: string
   avgEntry: string
   currentPrice: string
   liquidationPrice: string
@@ -923,11 +924,11 @@ export const formatPositionSummary = (position: DerivativesPosition): {
   marginLocked: string
   marginAvailable: string
 } => {
-  const btcSize = position.contracts * position.contractMultiplier
+  const notionalSize = position.contracts * position.contractMultiplier
 
   return {
     contracts: position.contracts.toLocaleString(),
-    btcSize: btcSize.toFixed(4),
+    notionalSize: notionalSize.toFixed(4),
     avgEntry: `$${position.avgEntryPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
     currentPrice: `$${position.currentPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
     liquidationPrice: position.liquidationPrice > 0

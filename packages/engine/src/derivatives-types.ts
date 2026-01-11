@@ -96,11 +96,11 @@ export interface ProcessedTrade {
   side: 'BUY' | 'SELL'
   /** Number of contracts */
   contracts: number
-  /** BTC size (contracts * multiplier) */
-  btcSize: number
-  /** Price per BTC */
+  /** Notional size in underlying asset (contracts * multiplier) */
+  notionalSize: number
+  /** Price per unit of underlying asset */
   price: number
-  /** Total value (btcSize * price) */
+  /** Total value (notionalSize * price) */
   total: number
   /** Trading fee paid */
   commission: number
