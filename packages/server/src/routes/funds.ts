@@ -1480,6 +1480,8 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
             // Get margin info - use user-provided value if available, otherwise calculate
             const prevMarginAvailable = prevEntry?.margin_available ?? cashFundData.config.margin_access_usd ?? 0
             const prevMarginBorrowed = prevEntry?.margin_borrowed ?? 0
+            // marginBorrowedNow may already include margin from the initial calculation (lines 1329-1351)
+            // which handles shortfall based on previous day's balance. This is the first phase of margin calc.
             const marginBorrowedNow = entry.margin_borrowed ?? 0
 
             let newBalance = round2(prevBalance + cashChange)
@@ -1487,6 +1489,9 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
             let additionalMarginBorrowed = 0
 
             // For M1 platform: prevent cash from going negative by borrowing from margin
+            // This is the second phase of margin calc, handling same-day aggregate cash flow.
+            // additionalMarginBorrowed covers shortfalls from multiple same-day trades that
+            // weren't captured in the initial per-trade calculation.
             if (platformId === 'm1' && newBalance < 0) {
               // Cap the effective margin borrow to the amount that is actually available
               additionalMarginBorrowed = Math.min(-newBalance, prevMarginAvailable)
@@ -1496,6 +1501,8 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
               actualCashChange = -prevBalance
             }
 
+            // Total margin is the sum of initial margin (from trading fund entry) and additional margin
+            // (from same-day cash flow). These are separate and complementary, not double-counted.
             const totalMarginBorrowed = marginBorrowedNow + additionalMarginBorrowed
 
             // If user provided margin_available in the trading fund entry, use that
