@@ -45,7 +45,7 @@ test.describe('Export Functionality', () => {
 
     // Verify export structure
     expect(exportData).toHaveProperty('version')
-    expect(exportData).toHaveProperty('timestamp')
+    expect(exportData).toHaveProperty('exported_at')
     expect(exportData).toHaveProperty('funds')
     expect(Array.isArray(exportData.funds)).toBe(true)
 
@@ -114,11 +114,11 @@ test.describe('Export Functionality', () => {
 
     // Check metadata
     expect(exportData.version).toBeDefined()
-    expect(exportData.timestamp).toBeDefined()
-    expect(typeof exportData.timestamp).toBe('string')
+    expect(exportData.exported_at).toBeDefined()
+    expect(typeof exportData.exported_at).toBe('string')
 
     // Timestamp should be a valid ISO date string and not in the future
-    const exportTime = new Date(exportData.timestamp)
+    const exportTime = new Date(exportData.exported_at)
     expect(Number.isNaN(exportTime.getTime())).toBe(false)
     expect(exportTime.getTime()).toBeLessThanOrEqual(Date.now())
 
@@ -157,7 +157,7 @@ test.describe('Import Functionality', () => {
 
     // Import in merge mode
     const response = await page.request.post(`${API_BASE}/export/import`, {
-      data: { data: importData, mode: 'merge' }
+      data: { funds: importData.funds, mode: 'merge' }
     })
 
     expect(response.ok()).toBeTruthy()
@@ -203,7 +203,7 @@ test.describe('Import Functionality', () => {
 
     // Import in replace mode
     const response = await page.request.post(`${API_BASE}/export/import`, {
-      data: { data: importData, mode: 'replace' }
+      data: { funds: importData.funds, mode: 'replace' }
     })
 
     expect(response.ok()).toBeTruthy()
@@ -239,7 +239,7 @@ test.describe('Import Functionality', () => {
     }
 
     const response = await page.request.post(`${API_BASE}/export/import`, {
-      data: { data: invalidData, mode: 'merge' }
+      data: { ...invalidData, mode: 'merge' }
     })
 
     // Should fail validation with appropriate error
