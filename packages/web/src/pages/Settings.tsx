@@ -68,10 +68,13 @@ export function Settings() {
   const [backupConfig, setBackupConfig] = useState<BackupConfig | null>(null)
   const [backups, setBackups] = useState<BackupInfo[]>([])
   const [restoreConfirm, setRestoreConfirm] = useState<BackupInfo | null>(null)
+  const [deleteBackupConfirm, setDeleteBackupConfirm] = useState<BackupInfo | null>(null)
+  const [deletingBackup, setDeletingBackup] = useState(false)
   const [testDataStatus, setTestDataStatus] = useState<TestDataStatus | null>(null)
   const [generatingTestData, setGeneratingTestData] = useState(false)
   const [deletingTestData, setDeletingTestData] = useState(false)
   const [testDataConfirm, setTestDataConfirm] = useState<'generate' | 'delete' | null>(null)
+  const [reportsAvailable, setReportsAvailable] = useState({ e2e: false, coverage: false })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { settings, updateSetting } = useSettings()
   const { refresh: refreshDashboard } = useDashboard()
@@ -121,6 +124,21 @@ export function Settings() {
       }
     }
     loadTestDataStatus()
+  }, [])
+
+  // Check if test reports exist on mount
+  useEffect(() => {
+    const checkReports = async () => {
+      const [e2eRes, coverageRes] = await Promise.all([
+        fetch('/playwright-report/index.html', { method: 'HEAD' }),
+        fetch('/coverage-report/index.html', { method: 'HEAD' })
+      ])
+      setReportsAvailable({
+        e2e: e2eRes.ok,
+        coverage: coverageRes.ok
+      })
+    }
+    checkReports()
   }, [])
 
   const refreshTestDataStatus = async () => {
@@ -248,6 +266,37 @@ export function Settings() {
     setRestoring(false)
   }
 
+  const handleDeleteBackup = async (backup: BackupInfo) => {
+    setDeletingBackup(true)
+    setDeleteBackupConfirm(null)
+
+    const response = await fetch(`${API_BASE}/backup/${encodeURIComponent(backup.name)}`, {
+      method: 'DELETE'
+    })
+
+    if (!response.ok) {
+      toast.error('Failed to delete backup')
+      setDeletingBackup(false)
+      return
+    }
+
+    const result = await response.json()
+
+    if (result.success) {
+      toast.success('Backup deleted')
+      // Refresh backup list
+      const listRes = await fetch(`${API_BASE}/backup`)
+      if (listRes.ok) {
+        const list: BackupListResponse = await listRes.json()
+        setBackups(list.backups)
+      }
+    } else {
+      toast.error(result.error ?? 'Delete failed')
+    }
+
+    setDeletingBackup(false)
+  }
+
   const handleExport = async () => {
     setExporting(true)
 
@@ -353,8 +402,93 @@ export function Settings() {
         <p className="text-sm text-slate-400">Manage your data and preferences.</p>
       </div>
 
-      {/* Row 1: Export | Import | Advanced Tools */}
+      {/* Row 1: iCloud Backup | Export Data | Import Data */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* iCloud Backup */}
+        <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
+          <h2 className="text-base font-semibold text-white mb-2">
+            {backupConfig?.is_icloud ? 'iCloud Backup' : 'Data Backup'}
+          </h2>
+          <p className="text-sm text-slate-400 mb-3">
+            {backupConfig?.is_icloud
+              ? 'Backup fund data and configs to iCloud for safekeeping.'
+              : 'Backup fund data and configs to a local directory.'}
+          </p>
+
+          {backupConfig && (
+            <p className="text-xs text-slate-500 mb-3">
+              <span className="text-slate-400">Backup location:</span>{' '}
+              <code className="bg-slate-700 px-1 rounded">{backupConfig.backup_dir}</code>
+            </p>
+          )}
+
+          <button
+            onClick={handleBackup}
+            disabled={backingUp}
+            className="w-full px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {backingUp ? (
+              <>
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Creating Backup...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Create Backup
+              </>
+            )}
+          </button>
+
+          {backups.length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-xs font-medium text-slate-400 mb-2 uppercase tracking-wider">
+                Backups ({backups.length})
+              </h3>
+              <div className="max-h-48 overflow-y-auto rounded border border-slate-700 bg-slate-900">
+                <div className="divide-y divide-slate-700">
+                  {backups.map((backup) => (
+                    <div
+                      key={backup.name}
+                      className="flex items-center justify-between gap-2 p-2 hover:bg-slate-800 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <svg className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span className="text-xs text-slate-300 truncate font-mono">{backup.date}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          onClick={() => setRestoreConfirm(backup)}
+                          disabled={restoring}
+                          className="px-2 py-1 text-xs font-medium bg-slate-700 text-slate-200 rounded hover:bg-slate-600 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Restore this backup"
+                        >
+                          Restore
+                        </button>
+                        <button
+                          onClick={() => setDeleteBackupConfirm(backup)}
+                          disabled={deletingBackup}
+                          className="px-2 py-1 text-xs font-medium bg-red-600/90 text-white rounded hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Delete this backup"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Export Data */}
         <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
           <h2 className="text-base font-semibold text-white mb-2">Export Data</h2>
@@ -420,78 +554,6 @@ export function Settings() {
             {importing ? 'Importing...' : 'Select File'}
           </button>
         </div>
-
-        {/* Advanced/Beta Tools */}
-        <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
-          <h2 className="text-base font-semibold text-white mb-2">Advanced/Beta Tools</h2>
-          <p className="text-sm text-slate-400 mb-3">
-            Enable experimental features like Paste Column and Recalculate buttons.
-          </p>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.advancedTools}
-              onChange={(e) => updateSetting('advancedTools', e.target.checked)}
-              className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500 focus:ring-offset-slate-800"
-            />
-            <span className="text-sm text-white">Enable Advanced/Beta Tools</span>
-          </label>
-        </div>
-      </div>
-
-      {/* iCloud Backup Section */}
-      <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
-        <h2 className="text-base font-semibold text-white mb-2">
-          {backupConfig?.is_icloud ? 'iCloud Backup' : 'Data Backup'}
-        </h2>
-        <p className="text-sm text-slate-400 mb-3">
-          {backupConfig?.is_icloud
-            ? 'Backup fund data and configs to iCloud for safekeeping.'
-            : 'Backup fund data and configs to a local directory.'}
-        </p>
-
-        {backupConfig && (
-          <p className="text-xs text-slate-500 mb-3">
-            <span className="text-slate-400">Backup location:</span>{' '}
-            <code className="bg-slate-700 px-1 rounded">{backupConfig.backup_dir}</code>
-          </p>
-        )}
-
-        <button
-          onClick={handleBackup}
-          disabled={backingUp}
-          className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-        >
-          {backingUp ? 'Creating Backup...' : 'Create Backup'}
-        </button>
-
-        {backups.length > 0 && (
-          <div className="mt-4">
-            <h3 className="text-sm font-medium text-slate-300 mb-2">Recent Backups</h3>
-            <ul className="space-y-2 text-xs text-slate-400">
-              {backups.slice(0, 5).map((backup) => (
-                <li key={backup.name} className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-500">-</span>
-                    <span>{backup.date}</span>
-                  </div>
-                  <button
-                    onClick={() => setRestoreConfirm(backup)}
-                    disabled={restoring}
-                    className="px-2 py-0.5 text-xs bg-slate-700 text-slate-300 rounded hover:bg-slate-600 hover:text-white transition-colors disabled:opacity-50"
-                  >
-                    Restore
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {backups.length > 5 && (
-              <p className="text-xs text-slate-500 mt-1">
-                + {backups.length - 5} more backups
-              </p>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Row 2: Test/Demo Data | Data Mode */}
@@ -522,7 +584,7 @@ export function Settings() {
             </div>
           )}
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 mb-4">
             <button
               onClick={() => setTestDataConfirm('generate')}
               disabled={generatingTestData || !testDataStatus?.priceDataAvailable}
@@ -540,6 +602,50 @@ export function Settings() {
                 {deletingTestData ? 'Deleting...' : 'Delete Test Data'}
               </button>
             )}
+          </div>
+
+          <div className="border-t border-slate-700 pt-3">
+            <h3 className="text-sm font-medium text-slate-300 mb-2">Test Reports</h3>
+            <div className="flex flex-wrap gap-2">
+              {reportsAvailable.e2e ? (
+                <a
+                  href="/playwright-report/index.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 text-sm bg-slate-700 text-slate-300 rounded hover:bg-slate-600 hover:text-white transition-colors inline-flex items-center gap-1.5"
+                >
+                  <span>E2E Test Report</span>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              ) : (
+                <span className="px-3 py-1.5 text-sm bg-slate-700/50 text-slate-500 rounded inline-flex items-center gap-1.5 cursor-not-allowed">
+                  <span>E2E Test Report (Not Generated)</span>
+                </span>
+              )}
+              {reportsAvailable.coverage ? (
+                <a
+                  href="/coverage-report/index.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 text-sm bg-slate-700 text-slate-300 rounded hover:bg-slate-600 hover:text-white transition-colors inline-flex items-center gap-1.5"
+                >
+                  <span>Coverage Report</span>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              ) : (
+                <span className="px-3 py-1.5 text-sm bg-slate-700/50 text-slate-500 rounded inline-flex items-center gap-1.5 cursor-not-allowed">
+                  <span>Coverage Report (Not Generated)</span>
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 mt-2">
+              Run <code className="bg-slate-900 px-1 rounded">npm run test:e2e</code> and{' '}
+              <code className="bg-slate-900 px-1 rounded">npm run test:coverage-report</code> to generate reports
+            </p>
           </div>
         </div>
 
@@ -574,17 +680,21 @@ export function Settings() {
         </div>
       </div>
 
-      {/* Data Info */}
+      {/* Advanced/Beta Tools */}
       <div className="bg-slate-800 rounded-lg p-3 md:p-4 border border-slate-700">
-        <h2 className="text-base font-semibold text-white mb-2">Data Storage</h2>
-        <div className="space-y-1.5 text-sm text-slate-400">
-          <p>
-            <span className="text-white">Location:</span> <code className="bg-slate-700 px-1 rounded text-xs">data/funds/</code>
-          </p>
-          <p>
-            <span className="text-white">Format:</span> TSV files with config header
-          </p>
-        </div>
+        <h2 className="text-base font-semibold text-white mb-2">Advanced/Beta Tools</h2>
+        <p className="text-sm text-slate-400 mb-3">
+          Enable experimental features like Paste Column and Recalculate buttons.
+        </p>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={settings.advancedTools}
+            onChange={(e) => updateSetting('advancedTools', e.target.checked)}
+            className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500 focus:ring-offset-slate-800"
+          />
+          <span className="text-sm text-white">Enable Advanced/Beta Tools</span>
+        </label>
       </div>
 
       {/* Restore Confirmation Dialog */}
@@ -596,6 +706,18 @@ export function Settings() {
           variant="danger"
           onConfirm={() => handleRestore(restoreConfirm)}
           onCancel={() => setRestoreConfirm(null)}
+        />
+      )}
+
+      {/* Delete Backup Confirmation Dialog */}
+      {deleteBackupConfirm && (
+        <ConfirmDialog
+          title="Delete Backup"
+          message={`Are you sure you want to delete the backup from ${deleteBackupConfirm.date}?\n\nThis action cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={() => handleDeleteBackup(deleteBackupConfirm)}
+          onCancel={() => setDeleteBackupConfirm(null)}
         />
       )}
 

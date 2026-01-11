@@ -610,6 +610,65 @@ test.describe('Fund Detail Page Interactions', () => {
 
     await deleteFundViaAPI(page, fund.id)
   })
+
+  test('delete fund requires confirmation before deletion', async ({ page }) => {
+    const ticker = 'ui-del-fund-confirm'
+    const config = generateTestConfig()
+    const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
+
+    await addEntryViaAPI(page, fund.id, {
+      date: '2024-01-01',
+      value: 100,
+      action: 'BUY',
+      amount: 100
+    })
+
+    // Navigate to edit route
+    await page.goto(`${WEB_BASE}/fund/${fund.id}/edit`)
+    await waitForPageReady(page)
+
+    // Find and click "Delete this fund..." link
+    const deleteLink = page.locator('button:has-text("Delete this fund"), a:has-text("Delete this fund")')
+    await expect(deleteLink).toBeVisible()
+    await deleteLink.click()
+
+    // Confirmation box should appear (div with red border containing "cannot be undone")
+    const confirmBox = page.locator('div.bg-red-900\\/20')
+    await expect(confirmBox).toBeVisible()
+
+    // Verify the confirmation text is shown
+    await expect(page.getByText('cannot be undone')).toBeVisible()
+
+    // Should show cancel and delete buttons within the confirmation box
+    const cancelButton = confirmBox.locator('button:has-text("Cancel")')
+    const deleteButton = confirmBox.locator('button:has-text("Delete")')
+    await expect(cancelButton).toBeVisible()
+    await expect(deleteButton).toBeVisible()
+
+    // Click cancel - confirmation should hide
+    await cancelButton.click()
+    await page.waitForTimeout(300)
+
+    // Confirmation box should be hidden
+    await expect(confirmBox).not.toBeVisible()
+
+    // Delete link should be visible again
+    await expect(deleteLink).toBeVisible()
+
+    // Now actually delete: click delete link again
+    await deleteLink.click()
+    await expect(confirmBox).toBeVisible()
+
+    // Click delete to confirm deletion
+    await deleteButton.click()
+
+    // Should navigate to dashboard after deletion
+    await page.waitForURL(/\/$/)
+
+    // Fund should no longer exist (verify by trying to navigate to it)
+    const response = await page.request.get(`http://localhost:5551/api/v1/funds/${fund.id}`)
+    expect(response.status()).toBe(404)
+  })
 })
 
 test.describe('Navigation Flows', () => {
@@ -784,6 +843,52 @@ test.describe('Form Validation', () => {
     await page.locator('button:has-text("Cancel")').click()
 
     await deleteFundViaAPI(page, fund.id)
+  })
+
+  test('API rejects duplicate ticker on same platform', async ({ page }) => {
+    // Create a fund first
+    const ticker = 'ui-dup-ticker'
+    const config = generateTestConfig()
+    const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
+
+    // Try to create another fund with the same platform + ticker combination
+    // This should fail with a 400 error
+    const response = await page.request.post('http://localhost:5551/api/v1/funds', {
+      data: {
+        platform: TEST_PLATFORM,
+        ticker: ticker,  // Same ticker as existing fund
+        config: generateTestConfig()
+      }
+    })
+
+    // Should return 400 Bad Request
+    expect(response.status()).toBe(400)
+
+    // Response should contain error message about duplicate
+    const body = await response.json()
+    expect(body.error.message).toContain('already exists')
+
+    // Clean up the original fund
+    await deleteFundViaAPI(page, fund.id)
+  })
+
+  test('different platforms can have same ticker', async ({ page }) => {
+    // Create a fund on one platform
+    const ticker = 'ui-same-ticker'
+    const config = generateTestConfig()
+    const fund1 = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
+
+    // Create another fund with same ticker but different platform
+    // This should succeed
+    const fund2 = await createFundViaAPI(page, 'test2', ticker, config)
+
+    // Both funds should exist
+    expect(fund1.id).toBe(`${TEST_PLATFORM}-${ticker}`)
+    expect(fund2.id).toBe(`test2-${ticker}`)
+
+    // Clean up
+    await deleteFundViaAPI(page, fund1.id)
+    await deleteFundViaAPI(page, fund2.id)
   })
 })
 

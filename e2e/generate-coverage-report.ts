@@ -10,7 +10,7 @@ import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import { FEATURE_COVERAGE, calculateCoverageStats, getUntestedFeatures } from './coverage-matrix.js'
 
-const OUTPUT_DIR = join(process.cwd(), 'coverage-report')
+const OUTPUT_DIR = join(process.cwd(), 'packages/web/public/coverage-report')
 const OUTPUT_FILE = join(OUTPUT_DIR, 'index.html')
 
 /**

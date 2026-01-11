@@ -3,11 +3,6 @@
 !/data/.gitkeep
 data.backup
 
-# Environment
-.env
-.env.local
-.env.*.local
-
 # Dependencies
 node_modules/
 
@@ -30,12 +25,15 @@ Thumbs.db
 # Test coverage
 coverage/
 
-# Playwright
-playwright-report/
+# Playwright & Test Reports
 test-results/
+packages/web/public/playwright-report/
+packages/web/public/coverage-report/
+
+# Legacy test directory (defunct - using e2e/ now)
+test/
 
 # Temp files
 *.tmp
 .*.tmp
 .browser
-coverage-report/

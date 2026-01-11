@@ -151,7 +151,9 @@ export async function listBackups(backupDir: string): Promise<{ name: string; da
  * Read a backup file.
  */
 export async function readBackup(backupDir: string, filename: string): Promise<BackupData | null> {
-  const backupPath = join(backupDir, filename)
+  // Sanitize filename to prevent directory traversal
+  const safeFilename = basename(filename)
+  const backupPath = join(backupDir, safeFilename)
   if (!existsSync(backupPath)) {
     return null
   }
@@ -235,5 +237,112 @@ export async function restoreBackup(backupDir: string, filename: string, dataDir
     success: true,
     backup_date: backup.backup_date,
     fund_count: backup.funds.length
+  }
+}
+
+/**
+ * Delete a backup file.
+ */
+export async function deleteBackup(backupDir: string, filename: string): Promise<{ success: boolean; error?: string }> {
+  // Sanitize filename to prevent directory traversal
+  const safeFilename = basename(filename)
+  const backupPath = join(backupDir, safeFilename)
+
+  if (!existsSync(backupPath)) {
+    return {
+      success: false,
+      error: `Backup file not found: ${safeFilename}`
+    }
+  }
+
+  // Attempt to delete the file
+  const deleteResult = await rm(backupPath).then(
+    () => ({ success: true as const }),
+    (err: Error) => ({ success: false as const, error: err.message })
+  )
+
+  if (!deleteResult.success) {
+    return {
+      success: false,
+      error: `Failed to delete backup: ${deleteResult.error}`
+    }
+  }
+
+  return {
+    success: true
+  }
+}
+
+/**
+ * Validate backup data structure.
+ */
+function validateBackupData(data: unknown): data is BackupData {
+  if (!data || typeof data !== 'object') return false
+
+  const backup = data as Partial<BackupData>
+
+  // Check required fields
+  if (!backup.backup_date || typeof backup.backup_date !== 'string') return false
+  if (!backup.version || typeof backup.version !== 'string') return false
+  if (!Array.isArray(backup.funds)) return false
+
+  // Validate each fund has required structure
+  for (const fund of backup.funds) {
+    if (!fund || typeof fund !== 'object') return false
+    if (!fund.id || typeof fund.id !== 'string') return false
+    if (!fund.config || typeof fund.config !== 'object') return false
+    if (!Array.isArray(fund.entries)) return false
+  }
+
+  // Validate optional fields have correct types if present
+  if (backup.platforms !== null && backup.platforms !== undefined) {
+    if (typeof backup.platforms !== 'object') return false
+    // Validate platforms structure - should be a plain object, not an array
+    if (Array.isArray(backup.platforms)) return false
+  }
+
+  if (backup.scrape_archives !== undefined) {
+    if (typeof backup.scrape_archives !== 'object' || backup.scrape_archives === null) return false
+    // Validate scrape_archives structure - should be a plain object, not an array
+    if (Array.isArray(backup.scrape_archives)) return false
+    // Validate that all values in scrape_archives are valid (objects or primitives)
+    for (const value of Object.values(backup.scrape_archives)) {
+      if (value !== null && value !== undefined && typeof value !== 'object' && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+        return false
+      }
+    }
+  }
+
+  return true
+}
+
+/**
+ * Write a backup file from backup data.
+ * Used for uploading/importing backup files.
+ */
+export async function writeBackup(backupDir: string, backupData: BackupData): Promise<{ success: boolean; filename: string; error?: string }> {
+  // Validate backup data structure
+  if (!validateBackupData(backupData)) {
+    return {
+      success: false,
+      filename: '',
+      error: 'Invalid backup data structure'
+    }
+  }
+
+  // Ensure backup directory exists
+  if (!existsSync(backupDir)) {
+    await mkdir(backupDir, { recursive: true })
+  }
+
+  // Generate filename from backup_date
+  const filename = createBackupFilename()
+  const backupPath = join(backupDir, filename)
+
+  await writeFile(backupPath, JSON.stringify(backupData, null, 2), 'utf-8')
+
+  return {
+    success: true,
+    filename
   }
 }

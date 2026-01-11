@@ -1,6 +1,6 @@
 {
   "name": "escapemint",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "type": "module",
   "private": true,
   "description": "A local-first, open-source capital allocation engine for rules-based fund management",
@@ -42,7 +42,7 @@
     "rules-based",
     "local-first"
   ],
-  "author": "",
+  "author": "Adam Eivy (@antic|@atomantic)",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"

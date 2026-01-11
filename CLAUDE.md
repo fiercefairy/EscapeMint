@@ -74,6 +74,7 @@ Each fund has two files in `data/funds/`:
 - Functional programming preferred over classes
 - Avoid try/catch when possible - use Result types or let errors propagate
 - Keep existing patterns when adding features
+- Before releasing, create detailed changelog in `.changelogs/v{version}.md` (see `.changelogs/README.md` for format)
 
 ## Common File Locations
 
