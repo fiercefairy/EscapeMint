@@ -103,9 +103,12 @@ platformsRouter.get('/', async (req, res) => {
     })
   }
 
-  // Override with saved platform details
+  // Override with saved platform details (only if they match test mode filter)
   for (const [id, config] of Object.entries(savedData)) {
-    platformMap.set(id, { id, ...config })
+    const isTest = isTestPlatform(id.toLowerCase())
+    if (includeTest ? isTest : !isTest) {
+      platformMap.set(id, { id, ...config })
+    }
   }
 
   const allPlatforms = Array.from(platformMap.values()).sort((a, b) =>

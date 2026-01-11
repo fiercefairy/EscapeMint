@@ -38,6 +38,7 @@ function testDate(daysOffset: number): string {
  */
 function generateDerivativesConfig(overrides: Partial<FundConfig> = {}): FundConfig {
   return generateTestConfig({
+    fund_type: 'derivatives',  // Critical: mark as derivatives fund type
     fund_size_usd: 100000,  // $100k margin deposit
     target_apy: 0.30,
     margin_enabled: true,

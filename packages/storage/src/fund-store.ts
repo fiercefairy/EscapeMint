@@ -204,6 +204,7 @@ function serializeEntry(entry: FundEntry): string {
     entry.fund_size?.toString() ?? '',
     entry.margin_available?.toString() ?? '',
     entry.margin_borrowed?.toString() ?? '',
+    entry.margin_expense?.toString() ?? '',  // FIX: Was missing, causing column misalignment
     (entry.notes ?? '').replace(/\t/g, '\\t').replace(/\n/g, '\\n'),
     // Derivatives-specific fields
     entry.contracts?.toString() ?? '',
