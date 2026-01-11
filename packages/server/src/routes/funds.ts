@@ -1429,11 +1429,10 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
               additionalMarginBorrowed = Math.min(-newValue, prevMarginAvailableForExisting)
               newValue = round2(newValue + additionalMarginBorrowed)  // Add what we can borrow back
 
-              // Adjust the cash change amount to reflect only what was withdrawn from cash.
-              // Here, (existingValue - additionalMarginBorrowed) is the portion of the existing value
-              // that will be funded by cash (not by newly borrowed margin).
-              const cashPortionOfChange = existingValue - additionalMarginBorrowed
-              newAmount = round2(existingAmount - cashPortionOfChange)
+              // Adjust the amount to reflect only what was withdrawn from cash.
+              // When cash goes negative and margin is borrowed to cover it, the entire existing
+              // cash balance is withdrawn; the margin portion funds only the shortfall.
+              newAmount = round2(existingAmount - existingValue)
             }
 
             existingEntry.value = newValue
@@ -1492,8 +1491,9 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
               // Cap the effective margin borrow to the amount that is actually available
               additionalMarginBorrowed = Math.min(-newBalance, prevMarginAvailable)
               newBalance = round2(newBalance + additionalMarginBorrowed)  // Add what we can borrow back
-              // Adjust the cash change amount to reflect only what was withdrawn from cash
-              actualCashChange = round2(-prevBalance + additionalMarginBorrowed)
+              // Adjust the cash change amount to reflect only what was withdrawn from cash.
+              // When cash goes negative and margin is borrowed to cover it, all previous cash is consumed.
+              actualCashChange = -prevBalance
             }
 
             const totalMarginBorrowed = marginBorrowedNow + additionalMarginBorrowed
