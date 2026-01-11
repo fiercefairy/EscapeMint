@@ -13,11 +13,12 @@ export interface EditEntryModalProps {
   fundType?: FundType | undefined
   manageCash?: boolean | undefined
   marginEnabled?: boolean | undefined
+  platform?: string | undefined
   onClose: () => void
   onUpdated: (fund?: FundDetail) => void
 }
 
-export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existingEntries = [], calculatedFundSize, fundType = 'stock', manageCash = true, marginEnabled = false, onClose, onUpdated }: EditEntryModalProps) {
+export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existingEntries = [], calculatedFundSize, fundType = 'stock', manageCash = true, marginEnabled = false, platform, onClose, onUpdated }: EditEntryModalProps) {
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -85,6 +86,7 @@ export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existing
             fundType={fundType}
             manageCash={manageCash}
             marginEnabled={marginEnabled}
+            platform={platform}
           />
 
           {/* Buttons */}

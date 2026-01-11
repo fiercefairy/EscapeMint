@@ -13,14 +13,15 @@ export interface AddEntryModalProps {
   manageCash?: boolean | undefined
   fundType?: FundType | undefined
   marginEnabled?: boolean | undefined
+  platform?: string | undefined
   onClose: () => void
   onAdded: () => void
 }
 
-export function AddEntryModal({ fundId, fundTicker, currentRecommendation, existingEntries = [], targetApy, minProfitUsd, manageCash, fundType = 'stock', marginEnabled = false, onClose, onAdded }: AddEntryModalProps) {
+export function AddEntryModal({ fundId, fundTicker, currentRecommendation, existingEntries = [], targetApy, minProfitUsd, manageCash, fundType = 'stock', marginEnabled = false, platform, onClose, onAdded }: AddEntryModalProps) {
   const [loading, setLoading] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
-  const [result, setResult] = useState<{ state: FundState; recommendation: Recommendation } | null>(null)
+  const [result, setResult] = useState<{ state: FundState; recommendation: Recommendation; margin_available?: number; margin_borrowed?: number } | null>(null)
   const [preview, setPreview] = useState<{ state: FundState; recommendation: Recommendation | null; margin_available: number; fund_size: number } | null>(null)
 
   // For cash funds, pre-populate equity with latest cash balance
@@ -149,8 +150,20 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
               </div>
               <div>
                 <p className="text-slate-400">Cash Available</p>
-                <p className="text-white font-medium">{formatCurrency(result.state.cash_available_usd)}</p>
+                <p className={`font-medium ${result.state.cash_available_usd < 0 ? 'text-red-400' : 'text-white'}`}>{formatCurrency(result.state.cash_available_usd)}</p>
               </div>
+              {result.margin_available !== undefined && (
+                <div>
+                  <p className="text-slate-400">Margin Available</p>
+                  <p className="text-purple-400 font-medium">{formatCurrency(result.margin_available)}</p>
+                </div>
+              )}
+              {result.margin_borrowed !== undefined && result.margin_borrowed > 0 && (
+                <div>
+                  <p className="text-slate-400">Margin Borrowed</p>
+                  <p className="text-orange-400 font-medium">{formatCurrency(result.margin_borrowed)}</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -346,6 +359,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
             fundType={fundType}
             manageCash={manageCash}
             marginEnabled={marginEnabled}
+            platform={platform}
           />
 
           {/* Buttons */}

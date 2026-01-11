@@ -238,8 +238,8 @@ export async function createFund(data: {
   return postJson<FundDetail>(`${API_BASE}/funds`, data, 'Failed to create fund')
 }
 
-export async function addFundEntry(id: string, entry: Partial<FundEntry>): Promise<ApiResult<{ entry: FundEntry; state: FundState; recommendation: Recommendation }>> {
-  return postJson<{ entry: FundEntry; state: FundState; recommendation: Recommendation }>(
+export async function addFundEntry(id: string, entry: Partial<FundEntry>): Promise<ApiResult<{ entry: FundEntry; state: FundState; recommendation: Recommendation; margin_available?: number; margin_borrowed?: number }>> {
+  return postJson<{ entry: FundEntry; state: FundState; recommendation: Recommendation; margin_available?: number; margin_borrowed?: number }>(
     `${API_BASE}/funds/${id}/entries`,
     entry,
     'Failed to add entry'

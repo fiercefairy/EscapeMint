@@ -809,13 +809,39 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
     }
   }
 
+  // Get margin info from the appropriate source
+  let marginAvailable = 0
+  let marginBorrowed = 0
+  if (!manageCash && cashSource) {
+    // For trading funds, get margin from the cash fund
+    const cashFundPath = join(FUNDS_DIR, `${cashSource}.tsv`)
+    const cashFundData = await readFund(cashFundPath).catch(() => null)
+    if (cashFundData && cashFundData.entries.length > 0) {
+      const cashFundLatest = cashFundData.entries[cashFundData.entries.length - 1]
+      marginAvailable = cashFundLatest?.margin_available ?? 0
+      marginBorrowed = cashFundLatest?.margin_borrowed ?? 0
+    }
+  } else {
+    // For cash funds or funds managing their own cash, get from latest entry
+    marginAvailable = latestEntry.margin_available ?? 0
+    marginBorrowed = latestEntry.margin_borrowed ?? 0
+  }
+
   const correctedState = { ...state, cash_available_usd: cashAvailable }
 
   // Skip recommendation for cash funds - they don't need trading recommendations
   const isCashFund = fund.config.fund_type === 'cash'
   // For recommendation, use POST-action equity (after SELL, equity is reduced)
   const postActionEquity = computePostActionEquity(latestEntry)
-  const stateForRecommendation = { ...correctedState, actual_value_usd: postActionEquity }
+
+  // For M1 platform with margin enabled, add margin_available to cash for recommendation calculation
+  let effectiveCash = cashAvailable
+  const platformId = fund.platform.toLowerCase()
+  if (platformId === 'm1' && fund.config.margin_enabled) {
+    effectiveCash = cashAvailable + marginAvailable
+  }
+
+  const stateForRecommendation = { ...correctedState, actual_value_usd: postActionEquity, cash_available_usd: effectiveCash }
   const recommendation = isCashFund ? null : computeRecommendation(configWithActualFundSize, stateForRecommendation)
 
   // Compute closed fund metrics if fund is closed (explicit status or legacy undefined status with zero fund size)
@@ -837,10 +863,6 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
       )
     }
   }
-
-  // Get margin info from latest entry
-  const marginAvailable = latestEntry.margin_available ?? 0
-  const marginBorrowed = latestEntry.margin_borrowed ?? 0
 
   // Compute derivatives state for derivatives funds
   const isDerivativesFund = fund.config.fund_type === 'derivatives'
@@ -1110,8 +1132,10 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
     snapshotDate
   )
 
-  // Calculate cash available
+  // Calculate cash available and margin info
   let correctedCashAvailable: number
+  let marginAvailable = 0
+
   if (!manageCash) {
     // Fund doesn't manage its own cash - look up platform cash fund
     const cashFundId = fund.config.cash_fund ?? `${fund.platform.toLowerCase()}-cash`
@@ -1126,20 +1150,29 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
       const cashFundLatest = cashEntries[cashEntries.length - 1]
       // Use 'cash' field (post-action balance) for current available cash
       correctedCashAvailable = cashFundLatest?.cash ?? cashFundLatest?.value ?? 0
+      marginAvailable = cashFundLatest?.margin_available ?? 0
     } else {
       correctedCashAvailable = 0
     }
   } else {
     correctedCashAvailable = state.cash_available_usd
+    marginAvailable = precedingEntry?.margin_available ?? 0
   }
+
   const correctedState = { ...state, cash_available_usd: correctedCashAvailable }
 
   // Skip recommendation for cash funds - they don't need trading recommendations
   const isCashFund = fund.config.fund_type === 'cash'
-  const recommendation = isCashFund ? null : computeRecommendation(configWithActualFundSize, correctedState)
 
-  // Include margin info for UI suggestions (from preceding entry)
-  const marginAvailable = precedingEntry?.margin_available ?? 0
+  // For M1 platform with margin enabled, add margin_available to cash for recommendation calculation
+  let effectiveCash = correctedCashAvailable
+  const platformId = fund.platform.toLowerCase()
+  if (platformId === 'm1' && fund.config.margin_enabled && marginAvailable > 0) {
+    effectiveCash = correctedCashAvailable + marginAvailable
+  }
+
+  const stateForRecommendation = { ...correctedState, cash_available_usd: effectiveCash }
+  const recommendation = isCashFund ? null : computeRecommendation(configWithActualFundSize, stateForRecommendation)
 
   res.json({
     state: correctedState,
@@ -1287,6 +1320,37 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     entry.fund_size = entry.value  // Cash fund size tracks the balance
   }
 
+  // For M1 platform non-cash funds: calculate initial margin borrowed BEFORE appending entry
+  // This ensures margin_borrowed is saved with the trading fund entry.
+  // Note: Additional margin may be borrowed during cash auto-sync (lines ~1430-1500) if
+  // multiple same-day trades cause cash to go negative. This is intentional - the initial
+  // calculation here captures the shortfall for THIS trade, while auto-sync handles
+  // aggregate same-day cash flow.
+  if (!isCashFund && fund.platform.toLowerCase() === 'm1' && entry.action === 'BUY' && entry.amount && entry.amount > 0) {
+    const cashFundId = `${fund.platform.toLowerCase()}-cash`
+    const cashFundPath = join(FUNDS_DIR, `${cashFundId}.tsv`)
+    const cashFundData = await readFund(cashFundPath).catch(() => null)
+
+    if (cashFundData && cashFundData.entries.length > 0) {
+      // Get current cash balance based only on entries strictly before this trade date.
+      // Same-day entries are intentionally excluded here - they'll be handled by the
+      // auto-sync logic which merges same-day transactions.
+      const entriesBefore = cashFundData.entries.filter(e => e.date < entry.date)
+      const prevEntry = entriesBefore[entriesBefore.length - 1]
+      const currentCashBalance = prevEntry?.cash ?? prevEntry?.value ?? 0
+
+      // Get available margin from previous entry or config
+      const prevMarginAvailable = prevEntry?.margin_available ?? cashFundData.config.margin_access_usd ?? 0
+
+      // If purchase exceeds cash, calculate margin borrowed (only if margin is available)
+      if (entry.amount > currentCashBalance) {
+        const borrowAmount = Math.min(entry.amount - currentCashBalance, prevMarginAvailable)
+        // Add to existing margin_borrowed if any, or set it
+        entry.margin_borrowed = (entry.margin_borrowed ?? 0) + borrowAmount
+      }
+    }
+  }
+
   await appendEntry(filePath, entry).catch(next)
 
   // Auto-sync to cash fund for platforms with auto_sync_cash enabled
@@ -1312,9 +1376,19 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
 
         // BUY → WITHDRAW from cash (money goes to buy assets)
         if (entry.action === 'BUY' && entry.amount && entry.amount > 0) {
-          cashChange -= entry.amount
+          // Check if margin was borrowed (calculated before entry was appended)
+          if (entry.margin_borrowed && entry.margin_borrowed > 0) {
+            // Cap margin borrowed to entry amount to prevent negative cashWithdrawal
+            const marginBorrowed = Math.min(entry.margin_borrowed, entry.amount)
+            const cashWithdrawal = entry.amount - marginBorrowed
+            cashChange = -cashWithdrawal
+            notesParts.push(`Buy ${fund.ticker.toUpperCase()}${entry.shares ? ` (${entry.shares} shares)` : ''} | Margin borrowed: $${marginBorrowed.toFixed(2)}`)
+          } else {
+            // Normal withdrawal - no margin borrowed
+            cashChange -= entry.amount
+            notesParts.push(`Buy ${fund.ticker.toUpperCase()}${entry.shares ? ` (${entry.shares} shares)` : ''}`)
+          }
           changeType = 'withdraw'
-          notesParts.push(`Buy ${fund.ticker.toUpperCase()}${entry.shares ? ` (${entry.shares} shares)` : ''}`)
         }
 
         // SELL → DEPOSIT to cash (money comes from selling assets)
@@ -1344,14 +1418,40 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
             const existingAmount = existingEntry.amount ?? 0
 
             // Apply the change (cashChange is already signed: positive=deposit, negative=withdraw)
-            const newValue = round2(existingValue + cashChange)
-            const newAmount = round2(existingAmount + cashChange)
+            let newValue = round2(existingValue + cashChange)
+            let newAmount = round2(existingAmount + cashChange)
+            let additionalMarginBorrowed = 0
+
+            // For M1 platform: prevent cash from going negative by borrowing from margin
+            if (platformId === 'm1' && newValue < 0) {
+              const prevMarginAvailableForExisting = existingEntry.margin_available ?? 0
+              // Cap the effective margin borrow to the amount that is actually available
+              additionalMarginBorrowed = Math.min(-newValue, prevMarginAvailableForExisting)
+              newValue = round2(newValue + additionalMarginBorrowed)  // Add what we can borrow back
+
+              // Adjust the amount to reflect only what was withdrawn from cash.
+              // When cash goes negative and margin is borrowed to cover it, the entire existing
+              // cash balance is withdrawn; the margin portion funds only the shortfall.
+              newAmount = round2(existingAmount - existingValue)
+            }
 
             existingEntry.value = newValue
             existingEntry.cash = newValue
             existingEntry.fund_size = newValue
             existingEntry.amount = newAmount
             existingEntry.action = 'HOLD'
+
+            // Update margin tracking - use user-provided value if available
+            const prevMarginAvailable = existingEntry.margin_available ?? 0
+            const prevMarginBorrowed = existingEntry.margin_borrowed ?? 0
+            const marginBorrowedNow = (entry.margin_borrowed ?? 0) + additionalMarginBorrowed
+
+            // If user provided margin_available in the trading fund entry, use that
+            // Otherwise, calculate it (previous - borrowed)
+            existingEntry.margin_available = entry.margin_available !== undefined && entry.margin_available !== null
+              ? entry.margin_available
+              : prevMarginAvailable - marginBorrowedNow
+            existingEntry.margin_borrowed = prevMarginBorrowed + marginBorrowedNow
 
             // Append to notes
             const autoNote = `Auto: ${notesParts.join(', ')}`
@@ -1377,14 +1477,49 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
               : cashFundData.entries[cashFundData.entries.length - 1]
             const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? 0
 
-            const newBalance = round2(prevBalance + cashChange)
+            // Get margin info - use user-provided value if available, otherwise calculate
+            const prevMarginAvailable = prevEntry?.margin_available ?? cashFundData.config.margin_access_usd ?? 0
+            const prevMarginBorrowed = prevEntry?.margin_borrowed ?? 0
+            // marginBorrowedNow may already include margin from the initial calculation (lines 1329-1351)
+            // which handles shortfall based on previous day's balance. This is the first phase of margin calc.
+            const marginBorrowedNow = entry.margin_borrowed ?? 0
+
+            let newBalance = round2(prevBalance + cashChange)
+            let actualCashChange = cashChange
+            let additionalMarginBorrowed = 0
+
+            // For M1 platform: prevent cash from going negative by borrowing from margin
+            // This is the second phase of margin calc, handling same-day aggregate cash flow.
+            // additionalMarginBorrowed covers shortfalls from multiple same-day trades that
+            // weren't captured in the initial per-trade calculation.
+            if (platformId === 'm1' && newBalance < 0) {
+              // Cap the effective margin borrow to the amount that is actually available
+              additionalMarginBorrowed = Math.min(-newBalance, prevMarginAvailable)
+              newBalance = round2(newBalance + additionalMarginBorrowed)  // Add what we can borrow back
+              // Adjust the cash change amount to reflect only what was withdrawn from cash.
+              // When cash goes negative and margin is borrowed to cover it, all previous cash is consumed.
+              actualCashChange = -prevBalance
+            }
+
+            // Total margin is the sum of initial margin (from trading fund entry) and additional margin
+            // (from same-day cash flow). These are separate and complementary, not double-counted.
+            const totalMarginBorrowed = marginBorrowedNow + additionalMarginBorrowed
+
+            // If user provided margin_available in the trading fund entry, use that
+            // Otherwise, calculate it (previous - borrowed)
+            const newMarginAvailable = entry.margin_available !== undefined && entry.margin_available !== null
+              ? entry.margin_available
+              : prevMarginAvailable - totalMarginBorrowed
+
             const newCashEntry: FundEntry = {
               date: entry.date,
               value: newBalance,
               cash: newBalance,
               action: 'HOLD',
-              amount: round2(cashChange),  // Signed amount: positive=deposit, negative=withdraw
+              amount: round2(actualCashChange),  // Signed amount: positive=deposit, negative=withdraw
               fund_size: newBalance,
+              margin_available: newMarginAvailable,
+              margin_borrowed: prevMarginBorrowed + totalMarginBorrowed,
               notes: `Auto: ${notesParts.join(', ')}`
             }
 
@@ -1445,6 +1580,25 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
   }
   const correctedState = { ...state, cash_available_usd: correctedCashAvailable }
 
+  // Get margin info from the appropriate source (needed for recommendation calculation)
+  let marginAvailable = 0
+  let marginBorrowed = 0
+  if (isCashFund) {
+    // For cash funds, get from the entry itself
+    marginAvailable = entry.margin_available ?? 0
+    marginBorrowed = entry.margin_borrowed ?? 0
+  } else if (!manageCashSelf2) {
+    // For trading funds, get from the cash fund
+    const cashFundId = updated.config.cash_fund ?? `${updated.platform.toLowerCase()}-cash`
+    const cashFundPath = join(FUNDS_DIR, `${cashFundId}.tsv`)
+    const cashFundData = await readFund(cashFundPath).catch(() => null)
+    if (cashFundData && cashFundData.entries.length > 0) {
+      const cashFundLatest = cashFundData.entries[cashFundData.entries.length - 1]
+      marginAvailable = cashFundLatest?.margin_available ?? 0
+      marginBorrowed = cashFundLatest?.margin_borrowed ?? 0
+    }
+  }
+
   // Compute recommendation using post-action state (includes new entry's action)
   // This tells the user what to do NEXT after this action
   // Skip recommendation for cash funds - they don't need trading recommendations
@@ -1462,14 +1616,24 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
       postActionEquity,
       entry.date
     )
-    const correctedStateForRec = { ...stateForRecommendation, cash_available_usd: correctedCashAvailable }
-    recommendation = computeRecommendation(configWithActualFundSize, correctedStateForRec)
+
+    // For M1 platform with margin enabled, add margin_available to cash for recommendation calculation
+    let effectiveCash = correctedCashAvailable
+    const platformId = updated.platform.toLowerCase()
+    if (platformId === 'm1' && updated.config.margin_enabled) {
+      effectiveCash = correctedCashAvailable + marginAvailable
+    }
+
+    const stateForRecommendationWithMargin = { ...stateForRecommendation, cash_available_usd: effectiveCash }
+    recommendation = computeRecommendation(configWithActualFundSize, stateForRecommendationWithMargin)
   }
 
   res.status(201).json({
     entry,
     state: correctedState,
     recommendation,
+    margin_available: marginAvailable,
+    margin_borrowed: marginBorrowed,
     cashSync: cashSyncResult  // Included if auto-sync created an entry in cash fund
   })
 })

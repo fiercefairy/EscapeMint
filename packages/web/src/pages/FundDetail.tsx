@@ -11,7 +11,7 @@ import { ChartSettings } from '../components/ChartSettings'
 import { SIDEBAR_TOGGLED_EVENT } from '../components/Layout'
 import { EntriesTable, type ComputedEntry, type ColumnId } from '../components/entriesTable'
 import { CoinbaseScrapeButton } from '../components/CoinbaseScrapeButton'
-import { formatCurrency, formatPercent } from '../utils/format'
+import { formatCurrency, formatPercent, formatLocalDate } from '../utils/format'
 import {
   isCashFund as checkIsCashFund,
   isDerivativesFund as checkIsDerivativesFund,
@@ -115,7 +115,7 @@ export function FundDetail() {
   // Toggle audited status
   const toggleAudited = useCallback(async () => {
     if (!id || !fund) return
-    const newAuditedValue: string = fund.config.audited ? '' : new Date().toISOString().split('T')[0]!
+    const newAuditedValue: string = fund.config.audited ? '' : formatLocalDate(new Date())
     const result = await updateFundConfig(id, { audited: newAuditedValue })
     if (result.error) {
       toast.error(result.error)
@@ -1556,6 +1556,7 @@ export function FundDetail() {
             manageCash={fund.config.manage_cash}
             fundType={fund.config.fund_type}
             marginEnabled={fund.config.margin_enabled}
+            platform={fund.platform}
             onClose={() => {
               setShowAddEntry(false)
               if (isAdding) navigate(`/fund/${fund.id}`, { replace: true })
@@ -1576,6 +1577,7 @@ export function FundDetail() {
             fundType={fund.config.fund_type}
             manageCash={fund.config.manage_cash}
             marginEnabled={fund.config.margin_enabled}
+            platform={fund.platform}
             onClose={() => setEditingEntry(null)}
             onUpdated={handleFundUpdate}
           />
