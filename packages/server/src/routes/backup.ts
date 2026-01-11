@@ -144,10 +144,40 @@ backupRouter.delete('/:filename', async (req, res) => {
 backupRouter.post('/upload', async (req, res) => {
   const backupData = req.body
 
+  // Basic validation
   if (!backupData || !backupData.backup_date || !backupData.funds) {
     res.status(400).json({
       success: false,
-      error: 'Invalid backup data'
+      error: 'Invalid backup data: missing required fields'
+    })
+    return
+  }
+
+  // Validate data types
+  if (typeof backupData.backup_date !== 'string' || !Array.isArray(backupData.funds)) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid backup data: incorrect data types'
+    })
+    return
+  }
+
+  // Size limit check: prevent excessively large payloads (100MB limit)
+  const payloadSize = JSON.stringify(backupData).length
+  const MAX_PAYLOAD_SIZE = 100 * 1024 * 1024 // 100MB
+  if (payloadSize > MAX_PAYLOAD_SIZE) {
+    res.status(413).json({
+      success: false,
+      error: 'Backup data too large (max 100MB)'
+    })
+    return
+  }
+
+  // Validate reasonable fund count (max 10000 funds)
+  if (backupData.funds.length > 10000) {
+    res.status(400).json({
+      success: false,
+      error: 'Too many funds in backup (max 10000)'
     })
     return
   }
@@ -161,9 +191,9 @@ backupRouter.post('/upload', async (req, res) => {
       filename: result.filename
     })
   } else {
-    res.status(500).json({
+    res.status(400).json({
       success: false,
-      error: result.error ?? 'Unknown error uploading backup'
+      error: result.error ?? 'Invalid backup data structure'
     })
   }
 })

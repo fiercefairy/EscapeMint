@@ -151,7 +151,9 @@ export async function listBackups(backupDir: string): Promise<{ name: string; da
  * Read a backup file.
  */
 export async function readBackup(backupDir: string, filename: string): Promise<BackupData | null> {
-  const backupPath = join(backupDir, filename)
+  // Sanitize filename to prevent directory traversal
+  const safeFilename = basename(filename)
+  const backupPath = join(backupDir, safeFilename)
   if (!existsSync(backupPath)) {
     return null
   }
@@ -242,12 +244,14 @@ export async function restoreBackup(backupDir: string, filename: string, dataDir
  * Delete a backup file.
  */
 export async function deleteBackup(backupDir: string, filename: string): Promise<{ success: boolean; error?: string }> {
-  const backupPath = join(backupDir, filename)
+  // Sanitize filename to prevent directory traversal
+  const safeFilename = basename(filename)
+  const backupPath = join(backupDir, safeFilename)
 
   if (!existsSync(backupPath)) {
     return {
       success: false,
-      error: `Backup file not found: ${filename}`
+      error: `Backup file not found: ${safeFilename}`
     }
   }
 
@@ -270,10 +274,52 @@ export async function deleteBackup(backupDir: string, filename: string): Promise
 }
 
 /**
+ * Validate backup data structure.
+ */
+function validateBackupData(data: unknown): data is BackupData {
+  if (!data || typeof data !== 'object') return false
+
+  const backup = data as Partial<BackupData>
+
+  // Check required fields
+  if (!backup.backup_date || typeof backup.backup_date !== 'string') return false
+  if (!backup.version || typeof backup.version !== 'string') return false
+  if (!Array.isArray(backup.funds)) return false
+
+  // Validate each fund has required structure
+  for (const fund of backup.funds) {
+    if (!fund || typeof fund !== 'object') return false
+    if (!fund.id || typeof fund.id !== 'string') return false
+    if (!fund.config || typeof fund.config !== 'object') return false
+    if (!Array.isArray(fund.entries)) return false
+  }
+
+  // Validate optional fields have correct types if present
+  if (backup.platforms !== null && backup.platforms !== undefined) {
+    if (typeof backup.platforms !== 'object') return false
+  }
+
+  if (backup.scrape_archives !== undefined) {
+    if (typeof backup.scrape_archives !== 'object' || backup.scrape_archives === null) return false
+  }
+
+  return true
+}
+
+/**
  * Write a backup file from backup data.
  * Used for uploading/importing backup files.
  */
 export async function writeBackup(backupDir: string, backupData: BackupData): Promise<{ success: boolean; filename: string; error?: string }> {
+  // Validate backup data structure
+  if (!validateBackupData(backupData)) {
+    return {
+      success: false,
+      filename: '',
+      error: 'Invalid backup data structure'
+    }
+  }
+
   // Ensure backup directory exists
   if (!existsSync(backupDir)) {
     await mkdir(backupDir, { recursive: true })

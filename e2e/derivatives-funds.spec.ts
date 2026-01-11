@@ -1039,10 +1039,6 @@ test.describe('Liquidation Price Calculations', () => {
     await page.goto(`http://localhost:5550/fund/${fund.id}`)
     await page.waitForLoadState('networkidle')
 
-    // Check for liquidation price in the entries table or derivatives chart
-    // The Liq Price column should be visible for derivatives funds
-    const liqPriceCell = page.locator('td:has-text("$"), th:has-text("Liq")')
-
     // Wait for page to fully load with data
     await page.waitForTimeout(500)
 
@@ -1084,7 +1080,6 @@ test.describe('Liquidation Price Calculations', () => {
     })
 
     // Get state after first position
-    const state1 = await getFundStateViaAPI(page, fund.id)
     const fundData1 = await getFundViaAPI(page, fund.id)
     const entry1LiqPrice = fundData1.entries[1]?.liquidation_price ?? 0
 
