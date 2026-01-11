@@ -42,7 +42,7 @@
     "rules-based",
     "local-first"
   ],
-  "author": "",
+  "author": "Adam Eivy (@antic|@atomantic)",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"

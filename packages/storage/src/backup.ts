@@ -237,3 +237,56 @@ export async function restoreBackup(backupDir: string, filename: string, dataDir
     fund_count: backup.funds.length
   }
 }
+
+/**
+ * Delete a backup file.
+ */
+export async function deleteBackup(backupDir: string, filename: string): Promise<{ success: boolean; error?: string }> {
+  const backupPath = join(backupDir, filename)
+
+  if (!existsSync(backupPath)) {
+    return {
+      success: false,
+      error: `Backup file not found: ${filename}`
+    }
+  }
+
+  // Attempt to delete the file
+  const deleteResult = await rm(backupPath).then(
+    () => ({ success: true as const }),
+    (err: Error) => ({ success: false as const, error: err.message })
+  )
+
+  if (!deleteResult.success) {
+    return {
+      success: false,
+      error: `Failed to delete backup: ${deleteResult.error}`
+    }
+  }
+
+  return {
+    success: true
+  }
+}
+
+/**
+ * Write a backup file from backup data.
+ * Used for uploading/importing backup files.
+ */
+export async function writeBackup(backupDir: string, backupData: BackupData): Promise<{ success: boolean; filename: string; error?: string }> {
+  // Ensure backup directory exists
+  if (!existsSync(backupDir)) {
+    await mkdir(backupDir, { recursive: true })
+  }
+
+  // Generate filename from backup_date
+  const filename = createBackupFilename()
+  const backupPath = join(backupDir, filename)
+
+  await writeFile(backupPath, JSON.stringify(backupData, null, 2), 'utf-8')
+
+  return {
+    success: true,
+    filename
+  }
+}

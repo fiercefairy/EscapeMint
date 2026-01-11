@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { createBackup, listBackups, getDefaultBackupDir, restoreBackup, readBackup } from '@escapemint/storage'
+import { createBackup, listBackups, getDefaultBackupDir, restoreBackup, readBackup, deleteBackup, writeBackup } from '@escapemint/storage'
 
 export const backupRouter: ReturnType<typeof Router> = Router()
 
@@ -52,7 +52,49 @@ backupRouter.get('/config', (_req, res) => {
 })
 
 /**
+ * GET /backup/download/:filename - Download a backup as JSON
+ * IMPORTANT: This must come before /:filename to match correctly
+ */
+backupRouter.get('/download/:filename', async (req, res) => {
+  const { filename } = req.params
+  const backup = await readBackup(BACKUP_DIR, filename)
+
+  if (!backup) {
+    res.status(404).json({
+      success: false,
+      error: 'Backup not found'
+    })
+    return
+  }
+
+  res.json(backup)
+})
+
+/**
+ * POST /backup/restore/:filename - Restore a backup
+ */
+backupRouter.post('/restore/:filename', async (req, res) => {
+  const { filename } = req.params
+  const result = await restoreBackup(BACKUP_DIR, filename, DATA_DIR)
+
+  if (result.success) {
+    res.json({
+      success: true,
+      message: `Backup restored successfully`,
+      backup_date: result.backup_date,
+      fund_count: result.fund_count
+    })
+  } else {
+    res.status(500).json({
+      success: false,
+      error: result.error ?? 'Unknown error restoring backup'
+    })
+  }
+})
+
+/**
  * GET /backup/:filename - Get backup details
+ * IMPORTANT: This must come after more specific routes like /download/:filename
  */
 backupRouter.get('/:filename', async (req, res) => {
   const { filename } = req.params
@@ -77,23 +119,51 @@ backupRouter.get('/:filename', async (req, res) => {
 })
 
 /**
- * POST /backup/restore/:filename - Restore a backup
+ * DELETE /backup/:filename - Delete a backup
  */
-backupRouter.post('/restore/:filename', async (req, res) => {
+backupRouter.delete('/:filename', async (req, res) => {
   const { filename } = req.params
-  const result = await restoreBackup(BACKUP_DIR, filename, DATA_DIR)
+  const result = await deleteBackup(BACKUP_DIR, filename)
 
   if (result.success) {
     res.json({
       success: true,
-      message: `Backup restored successfully`,
-      backup_date: result.backup_date,
-      fund_count: result.fund_count
+      message: 'Backup deleted successfully'
+    })
+  } else {
+    res.status(404).json({
+      success: false,
+      error: result.error ?? 'Unknown error deleting backup'
+    })
+  }
+})
+
+/**
+ * POST /backup/upload - Upload a backup JSON file
+ */
+backupRouter.post('/upload', async (req, res) => {
+  const backupData = req.body
+
+  if (!backupData || !backupData.backup_date || !backupData.funds) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid backup data'
+    })
+    return
+  }
+
+  const result = await writeBackup(BACKUP_DIR, backupData)
+
+  if (result.success) {
+    res.json({
+      success: true,
+      message: 'Backup uploaded successfully',
+      filename: result.filename
     })
   } else {
     res.status(500).json({
       success: false,
-      error: result.error ?? 'Unknown error restoring backup'
+      error: result.error ?? 'Unknown error uploading backup'
     })
   }
 })

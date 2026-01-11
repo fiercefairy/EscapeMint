@@ -52,11 +52,33 @@ jobs:
         id: changelog
         if: steps.tag-check.outputs.exists == 'false'
         run: |
-          # Get the previous tag or use initial commit
-          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
+          VERSION="${{ steps.package-version.outputs.version }}"
+          CHANGELOG_FILE=".changelogs/v${VERSION}.md"
 
-          # Generate changelog from commits (exclude [skip ci] commits)
-          CHANGELOG=$(git log $PREV_TAG..HEAD --pretty=format:"- %s" --no-merges | grep -v "\[skip ci\]" | head -50)
+          if [ -f "$CHANGELOG_FILE" ]; then
+            # Use the detailed changelog from .changelogs/ directory
+            CHANGELOG=$(cat "$CHANGELOG_FILE")
+          else
+            # Fallback: Generate changelog from commits (exclude [skip ci] commits)
+            PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
+            COMMIT_LOG=$(git log $PREV_TAG..HEAD --pretty=format:"- %s" --no-merges | grep -v "\[skip ci\]" | head -50)
+
+            # Create a basic changelog structure
+            CHANGELOG="# Release v${VERSION}
+
+          ## Changes
+
+          ${COMMIT_LOG}
+
+          ## Installation
+
+          \`\`\`bash
+          git clone https://github.com/atomantic/EscapeMint.git
+          cd EscapeMint
+          npm run setup
+          npm run dev
+          \`\`\`"
+          fi
 
           # Handle multiline output
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
@@ -69,19 +91,7 @@ jobs:
         with:
           tag_name: v${{ steps.package-version.outputs.version }}
           name: v${{ steps.package-version.outputs.version }}
-          body: |
-            ## Changes
-
-            ${{ steps.changelog.outputs.changelog }}
-
-            ## Installation
-
-            ```bash
-            git clone https://github.com/atomantic/EscapeMint.git
-            cd EscapeMint
-            npm run setup
-            npm run dev
-            ```
+          body: ${{ steps.changelog.outputs.changelog }}
           draft: false
           prerelease: false
         env:
