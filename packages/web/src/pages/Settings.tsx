@@ -74,6 +74,7 @@ export function Settings() {
   const [generatingTestData, setGeneratingTestData] = useState(false)
   const [deletingTestData, setDeletingTestData] = useState(false)
   const [testDataConfirm, setTestDataConfirm] = useState<'generate' | 'delete' | null>(null)
+  const [reportsAvailable, setReportsAvailable] = useState({ e2e: false, coverage: false })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { settings, updateSetting } = useSettings()
   const { refresh: refreshDashboard } = useDashboard()
@@ -123,6 +124,21 @@ export function Settings() {
       }
     }
     loadTestDataStatus()
+  }, [])
+
+  // Check if test reports exist on mount
+  useEffect(() => {
+    const checkReports = async () => {
+      const [e2eRes, coverageRes] = await Promise.all([
+        fetch('/playwright-report/index.html', { method: 'HEAD' }),
+        fetch('/coverage-report/index.html', { method: 'HEAD' })
+      ])
+      setReportsAvailable({
+        e2e: e2eRes.ok,
+        coverage: coverageRes.ok
+      })
+    }
+    checkReports()
   }, [])
 
   const refreshTestDataStatus = async () => {
@@ -591,28 +607,40 @@ export function Settings() {
           <div className="border-t border-slate-700 pt-3">
             <h3 className="text-sm font-medium text-slate-300 mb-2">Test Reports</h3>
             <div className="flex flex-wrap gap-2">
-              <a
-                href="/playwright-report/index.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3 py-1.5 text-sm bg-slate-700 text-slate-300 rounded hover:bg-slate-600 hover:text-white transition-colors inline-flex items-center gap-1.5"
-              >
-                <span>E2E Test Report</span>
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-              </a>
-              <a
-                href="/coverage-report/index.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3 py-1.5 text-sm bg-slate-700 text-slate-300 rounded hover:bg-slate-600 hover:text-white transition-colors inline-flex items-center gap-1.5"
-              >
-                <span>Coverage Report</span>
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-              </a>
+              {reportsAvailable.e2e ? (
+                <a
+                  href="/playwright-report/index.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 text-sm bg-slate-700 text-slate-300 rounded hover:bg-slate-600 hover:text-white transition-colors inline-flex items-center gap-1.5"
+                >
+                  <span>E2E Test Report</span>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              ) : (
+                <span className="px-3 py-1.5 text-sm bg-slate-700/50 text-slate-500 rounded inline-flex items-center gap-1.5 cursor-not-allowed">
+                  <span>E2E Test Report (Not Generated)</span>
+                </span>
+              )}
+              {reportsAvailable.coverage ? (
+                <a
+                  href="/coverage-report/index.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 text-sm bg-slate-700 text-slate-300 rounded hover:bg-slate-600 hover:text-white transition-colors inline-flex items-center gap-1.5"
+                >
+                  <span>Coverage Report</span>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              ) : (
+                <span className="px-3 py-1.5 text-sm bg-slate-700/50 text-slate-500 rounded inline-flex items-center gap-1.5 cursor-not-allowed">
+                  <span>Coverage Report (Not Generated)</span>
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500 mt-2">
               Run <code className="bg-slate-900 px-1 rounded">npm run test:e2e</code> and{' '}

@@ -297,10 +297,20 @@ function validateBackupData(data: unknown): data is BackupData {
   // Validate optional fields have correct types if present
   if (backup.platforms !== null && backup.platforms !== undefined) {
     if (typeof backup.platforms !== 'object') return false
+    // Validate platforms structure - should be a plain object, not an array
+    if (Array.isArray(backup.platforms)) return false
   }
 
   if (backup.scrape_archives !== undefined) {
     if (typeof backup.scrape_archives !== 'object' || backup.scrape_archives === null) return false
+    // Validate scrape_archives structure - should be a plain object, not an array
+    if (Array.isArray(backup.scrape_archives)) return false
+    // Validate that all values in scrape_archives are valid (objects or primitives)
+    for (const value of Object.values(backup.scrape_archives)) {
+      if (value !== null && value !== undefined && typeof value !== 'object' && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+        return false
+      }
+    }
   }
 
   return true

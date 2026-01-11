@@ -145,7 +145,7 @@ backupRouter.post('/upload', async (req, res) => {
   const backupData = req.body
 
   // Basic validation
-  if (!backupData || !backupData.backup_date || !backupData.funds) {
+  if (!backupData || !backupData.backup_date || !backupData.funds || !backupData.version) {
     res.status(400).json({
       success: false,
       error: 'Invalid backup data: missing required fields'
@@ -154,10 +154,20 @@ backupRouter.post('/upload', async (req, res) => {
   }
 
   // Validate data types
-  if (typeof backupData.backup_date !== 'string' || !Array.isArray(backupData.funds)) {
+  if (typeof backupData.backup_date !== 'string' || !Array.isArray(backupData.funds) || typeof backupData.version !== 'string') {
     res.status(400).json({
       success: false,
       error: 'Invalid backup data: incorrect data types'
+    })
+    return
+  }
+
+  // Validate version compatibility (currently only supporting 1.0.0)
+  const SUPPORTED_VERSIONS = ['1.0.0']
+  if (!SUPPORTED_VERSIONS.includes(backupData.version)) {
+    res.status(400).json({
+      success: false,
+      error: `Unsupported backup version: ${backupData.version}. Supported versions: ${SUPPORTED_VERSIONS.join(', ')}`
     })
     return
   }
