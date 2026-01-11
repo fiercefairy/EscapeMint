@@ -794,15 +794,19 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
       // Realized P&L includes: trading P&L + dividends - expenses + cash interest
       const adjustedRealizedPnl = lastState.realizedPnl + totalDividends - totalExpenses + actualCashInterest
 
+      // For derivatives: actual_value_usd represents current position value (notional), not total equity
+      // Current position value = cost basis + unrealized P&L
+      const currentPositionValue = lastState.costBasis + lastState.unrealizedPnl
+
       state = {
-        actual_value_usd: lastState.equity,
+        actual_value_usd: currentPositionValue,
         start_input_usd: lastState.costBasis,
         realized_gains_usd: adjustedRealizedPnl,
         gain_usd: lastState.unrealizedPnl + adjustedRealizedPnl,
         gain_pct: lastState.costBasis > 0
           ? (lastState.unrealizedPnl + adjustedRealizedPnl) / lastState.costBasis
           : 0,
-        expected_target_usd: lastState.equity,
+        expected_target_usd: currentPositionValue,
         target_diff_usd: 0,
         cash_interest_usd: actualCashInterest,
         // Cash available = margin balance - locked margin - expenses + dividends + interest

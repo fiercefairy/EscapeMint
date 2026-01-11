@@ -781,6 +781,19 @@ export const computeDerivativesEntriesState = (
         }
         break
       }
+
+      case 'HOLD': {
+        // HOLD entries can mark position to market via the value field
+        // If value is provided and we have an open position, derive BTC price
+        const entryValue = (entry as { value?: number }).value
+        if (entryValue && entryValue > 0 && position > 0) {
+          // Value represents current position value
+          // Derive implied BTC price: btcPrice = value / (position * contractMultiplier)
+          const btcSize = position * contractMultiplier
+          snapshotBtcPrice = entryValue / btcSize
+        }
+        break
+      }
     }
 
     // Calculate cost basis (what you paid for open positions)
