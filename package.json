@@ -24,6 +24,7 @@
     "test:engine": "cd packages/engine && npm test",
     "test:storage": "cd packages/storage && npm test",
     "test:e2e": "npx playwright test",
+    "test:e2e:bail": "npx playwright test --max-failures=1",
     "test:e2e:ui": "npx playwright test --ui",
     "test:e2e:headed": "npx playwright test --headed",
     "test:coverage": "npm run test:coverage:unit && npm run test:coverage:report",
