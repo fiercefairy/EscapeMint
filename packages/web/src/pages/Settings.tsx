@@ -74,7 +74,7 @@ export function Settings() {
   const [generatingTestData, setGeneratingTestData] = useState(false)
   const [deletingTestData, setDeletingTestData] = useState(false)
   const [testDataConfirm, setTestDataConfirm] = useState<'generate' | 'delete' | null>(null)
-  const [reportsAvailable, setReportsAvailable] = useState({ e2e: false, coverage: false })
+  const [reportsAvailable, setReportsAvailable] = useState({ e2e: false, coverage: false, codeCoverage: false })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { settings, updateSetting } = useSettings()
   const { refresh: refreshDashboard } = useDashboard()
@@ -129,13 +129,15 @@ export function Settings() {
   // Check if test reports exist on mount
   useEffect(() => {
     const checkReports = async () => {
-      const [e2eRes, coverageRes] = await Promise.all([
+      const [e2eRes, coverageRes, codeCoverageRes] = await Promise.all([
         fetch('/playwright-report/index.html', { method: 'HEAD' }),
-        fetch('/coverage-report/index.html', { method: 'HEAD' })
+        fetch('/coverage-report/index.html', { method: 'HEAD' }),
+        fetch('/code-coverage/index.html', { method: 'HEAD' })
       ])
       setReportsAvailable({
         e2e: e2eRes.ok,
-        coverage: coverageRes.ok
+        coverage: coverageRes.ok,
+        codeCoverage: codeCoverageRes.ok
       })
     }
     checkReports()
@@ -631,20 +633,38 @@ export function Settings() {
                   rel="noopener noreferrer"
                   className="px-3 py-1.5 text-sm bg-slate-700 text-slate-300 rounded hover:bg-slate-600 hover:text-white transition-colors inline-flex items-center gap-1.5"
                 >
-                  <span>Coverage Report</span>
+                  <span>Feature Coverage</span>
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                   </svg>
                 </a>
               ) : (
                 <span className="px-3 py-1.5 text-sm bg-slate-700/50 text-slate-500 rounded inline-flex items-center gap-1.5 cursor-not-allowed">
-                  <span>Coverage Report (Not Generated)</span>
+                  <span>Feature Coverage (Not Generated)</span>
+                </span>
+              )}
+              {reportsAvailable.codeCoverage ? (
+                <a
+                  href="/code-coverage/index.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 text-sm bg-slate-700 text-slate-300 rounded hover:bg-slate-600 hover:text-white transition-colors inline-flex items-center gap-1.5"
+                >
+                  <span>Code Coverage</span>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              ) : (
+                <span className="px-3 py-1.5 text-sm bg-slate-700/50 text-slate-500 rounded inline-flex items-center gap-1.5 cursor-not-allowed">
+                  <span>Code Coverage (Not Generated)</span>
                 </span>
               )}
             </div>
             <p className="text-xs text-slate-500 mt-2">
-              Run <code className="bg-slate-900 px-1 rounded">npm run test:e2e</code> and{' '}
-              <code className="bg-slate-900 px-1 rounded">npm run test:coverage-report</code> to generate reports
+              Run <code className="bg-slate-900 px-1 rounded">npm run test:e2e</code>,{' '}
+              <code className="bg-slate-900 px-1 rounded">npm run test:feature-coverage</code>, and{' '}
+              <code className="bg-slate-900 px-1 rounded">npm run test:coverage</code> to generate reports
             </p>
           </div>
         </div>

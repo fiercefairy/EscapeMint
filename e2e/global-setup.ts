@@ -14,6 +14,18 @@ async function globalSetup(config: FullConfig) {
   const context = await browser.newContext()
   const page = await context.newPage()
 
+  console.log('Enabling test data mode...')
+
+  // Set localStorage to enable test funds mode
+  await page.goto(`http://localhost:${PORTS.WEB}`)
+  await page.evaluate(() => {
+    localStorage.setItem('escapemint-settings', JSON.stringify({
+      advancedTools: false,
+      testFundsMode: true
+    }))
+  })
+
+  console.log('Test data mode enabled')
   console.log('Cleaning up test funds before test run...')
 
   // Get all funds
@@ -26,10 +38,10 @@ async function globalSetup(config: FullConfig) {
 
   const allFunds = await response.json()
 
-  // Delete all funds that use the test platform
+  // Delete all funds that use any test platform (test, test2, etc.)
   let deletedCount = 0
   for (const fund of allFunds) {
-    if (fund.platform === TEST_PLATFORM) {
+    if (fund.platform.startsWith('test')) {
       const deleteResponse = await page.request.delete(`${API_BASE}/funds/${fund.id}`)
       if (deleteResponse.ok()) {
         deletedCount++

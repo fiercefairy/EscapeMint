@@ -16,6 +16,9 @@ async function globalTeardown(config: FullConfig) {
 
   console.log('Cleaning up test funds after test run...')
 
+  // Load page to access localStorage
+  await page.goto(`http://localhost:${PORTS.WEB}`)
+
   // Get all funds
   const response = await page.request.get(`${API_BASE}/funds?include_test=true`)
   if (!response.ok()) {
@@ -26,10 +29,10 @@ async function globalTeardown(config: FullConfig) {
 
   const allFunds: Array<{ id: string; platform: string }> = await response.json()
 
-  // Delete all funds that use the test platform
+  // Delete all funds that use any test platform (test, test2, etc.)
   let deletedCount = 0
   for (const fund of allFunds) {
-    if (fund.platform === TEST_PLATFORM) {
+    if (fund.platform.startsWith('test')) {
       const deleteResponse = await page.request.delete(`${API_BASE}/funds/${fund.id}`)
       if (deleteResponse.ok()) {
         deletedCount++
@@ -43,6 +46,16 @@ async function globalTeardown(config: FullConfig) {
   } else {
     console.log('No test funds to clean up')
   }
+
+  // Disable test mode after tests
+  console.log('Disabling test data mode...')
+  await page.evaluate(() => {
+    localStorage.setItem('escapemint-settings', JSON.stringify({
+      advancedTools: false,
+      testFundsMode: false
+    }))
+  })
+  console.log('Test data mode disabled')
 
   await browser.close()
 }
