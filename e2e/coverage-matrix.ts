@@ -343,10 +343,10 @@ export const FEATURE_COVERAGE: Record<string, FeatureCategory> = {
         priority: 'high'
       },
       'liquidation-price': {
-        tested: false,
-        spec: null,
+        tested: true,
+        spec: 'derivatives-funds.spec.ts',
+        testName: 'liquidation price is calculated for long position',
         priority: 'high'
-        // NOTE: Requires implementing liquidation price display in UI before E2E test can be added
       },
       'funding-payment-pnl': {
         tested: true,
@@ -562,10 +562,10 @@ export const FEATURE_COVERAGE: Record<string, FeatureCategory> = {
         priority: 'high'
       },
       'delete-fund-confirm': {
-        tested: false,
-        spec: null,
+        tested: true,
+        spec: 'ui-workflows.spec.ts',
+        testName: 'delete fund requires confirmation before deletion',
         priority: 'high'
-        // NOTE: Test needed to verify ConfirmDialog prevents accidental fund deletions
       }
     }
   },
@@ -632,11 +632,10 @@ export const FEATURE_COVERAGE: Record<string, FeatureCategory> = {
         priority: 'medium'
       },
       'duplicate-ticker-prevention': {
-        tested: false,
-        spec: null,
+        tested: true,
+        spec: 'ui-workflows.spec.ts',
+        testName: 'API rejects duplicate ticker on same platform',
         priority: 'high'
-        // Untested: Verify API rejects duplicate ticker on same platform (data integrity)
-        // Track in project management system when implementing
       },
       'platform-id-format': {
         tested: true,

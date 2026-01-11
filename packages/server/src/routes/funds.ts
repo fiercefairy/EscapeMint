@@ -917,6 +917,11 @@ fundsRouter.post('/', async (req, res, next) => {
   const id = `${platformId}-${tickerLower}`
   const filePath = join(FUNDS_DIR, `${id}.tsv`)
 
+  // Check if fund already exists (prevent duplicate tickers on same platform)
+  if (existsSync(filePath)) {
+    return next(badRequest(`Fund with ticker '${tickerLower}' already exists on platform '${platformId}'`))
+  }
+
   // Check if this is a cash fund being created
   const isCashFund = config.fund_type === 'cash' || tickerLower === 'cash'
 

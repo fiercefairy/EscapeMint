@@ -46,6 +46,8 @@ export interface FundEntry {
   margin_available?: number
   margin_borrowed?: number
   notes?: string
+  contracts?: number
+  liquidation_price?: number
 }
 
 export interface FundData {

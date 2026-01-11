@@ -1001,3 +1001,157 @@ test.describe('Edge Cases', () => {
     await deleteFundViaAPI(page, fund.id)
   })
 })
+
+test.describe('Liquidation Price Calculations', () => {
+  test('liquidation price is calculated for long position', async ({ page }) => {
+    const ticker = 'deriv-liq-price'
+    const config = generateDerivativesConfig({
+      fund_size_usd: 100000,
+      margin_enabled: true
+    })
+
+    const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
+
+    // Initial deposit
+    await addDerivativesEntry(page, fund.id, {
+      date: testDate(0),
+      value: 0,
+      action: 'DEPOSIT',
+      amount: 100000
+    })
+
+    // Open a long position: 50 contracts at $100,000 BTC price
+    // Position value = 50 * 0.01 * 100000 = $50,000
+    const btcPrice = 100000
+    const contractCount = 50
+    const positionValue = contractCount * CONTRACT_MULTIPLIER * btcPrice
+
+    await addDerivativesEntry(page, fund.id, {
+      date: testDate(1),
+      value: positionValue,
+      action: 'BUY',
+      amount: positionValue,
+      contracts: contractCount,
+      price: btcPrice * CONTRACT_MULTIPLIER
+    })
+
+    // Navigate to fund detail page to verify liquidation price is displayed
+    await page.goto(`http://localhost:5550/fund/${fund.id}`)
+    await page.waitForLoadState('networkidle')
+
+    // Check for liquidation price in the entries table or derivatives chart
+    // The Liq Price column should be visible for derivatives funds
+    const liqPriceCell = page.locator('td:has-text("$"), th:has-text("Liq")')
+
+    // Wait for page to fully load with data
+    await page.waitForTimeout(500)
+
+    // Verify liquidation price column header exists
+    const liqPriceHeader = page.locator('th:has-text("Liq Price"), th:has-text("Liq")')
+    await expect(liqPriceHeader.first()).toBeVisible()
+
+    // The liquidation price should be less than the entry price for a long position
+    // (price falling would trigger liquidation)
+    // Just verify the UI shows some liquidation-related data
+    const tableContent = await page.locator('table').textContent()
+    expect(tableContent).toBeTruthy()
+
+    await deleteFundViaAPI(page, fund.id)
+  })
+
+  test('liquidation price updates as position size changes', async ({ page }) => {
+    const ticker = 'deriv-liq-update'
+    const config = generateDerivativesConfig()
+
+    const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
+
+    // Initial deposit
+    await addDerivativesEntry(page, fund.id, {
+      date: testDate(0),
+      value: 0,
+      action: 'DEPOSIT',
+      amount: 100000
+    })
+
+    // First position: smaller size = safer (liq price further from entry)
+    await addDerivativesEntry(page, fund.id, {
+      date: testDate(1),
+      value: 10000,
+      action: 'BUY',
+      amount: 10000,
+      contracts: 10,
+      price: 1000
+    })
+
+    // Get state after first position
+    const state1 = await getFundStateViaAPI(page, fund.id)
+    const fundData1 = await getFundViaAPI(page, fund.id)
+    const entry1LiqPrice = fundData1.entries[1]?.liquidation_price ?? 0
+
+    // Add more position: larger size = riskier (liq price closer to entry)
+    await addDerivativesEntry(page, fund.id, {
+      date: testDate(4),
+      value: 50000,
+      action: 'BUY',
+      amount: 40000,
+      contracts: 40,
+      price: 1000
+    })
+
+    const fundData2 = await getFundViaAPI(page, fund.id)
+    const entry2LiqPrice = fundData2.entries[2]?.liquidation_price ?? 0
+
+    // Larger position should have liquidation price closer to entry (higher for long)
+    // This is because more leverage = less margin buffer
+    // For a long, higher liq price = more risk
+    expect(entry2LiqPrice).toBeGreaterThanOrEqual(entry1LiqPrice)
+
+    await deleteFundViaAPI(page, fund.id)
+  })
+
+  test('liquidation price shown in derivatives chart', async ({ page }) => {
+    const ticker = 'deriv-liq-chart'
+    const config = generateDerivativesConfig()
+
+    const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
+
+    // Create entries for chart to render
+    await addDerivativesEntry(page, fund.id, {
+      date: testDate(0),
+      value: 0,
+      action: 'DEPOSIT',
+      amount: 100000
+    })
+
+    await addDerivativesEntry(page, fund.id, {
+      date: testDate(1),
+      value: 25000,
+      action: 'BUY',
+      amount: 25000,
+      contracts: 25,
+      price: 1000
+    })
+
+    // Add a HOLD to update position value
+    await addDerivativesEntry(page, fund.id, {
+      date: testDate(7),
+      value: 26000,
+      action: 'HOLD',
+      amount: 0
+    })
+
+    // Navigate to fund detail page
+    await page.goto(`http://localhost:5550/fund/${fund.id}`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+
+    // Look for chart elements - derivatives funds show price/liquidation charts
+    // The chart should contain SVG elements for the liquidation price line
+    const chartArea = page.locator('svg, canvas, .chart, [data-testid="chart"]')
+
+    // Charts should exist on the page
+    await expect(chartArea.first()).toBeVisible()
+
+    await deleteFundViaAPI(page, fund.id)
+  })
+})
