@@ -152,7 +152,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
                 <p className="text-slate-400">Cash Available</p>
                 <p className={`font-medium ${result.state.cash_available_usd < 0 ? 'text-red-400' : 'text-white'}`}>{formatCurrency(result.state.cash_available_usd)}</p>
               </div>
-              {result.margin_available !== undefined && result.margin_available !== 0 && (
+              {result.margin_available !== undefined && (
                 <div>
                   <p className="text-slate-400">Margin Available</p>
                   <p className="text-purple-400 font-medium">{formatCurrency(result.margin_available)}</p>

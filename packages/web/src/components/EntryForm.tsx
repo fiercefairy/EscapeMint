@@ -482,7 +482,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 min="0"
               />
               <p className="text-xs text-slate-500 mt-1">
-                Margin borrowed in this entry (auto-calculated for M1)
+                Margin borrowed in this entry (may be auto-filled by some platforms, but can be adjusted)
               </p>
             </div>
           </div>
