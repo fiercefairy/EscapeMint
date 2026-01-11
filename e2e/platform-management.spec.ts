@@ -267,7 +267,7 @@ test.describe('Platform Management UI', () => {
     await waitForPageReady(page)
 
     // Click on platform to view detail
-    const platformLink = page.locator(`a[href*="${platformId}"], text=Nav Test Platform`)
+    const platformLink = page.locator(`a[href*="${platformId}"]`).or(page.locator('text=Nav Test Platform'))
     if (await platformLink.count() > 0) {
       await platformLink.first().click()
 

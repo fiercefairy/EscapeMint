@@ -2,8 +2,7 @@ import { useMemo, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import type { FundEntry, FundType } from '../api/funds'
 import {
-  isCashFund as checkIsCashFund,
-  getFundTypeFeatures
+  isCashFund as checkIsCashFund
 } from '@escapemint/engine'
 import { formatCurrency, formatLocalDate } from '../utils/format'
 
@@ -105,7 +104,6 @@ export const parseFormulaValue = (input: string): number => {
 
 export function EntryForm({ formData, setFormData, existingEntries = [], baseFundSize = 0, showFundSizeAdjustment = false, cashAvailable, marginAvailable, currentFundSize, fundType = 'stock', manageCash = true, marginEnabled = false, platform }: EntryFormProps) {
   const isCashFund = checkIsCashFund(fundType)
-  const _features = getFundTypeFeatures(fundType)
   const isCryptoFund = fundType === 'crypto'
   // Get cumulative shares from entries BEFORE the current date
   const getCumulativeShares = useCallback((beforeDate: string) => {
@@ -350,6 +348,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
             <label className="block text-sm text-slate-400 mb-1">Equity ($)</label>
             <input
               type="number"
+              name="value"
+              id="value"
               value={formData.value}
               onChange={e => setFormData(prev => ({ ...prev, value: e.target.value }))}
               className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
@@ -362,6 +362,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           <div>
             <label className="block text-sm text-slate-400 mb-1">Action</label>
             <select
+              name="action"
+              id="action"
               value={formData.action}
               onChange={e => {
                 const action = e.target.value as ActionType

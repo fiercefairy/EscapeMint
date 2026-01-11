@@ -156,8 +156,9 @@ export async function getFundViaAPI(page: Page, fundId: string): Promise<FundDat
   return response.json()
 }
 
-export async function listFundsViaAPI(page: Page): Promise<FundData[]> {
-  const response = await page.request.get(`${API_BASE}/funds`)
+export async function listFundsViaAPI(page: Page, includeTest = true): Promise<FundData[]> {
+  const url = includeTest ? `${API_BASE}/funds?include_test=true` : `${API_BASE}/funds`
+  const response = await page.request.get(url)
   expect(response.ok()).toBeTruthy()
   return response.json()
 }

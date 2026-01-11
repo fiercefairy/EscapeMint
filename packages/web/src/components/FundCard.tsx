@@ -8,9 +8,9 @@ import {
 export interface FundCardProps {
   fund: FundSummary
   impactPct?: number | undefined
-  realizedAPY?: number
-  liquidAPY?: number
-  realizedGains?: number
+  realizedAPY?: number | undefined
+  liquidAPY?: number | undefined
+  realizedGains?: number | undefined
 }
 
 export function FundCard({ fund, impactPct, realizedAPY, liquidAPY, realizedGains }: FundCardProps) {

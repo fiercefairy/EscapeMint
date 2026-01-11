@@ -204,7 +204,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-slate-800 rounded-lg p-4 sm:p-6 w-full max-w-4xl border border-slate-700 max-h-[90vh] overflow-y-auto">
+      <div role="dialog" data-testid="add-entry-modal" className="bg-slate-800 rounded-lg p-4 sm:p-6 w-full max-w-4xl border border-slate-700 max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-bold text-white mb-2">Take Action</h2>
         <p className="text-slate-400 text-sm mb-4">Record activity for {fundTicker.toUpperCase()}</p>
 

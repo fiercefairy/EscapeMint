@@ -1,8 +1,9 @@
 import { fetchJson, postJson, putJson, deleteResource, API_BASE } from './utils'
 import type { ApiResult } from './utils'
+import type { DerivativesEntryState } from '@escapemint/engine'
 
 // Re-export for backwards compatibility
-export type { ApiResult }
+export type { ApiResult, DerivativesEntryState }
 
 // Event to notify components when funds list changes
 export const FUNDS_CHANGED_EVENT = 'escapemint:funds-changed'
@@ -160,31 +161,7 @@ export interface ClosedFundMetrics {
 }
 
 // Derivatives entry state from engine calculations
-export interface DerivativesEntryState {
-  date: string
-  action: string
-  amount: number
-  contracts: number
-  price: number
-  marginBalance: number      // Running cash/margin balance (funds for margin)
-  position: number           // Running net contracts
-  avgEntry: number           // Weighted average entry price (BTC price)
-  costBasis: number          // Total cost basis of open position
-  unrealizedPnl: number      // Unrealized P&L (0 for historical, calculated for current)
-  realizedPnl: number        // Running realized P&L from closed trades
-  cumFunding: number         // Cumulative funding payments
-  cumInterest: number        // Cumulative USDC interest
-  cumRebates: number         // Cumulative rebates
-  cumFees: number            // Cumulative trading fees
-  equity: number             // Position value at entry price (cost basis)
-  // Margin tracking
-  notionalValue: number      // Position value at avgEntry price
-  initialMargin: number      // Margin locked (typically 20% of notional)
-  maintenanceMargin: number  // Minimum margin required (typically 5% of notional)
-  availableFunds: number     // marginBalance - initialMargin
-  marginRatio: number        // maintenanceMargin / marginBalance (lower is safer)
-  notes?: string
-}
+// DerivativesEntryState is imported from @escapemint/engine
 
 export interface FundStateResponse {
   fund: {

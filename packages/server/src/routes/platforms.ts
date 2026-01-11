@@ -140,10 +140,19 @@ platformsRouter.post('/', async (req, res, next) => {
   if (!id) return next(badRequest('id is required'))
   if (!name) return next(badRequest('name is required'))
 
-  const platformId = id.toLowerCase().replace(/[^a-z0-9-]/g, '-')
+  // Validate platform ID format: lowercase letters, numbers, and hyphens only
+  if (!/^[a-z0-9-]+$/.test(id)) {
+    return next(badRequest('Platform ID must contain only lowercase letters, numbers, and hyphens'))
+  }
+
+  const platformId = id
   const data = await readPlatformsData().catch(() => ({} as PlatformsData))
 
-  const isUpdate = platformId in data
+  // POST is for creating new platforms only; reject duplicates
+  if (platformId in data) {
+    return next(badRequest(`Platform '${platformId}' already exists`))
+  }
+
   const config: PlatformConfig = { name }
   if (color) config.color = color
   if (url) config.url = url
@@ -152,7 +161,7 @@ platformsRouter.post('/', async (req, res, next) => {
   data[platformId] = config
   await writePlatformsData(data)
 
-  res.status(isUpdate ? 200 : 201).json({ id: platformId, ...config })
+  res.status(201).json({ id: platformId, ...config })
 })
 
 /**
@@ -548,6 +557,74 @@ platformsRouter.get('/:id/cash', async (req, res, next) => {
     interestEarned,
     entriesCount: cashFund.entries.length,
     autoSyncCash
+  })
+})
+
+/**
+ * GET /platforms/:id - Get a single platform by ID
+ * Note: This must come after more specific routes like /:id/metrics and /:id/cash
+ */
+platformsRouter.get('/:id', async (req, res, next) => {
+  const platformId = req.params['id']?.toLowerCase() ?? ''
+
+  const data = await readPlatformsData().catch(() => ({} as PlatformsData))
+  const platformConfig = data[platformId]
+
+  if (!platformConfig) {
+    // Check if platform exists via funds
+    const allFunds = await readAllFunds(FUNDS_DIR).catch(() => [])
+    const platformFunds = allFunds.filter(f => f.platform.toLowerCase() === platformId)
+
+    if (platformFunds.length === 0) {
+      return next(notFound(`Platform '${platformId}' not found`))
+    }
+
+    // Platform exists via funds but has no config - return default
+    return res.json({
+      id: platformId,
+      name: platformId.charAt(0).toUpperCase() + platformId.slice(1)
+    })
+  }
+
+  res.json({
+    id: platformId,
+    ...platformConfig
+  })
+})
+
+/**
+ * PATCH /platforms/:id - Update platform properties (name, color, url, notes)
+ * Note: This must come after more specific routes like /:id/config
+ */
+platformsRouter.patch('/:id', async (req, res, next) => {
+  const platformId = req.params['id']?.toLowerCase() ?? ''
+  const { name, color, url, notes } = req.body as {
+    name?: string
+    color?: string
+    url?: string
+    notes?: string
+  }
+
+  const data = await readPlatformsData().catch(() => ({} as PlatformsData))
+  const existingConfig = data[platformId]
+
+  if (!existingConfig) {
+    return next(notFound(`Platform '${platformId}' not found`))
+  }
+
+  // Update fields
+  const platformConfig = { ...existingConfig }
+  if (name !== undefined) platformConfig.name = name
+  if (color !== undefined) platformConfig.color = color
+  if (url !== undefined) platformConfig.url = url
+  if (notes !== undefined) platformConfig.notes = notes
+
+  data[platformId] = platformConfig
+  await writePlatformsData(data)
+
+  res.json({
+    id: platformId,
+    ...platformConfig
   })
 })
 

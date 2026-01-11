@@ -68,6 +68,29 @@ exportRouter.post('/import', async (req, res) => {
     return res.status(400).json({ error: { message: 'funds array is required' } })
   }
 
+  // Validate each fund has required fields
+  for (let i = 0; i < funds.length; i++) {
+    const fund = funds[i]
+    if (!fund || typeof fund !== 'object') {
+      return res.status(400).json({ error: { message: `Invalid fund at index ${i}: must be an object` } })
+    }
+    if (!fund.id || typeof fund.id !== 'string') {
+      return res.status(400).json({ error: { message: `Invalid fund at index ${i}: id is required` } })
+    }
+    if (!fund.platform || typeof fund.platform !== 'string') {
+      return res.status(400).json({ error: { message: `Invalid fund at index ${i}: platform is required` } })
+    }
+    if (!fund.ticker || typeof fund.ticker !== 'string') {
+      return res.status(400).json({ error: { message: `Invalid fund at index ${i}: ticker is required` } })
+    }
+    if (!fund.config || typeof fund.config !== 'object') {
+      return res.status(400).json({ error: { message: `Invalid fund at index ${i}: config is required` } })
+    }
+    if (!fund.entries || !Array.isArray(fund.entries)) {
+      return res.status(400).json({ error: { message: `Invalid fund at index ${i}: entries array is required` } })
+    }
+  }
+
   // Ensure funds directory exists
   await mkdir(FUNDS_DIR, { recursive: true }).catch(() => {})
 

@@ -121,6 +121,8 @@ export function Platforms() {
               <label className="block text-sm text-slate-400 mb-1">ID (lowercase)</label>
               <input
                 type="text"
+                name="id"
+                id="platform-id"
                 value={newPlatform.id}
                 onChange={e => setNewPlatform({ ...newPlatform, id: e.target.value })}
                 placeholder="e.g., cryptocom"
@@ -132,6 +134,8 @@ export function Platforms() {
               <label className="block text-sm text-slate-400 mb-1">Display Name</label>
               <input
                 type="text"
+                name="name"
+                id="platform-name"
                 value={newPlatform.name}
                 onChange={e => setNewPlatform({ ...newPlatform, name: e.target.value })}
                 placeholder="e.g., Crypto.com"
