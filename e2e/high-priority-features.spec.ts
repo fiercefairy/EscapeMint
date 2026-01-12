@@ -457,9 +457,10 @@ test.describe('Settings Persistence', () => {
       await page.reload()
       await waitForPageReady(page)
 
-      // Verify test funds mode is still selected
-      const isChecked = await page.locator('input[name="fundsMode"]:checked').inputValue().catch(() => null)
-      // The setting should have persisted (test mode)
+      // Verify test funds mode is still selected (the setting should have persisted)
+      // Check that there's a checked radio and that Test Funds label is near it
+      const testFundsChecked = await testFundsRadio.isChecked()
+      expect(testFundsChecked).toBe(true)
 
       // Toggle back to My Funds
       const myFundsRadio = page.locator('input[type="radio"]:near(:text("My Funds"))').first()
