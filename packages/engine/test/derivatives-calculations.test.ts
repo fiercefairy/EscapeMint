@@ -151,7 +151,7 @@ describe('calculateLiquidationPrice', () => {
       contractMultiplier: 0.01
     }
 
-    // Liq price = (maintenanceMargin + costBasis - totalCash) / btcSize
+    // Liq price = (maintenanceMargin + costBasis - totalCash) / notionalSize
     // = (5000 + 100000 - 25000) / (100 * 0.01)
     // = 80000 / 1 = $80,000
     const liqPrice = calculateLiquidationPrice(position)
@@ -324,7 +324,7 @@ describe('calculateDailyPnL', () => {
         orderId: 'O1',
         side: 'SELL',
         contracts: 100,
-        btcSize: 1,
+        notionalSize: 1,
         price: 100000,
         total: 1000,
         commission: 5,
@@ -367,7 +367,7 @@ describe('calculateDailyPnL', () => {
         orderId: 'O1',
         side: 'SELL',
         contracts: 100,
-        btcSize: 1,
+        notionalSize: 1,
         price: 100000,
         total: 1000,
         commission: 5,
@@ -411,7 +411,7 @@ describe('processTradeHistory', () => {
     expect(result).toHaveLength(1)
     expect(result[0]?.side).toBe('BUY')
     expect(result[0]?.contracts).toBe(100)
-    expect(result[0]?.btcSize).toBe(1) // 100 * 0.01
+    expect(result[0]?.notionalSize).toBe(1) // 100 * 0.01
     expect(result[0]?.realizedPnl).toBe(0)
     expect(result[0]?.cumulativeContracts).toBe(100)
   })
@@ -498,7 +498,7 @@ describe('computeDerivativesState', () => {
         orderId: 'O1',
         side: 'BUY',
         contracts: 100,
-        btcSize: 1,
+        notionalSize: 1,
         price: 100000,
         total: 100000,
         commission: 5,
@@ -526,7 +526,7 @@ describe('computeDerivativesState', () => {
         orderId: 'O1',
         side: 'BUY',
         contracts: 100,
-        btcSize: 1,
+        notionalSize: 1,
         price: 100000,
         total: 100000,
         commission: 5,
@@ -541,7 +541,7 @@ describe('computeDerivativesState', () => {
         orderId: 'O2',
         side: 'SELL',
         contracts: 100,
-        btcSize: 1,
+        notionalSize: 1,
         price: 110000,
         total: 110000,
         commission: 5,
@@ -763,7 +763,7 @@ describe('formatPositionSummary', () => {
     const result = formatPositionSummary(position)
 
     expect(result.contracts).toBe('100')
-    expect(result.btcSize).toBe('1.0000')
+    expect(result.notionalSize).toBe('1.0000')
     expect(result.avgEntry).toContain('100,000')
     expect(result.currentPrice).toContain('110,000')
     expect(result.liquidationPrice).toContain('80,000')
