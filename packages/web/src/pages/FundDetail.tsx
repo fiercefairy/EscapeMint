@@ -313,7 +313,7 @@ export function FundDetail() {
         cumSellProceeds += entry.amount
 
         // In accumulate mode, sells are profit extraction and don't reduce totalSells
-        // unless it's a full liquidation. In liquidate mode, all sells reduce invested.
+        // unless it's a full position exit. In harvest mode, all sells reduce invested.
         if (!isAccumulate || isFullLiquidation) {
           totalSells += entry.amount
         }
@@ -335,7 +335,7 @@ export function FundDetail() {
             // Accumulate mode: entire sell amount is profit extraction (cost basis unchanged)
             extracted = entry.amount
           } else {
-            // Liquidate mode: proportional cost basis
+            // Harvest mode: proportional cost basis
             const sellProportion = entry.amount / (entry.value + entry.amount)
             const costBasisReturned = costBasis * sellProportion
             extracted = entry.amount - costBasisReturned
@@ -1164,7 +1164,7 @@ export function FundDetail() {
                     </span>
                     <span className="text-slate-600">|</span>
                     <span title="Mode">
-                      <span className="text-slate-500">Mode:</span> <span className={fund.config.accumulate ? 'text-blue-300' : 'text-orange-300'}>{fund.config.accumulate ? 'Accumulate' : 'Liquidate'}</span>
+                      <span className="text-slate-500">Mode:</span> <span className={fund.config.accumulate ? 'text-blue-300' : 'text-orange-300'}>{fund.config.accumulate ? 'Accumulate' : 'Harvest'}</span>
                     </span>
                     <span className="text-slate-600">|</span>
                     <span title="Fund Size">

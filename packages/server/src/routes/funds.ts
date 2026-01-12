@@ -1892,8 +1892,8 @@ fundsRouter.delete('/:id/entries/:entryIndex', async (req, res, next) => {
  * - + cash_interest (if interest_reinvest)
  * - - expenses (if expense_from_fund)
  *
- * For accumulate mode: SELLs don't reduce fund_size unless full liquidation
- * For liquidate mode: SELLs reduce fund_size
+ * For accumulate mode: SELLs don't reduce fund_size unless full position exit
+ * For harvest mode: SELLs reduce fund_size (harvest gains)
  */
 fundsRouter.post('/:id/recalculate', async (req, res, next) => {
   const id = req.params['id'] ?? ''

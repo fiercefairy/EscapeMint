@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 550">
+  <defs>
+    <linearGradient id="buyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="sellGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ef4444;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#dc2626;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="holdGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4f46e5;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="700" height="550" fill="#f8fafc"/>
+
+  <!-- Title -->
+  <text x="350" y="35" font-family="system-ui, sans-serif" font-size="22" font-weight="bold" fill="#1e293b" text-anchor="middle">DCA Tier Selection: Buy Low, Sell High</text>
+
+  <!-- Start node -->
+  <g transform="translate(300, 60)">
+    <ellipse cx="50" cy="25" rx="50" ry="25" fill="#64748b" filter="url(#shadow)"/>
+    <text x="50" y="30" font-family="system-ui, sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">START</text>
+  </g>
+
+  <!-- Arrow down -->
+  <path d="M 350 110 L 350 140" stroke="#94a3b8" stroke-width="2" fill="none"/>
+  <polygon points="345,140 350,150 355,140" fill="#94a3b8"/>
+
+  <!-- Decision: Above Target? -->
+  <g transform="translate(260, 155)">
+    <polygon points="90,0 180,50 90,100 0,50" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2"/>
+    <text x="90" y="42" font-family="system-ui, sans-serif" font-size="11" fill="#475569" text-anchor="middle">Above target</text>
+    <text x="90" y="56" font-family="system-ui, sans-serif" font-size="11" fill="#475569" text-anchor="middle">by min_profit?</text>
+  </g>
+
+  <!-- YES arrow to SELL -->
+  <path d="M 440 205 L 530 205" stroke="#94a3b8" stroke-width="2" fill="none"/>
+  <polygon points="530,200 540,205 530,210" fill="#94a3b8"/>
+  <text x="480" y="195" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">YES</text>
+
+  <!-- SELL action -->
+  <g transform="translate(545, 175)">
+    <rect x="0" y="0" width="120" height="60" rx="8" fill="url(#sellGrad)" filter="url(#shadow)"/>
+    <text x="60" y="28" font-family="system-ui, sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">SELL</text>
+    <text x="60" y="45" font-family="system-ui, sans-serif" font-size="10" fill="white" text-anchor="middle">Take profits</text>
+  </g>
+
+  <!-- NO arrow down -->
+  <path d="M 350 255 L 350 290" stroke="#94a3b8" stroke-width="2" fill="none"/>
+  <polygon points="345,290 350,300 355,290" fill="#94a3b8"/>
+  <text x="360" y="275" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">NO</text>
+
+  <!-- Decision: In the red? -->
+  <g transform="translate(260, 305)">
+    <polygon points="90,0 180,50 90,100 0,50" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2"/>
+    <text x="90" y="42" font-family="system-ui, sans-serif" font-size="11" fill="#475569" text-anchor="middle">Losing money?</text>
+    <text x="90" y="56" font-family="system-ui, sans-serif" font-size="11" fill="#475569" text-anchor="middle">(gain_usd &lt; 0)</text>
+  </g>
+
+  <!-- NO arrow to BUY MIN -->
+  <path d="M 260 355 L 120 355" stroke="#94a3b8" stroke-width="2" fill="none"/>
+  <polygon points="120,350 110,355 120,360" fill="#94a3b8"/>
+  <text x="185" y="345" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">NO</text>
+
+  <!-- BUY MIN action -->
+  <g transform="translate(20, 325)">
+    <rect x="0" y="0" width="90" height="60" rx="8" fill="url(#buyGrad)" filter="url(#shadow)"/>
+    <text x="45" y="25" font-family="system-ui, sans-serif" font-size="13" font-weight="bold" fill="white" text-anchor="middle">BUY</text>
+    <text x="45" y="42" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">input_min</text>
+    <text x="45" y="55" font-family="system-ui, sans-serif" font-size="9" fill="rgba(255,255,255,0.8)" text-anchor="middle">$100</text>
+  </g>
+
+  <!-- YES arrow down -->
+  <path d="M 350 405 L 350 440" stroke="#94a3b8" stroke-width="2" fill="none"/>
+  <polygon points="345,440 350,450 355,440" fill="#94a3b8"/>
+  <text x="360" y="425" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">YES</text>
+
+  <!-- Decision: Big loss? -->
+  <g transform="translate(260, 455)">
+    <polygon points="90,0 180,45 90,90 0,45" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2"/>
+    <text x="90" y="38" font-family="system-ui, sans-serif" font-size="11" fill="#475569" text-anchor="middle">Loss &gt; 25%?</text>
+    <text x="90" y="52" font-family="system-ui, sans-serif" font-size="11" fill="#475569" text-anchor="middle">(max_at_pct)</text>
+  </g>
+
+  <!-- YES arrow to BUY MAX -->
+  <path d="M 440 500 L 530 500" stroke="#94a3b8" stroke-width="2" fill="none"/>
+  <polygon points="530,495 540,500 530,505" fill="#94a3b8"/>
+  <text x="480" y="490" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">YES</text>
+
+  <!-- BUY MAX action -->
+  <g transform="translate(545, 470)">
+    <rect x="0" y="0" width="90" height="60" rx="8" fill="url(#buyGrad)" filter="url(#shadow)"/>
+    <text x="45" y="25" font-family="system-ui, sans-serif" font-size="13" font-weight="bold" fill="white" text-anchor="middle">BUY</text>
+    <text x="45" y="42" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">input_max</text>
+    <text x="45" y="55" font-family="system-ui, sans-serif" font-size="9" fill="rgba(255,255,255,0.8)" text-anchor="middle">$500</text>
+  </g>
+
+  <!-- NO arrow to BUY MID -->
+  <path d="M 260 500 L 120 500" stroke="#94a3b8" stroke-width="2" fill="none"/>
+  <polygon points="120,495 110,500 120,505" fill="#94a3b8"/>
+  <text x="185" y="490" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">NO</text>
+
+  <!-- BUY MID action -->
+  <g transform="translate(20, 470)">
+    <rect x="0" y="0" width="90" height="60" rx="8" fill="url(#buyGrad)" filter="url(#shadow)"/>
+    <text x="45" y="25" font-family="system-ui, sans-serif" font-size="13" font-weight="bold" fill="white" text-anchor="middle">BUY</text>
+    <text x="45" y="42" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">input_mid</text>
+    <text x="45" y="55" font-family="system-ui, sans-serif" font-size="9" fill="rgba(255,255,255,0.8)" text-anchor="middle">$200</text>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(520, 280)">
+    <rect x="0" y="0" width="160" height="120" rx="6" fill="white" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="80" y="20" font-family="system-ui, sans-serif" font-size="11" font-weight="bold" fill="#475569" text-anchor="middle">Strategy</text>
+    <line x1="10" y1="28" x2="150" y2="28" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="15" y="48" font-family="system-ui, sans-serif" font-size="10" fill="#64748b">Profitable: BUY less</text>
+    <text x="15" y="65" font-family="system-ui, sans-serif" font-size="10" fill="#64748b">Small loss: BUY more</text>
+    <text x="15" y="82" font-family="system-ui, sans-serif" font-size="10" fill="#64748b">Big loss: BUY most</text>
+    <text x="15" y="99" font-family="system-ui, sans-serif" font-size="10" fill="#64748b">Above target: SELL</text>
+    <text x="15" y="112" font-family="system-ui, sans-serif" font-size="9" fill="#94a3b8">Buy low, sell high!</text>
+  </g>
+</svg>
