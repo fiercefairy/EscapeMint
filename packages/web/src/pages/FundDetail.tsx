@@ -1089,24 +1089,24 @@ export function FundDetail() {
     <>
       <div className="space-y-3">
         {/* Header with Config Tags */}
-        <div className="bg-slate-800 rounded-lg p-3 border border-slate-700">
-          <div className="flex items-start justify-between gap-3">
+        <div className="bg-slate-800 rounded-lg p-2 sm:p-3 border border-slate-700">
+          <div className="flex items-start justify-between gap-2 sm:gap-3">
             <div className="flex-1 min-w-0">
               {/* Breadcrumb with indicators */}
-              <div className="flex items-center gap-2 text-sm flex-wrap gap-y-2">
-                <Link to="/" className="text-slate-400 hover:text-white">Dashboard</Link>
+              <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm flex-wrap gap-y-1">
+                <Link to="/" className="text-slate-400 hover:text-white leading-tight">Dashboard</Link>
                 <span className="text-slate-600">/</span>
-                <Link to={`/platform/${fund.platform}`} className="text-slate-400 hover:text-white capitalize">{fund.platform}</Link>
+                <Link to={`/platform/${fund.platform}`} className="text-slate-400 hover:text-white capitalize leading-tight truncate max-w-[100px] sm:max-w-none">{fund.platform}</Link>
                 <span className="text-slate-600">/</span>
-                <span className="text-white font-medium uppercase">{fund.ticker}</span>
+                <span className="text-white font-semibold uppercase leading-tight">{fund.ticker}</span>
                 {/* Closed Tag */}
                 {(fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)) && (
-                  <span className="px-2 py-0.5 text-[10px] leading-[18px] font-medium bg-slate-700 text-slate-400 rounded">Closed</span>
+                  <span className="px-1.5 py-0.5 text-[9px] leading-tight font-medium bg-slate-700 text-slate-400 rounded">Closed</span>
                 )}
                 {/* Audited Badge - clickable to toggle */}
                 <button
                   onClick={toggleAudited}
-                  className={`px-2 py-0.5 text-[10px] leading-[18px] font-medium rounded inline-flex items-center gap-1 transition-colors ${
+                  className={`px-1.5 sm:px-2 py-1 sm:py-0.5 text-[9px] sm:text-[10px] leading-tight font-medium rounded inline-flex items-center gap-1 transition-colors ${
                     fund.config.audited
                       ? 'bg-green-900/50 text-green-300 border border-green-700 hover:bg-green-900/70'
                       : 'bg-slate-700/50 text-slate-500 border border-slate-600 hover:bg-slate-700 hover:text-slate-400'
@@ -1116,12 +1116,12 @@ export function FundDetail() {
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>
-                  {fund.config.audited ? 'Audited' : 'Audit'}
+                  <span className="hidden xs:inline">{fund.config.audited ? 'Audited' : 'Audit'}</span>
                 </button>
                 {/* Recommendation Badge - not shown for cash funds */}
                 {state?.recommendation && features.allowsRecommendations && (
                   <span
-                    className={`px-2 py-0.5 text-[10px] leading-[18px] font-bold rounded ${
+                    className={`px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] leading-tight font-bold rounded ${
                       state.recommendation.action === 'BUY'
                         ? 'bg-green-900/50 text-green-300 border border-green-700'
                         : state.recommendation.action === 'HOLD'
@@ -1135,7 +1135,7 @@ export function FundDetail() {
                 )}
                 {/* Cash/Margin Available */}
                 {state && ((state.cash_available ?? 0) > 0 || (fund.config.margin_enabled && (state.margin_available ?? 0) > 0)) && (
-                  <span className="px-2 py-0.5 text-[10px] leading-[18px] font-medium rounded bg-slate-700/50 text-slate-300 border border-slate-600">
+                  <span className="px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] leading-tight font-medium rounded bg-slate-700/50 text-slate-300 border border-slate-600">
                     {(state.cash_available ?? 0) > 0 && (
                       state.cash_source ? (
                         <Link to={`/fund/${state.cash_source}`} className="hover:text-mint-400">
@@ -1151,58 +1151,58 @@ export function FundDetail() {
                 )}
               </div>
               {/* Config Details Row - different for cash vs trading funds */}
-              <div className="flex items-center gap-3 mt-2 text-xs text-slate-400 flex-wrap">
+              <div className="flex items-center gap-1.5 sm:gap-3 mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-slate-400 flex-wrap">
                 {isCashFund ? (
                   // Cash fund: simplified config
                   <>
-                    <span title="Fund Type">
-                      <span className="text-slate-500">Type:</span> <span className={features.textColorClass}>{features.label}</span>
+                    <span title="Fund Type" className="whitespace-nowrap">
+                      <span className="text-slate-500 hidden sm:inline">Type: </span><span className={features.textColorClass}>{features.label}</span>
                     </span>
-                    <span className="text-slate-600">|</span>
-                    <span title="Cash Balance">
-                      <span className="text-slate-500">Balance:</span> <span className="text-white">{formatCurrency(latestEntry?.fundSize ?? 0)}</span>
+                    <span className="text-slate-600 hidden sm:inline">|</span>
+                    <span title="Cash Balance" className="whitespace-nowrap">
+                      <span className="text-slate-500 hidden sm:inline">Balance: </span><span className="text-white font-medium">{formatCurrency(latestEntry?.fundSize ?? 0)}</span>
                     </span>
-                    <span className="text-slate-600">|</span>
-                    <span title="Total Interest Earned">
-                      <span className="text-slate-500">Interest:</span> <span className="text-green-400">{formatCurrency(latestEntry?.cumCashInterest ?? 0)}</span>
+                    <span className="text-slate-600 hidden sm:inline">|</span>
+                    <span title="Total Interest Earned" className="whitespace-nowrap">
+                      <span className="text-slate-500 hidden sm:inline">Interest: </span><span className="text-green-400">{formatCurrency(latestEntry?.cumCashInterest ?? 0)}</span>
                     </span>
                   </>
                 ) : (
-                  // Trading fund (stock/crypto): full trading config
+                  // Trading fund (stock/crypto): responsive config - show less on mobile
                   <>
-                    <span title="Fund Type">
-                      <span className="text-slate-500">Type:</span> <span className={features.textColorClass}>{features.label}</span>
+                    <span title="Fund Type" className="whitespace-nowrap">
+                      <span className="text-slate-500 hidden sm:inline">Type: </span><span className={features.textColorClass}>{features.label}</span>
                     </span>
-                    <span className="text-slate-600">|</span>
-                    <span title="Mode">
-                      <span className="text-slate-500">Mode:</span> <span className={fund.config.accumulate ? 'text-blue-300' : 'text-orange-300'}>{fund.config.accumulate ? 'Accumulate' : 'Harvest'}</span>
+                    <span className="text-slate-600 hidden sm:inline">|</span>
+                    <span title="Mode" className="whitespace-nowrap">
+                      <span className="text-slate-500 hidden sm:inline">Mode: </span><span className={fund.config.accumulate ? 'text-blue-300' : 'text-orange-300'}>{fund.config.accumulate ? 'Accumulate' : 'Harvest'}</span>
                     </span>
-                    <span className="text-slate-600">|</span>
-                    <span title="Fund Size">
-                      <span className="text-slate-500">Size:</span> <span className="text-white">{formatCurrency(latestEntry?.fundSize ?? fund.config.fund_size_usd)}</span>
+                    <span className="text-slate-600 hidden sm:inline">|</span>
+                    <span title="Fund Size" className="whitespace-nowrap">
+                      <span className="text-slate-500 hidden sm:inline">Size: </span><span className="text-white font-medium">{formatCurrency(latestEntry?.fundSize ?? fund.config.fund_size_usd)}</span>
                     </span>
-                    <span className="text-slate-600">|</span>
-                    <span title="Target APY">
-                      <span className="text-slate-500">Target APY:</span> <span className="text-mint-400">{(fund.config.target_apy * 100).toFixed(0)}%</span>
+                    <span className="text-slate-600 hidden md:inline">|</span>
+                    <span title="Target APY" className="whitespace-nowrap hidden md:inline">
+                      <span className="text-slate-500">Target APY: </span><span className="text-mint-400">{(fund.config.target_apy * 100).toFixed(0)}%</span>
                     </span>
-                    <span className="text-slate-600">|</span>
-                    <span title="Check Interval">
-                      <span className="text-slate-500">Every:</span> <span className="text-white">{fund.config.interval_days}d</span>
+                    <span className="text-slate-600 hidden md:inline">|</span>
+                    <span title="Check Interval" className="whitespace-nowrap hidden lg:inline">
+                      <span className="text-slate-500">Every: </span><span className="text-white">{fund.config.interval_days}d</span>
                     </span>
-                    <span className="text-slate-600">|</span>
-                    <span title="DCA Amounts (Min/Mid/Max)">
-                      <span className="text-slate-500">DCA:</span> <span className="text-white">${fund.config.input_min_usd}/${fund.config.input_mid_usd}/${fund.config.input_max_usd}</span>
+                    <span className="text-slate-600 hidden lg:inline">|</span>
+                    <span title="DCA Amounts (Min/Mid/Max)" className="whitespace-nowrap hidden lg:inline">
+                      <span className="text-slate-500">DCA: </span><span className="text-white">${fund.config.input_min_usd}/${fund.config.input_mid_usd}/${fund.config.input_max_usd}</span>
                     </span>
-                    <span className="text-slate-600">|</span>
-                    <span title="Max At / Min Profit">
-                      <span className="text-slate-500">Max@:</span> <span className="text-white">{(fund.config.max_at_pct * 100).toFixed(0)}%</span>
-                      <span className="text-slate-500 ml-1">Profit:</span> <span className="text-white">${fund.config.min_profit_usd}</span>
+                    <span className="text-slate-600 hidden lg:inline">|</span>
+                    <span title="Max At / Min Profit" className="whitespace-nowrap hidden lg:inline">
+                      <span className="text-slate-500">Max@: </span><span className="text-white">{(fund.config.max_at_pct * 100).toFixed(0)}%</span>
+                      <span className="text-slate-500 ml-1">Profit: </span><span className="text-white">${fund.config.min_profit_usd}</span>
                     </span>
                   </>
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
               {/* Scrape Button for Derivatives Funds */}
               {isDerivativesFund && (
                 <CoinbaseScrapeButton
@@ -1214,10 +1214,10 @@ export function FundDetail() {
               {/* Edit Button */}
               <Link
                 to={`/fund/${fund.id}/edit`}
-                className="flex-shrink-0 p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                className="flex-shrink-0 p-1 sm:p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
                 title="Edit Fund"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
               </Link>
