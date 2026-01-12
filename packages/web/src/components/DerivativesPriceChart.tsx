@@ -218,7 +218,7 @@ export function DerivativesPriceChart({ entries, resize, bounds = {}, onBoundsCh
 
     // Zero line if Y range spans across zero
     const [yDomainMin, yDomainMax] = y.domain()
-    if (yDomainMin !== undefined && yDomainMax !== undefined && yDomainMin < 0 && yDomainMax > 0) {
+    if (yDomainMin < 0 && yDomainMax > 0) {
       g.append('line')
         .attr('x1', 0)
         .attr('x2', width)

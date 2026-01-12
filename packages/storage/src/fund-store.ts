@@ -267,9 +267,11 @@ export async function readFund(filePath: string): Promise<FundData | null> {
   if ('__platform' in configData && '__ticker' in configData && configWithMeta.__platform && configWithMeta.__ticker) {
     platform = configWithMeta.__platform
     ticker = configWithMeta.__ticker
-    // Remove metadata from config
-    const { __platform, __ticker, ...config } = configWithMeta
-    cleanConfig = config as SubFundConfig
+    // Remove metadata from config by filtering out all keys starting with "__"
+    const cleanConfigEntries = Object.entries(configWithMeta).filter(
+      ([key]) => !key.startsWith('__')
+    )
+    cleanConfig = Object.fromEntries(cleanConfigEntries) as SubFundConfig
   } else {
     // Legacy: parse from filename (this has issues with multi-hyphen names)
     const parsed = parseFilename(filePath)
