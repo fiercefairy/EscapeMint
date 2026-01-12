@@ -207,16 +207,19 @@ export function Dashboard() {
 
     // Second pass: calculate APY using the filtered series' first date
     const firstFilteredDate = rawFilteredTimeSeries[0]?.date ? new Date(rawFilteredTimeSeries[0].date) : null
+    // Minimum days required for meaningful annualized APY calculation
+    const MIN_DAYS_FOR_APY = 7
 
     const filteredTimeSeries = rawFilteredTimeSeries.map(point => {
       const pointDate = new Date(point.date)
       const daysElapsed = firstFilteredDate
         ? Math.max(1, (pointDate.getTime() - firstFilteredDate.getTime()) / (1000 * 60 * 60 * 24))
         : 1
-      const realizedAPY = point.totalStartInput > 0
+      // Only annualize APY after minimum days to avoid extreme values from small time windows
+      const realizedAPY = point.totalStartInput > 0 && daysElapsed >= MIN_DAYS_FOR_APY
         ? (point.totalRealizedGain / point.totalStartInput) * (365 / daysElapsed)
         : 0
-      const liquidAPY = point.totalStartInput > 0
+      const liquidAPY = point.totalStartInput > 0 && daysElapsed >= MIN_DAYS_FOR_APY
         ? (point.totalGainUsd / point.totalStartInput) * (365 / daysElapsed)
         : 0
 
