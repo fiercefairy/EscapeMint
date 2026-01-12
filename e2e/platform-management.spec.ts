@@ -93,8 +93,8 @@ test.describe('Platform Management API', () => {
     })
 
     test('platform ID must be lowercase with hyphens', async ({ page }) => {
-      // Valid ID should be accepted
-      const validId = 'my-platform-123'
+      // Valid ID should be accepted (use test- prefix for cleanup)
+      const validId = 'test-my-platform-123'
       const platform = await createPlatformViaAPI(page, validId)
       expect(platform.id).toBe(validId)
       await deletePlatformViaAPI(page, validId)
