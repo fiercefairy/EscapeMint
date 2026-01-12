@@ -180,7 +180,7 @@ test.describe('Fund Configurations', () => {
       await deleteFundViaAPI(page, fund.id)
     })
 
-    test('accumulate=false liquidates entire position when above target', async ({ page }) => {
+    test('accumulate=false (harvest mode) harvests entire position when above target', async ({ page }) => {
       const ticker = TEST_TICKERS.ACCUMULATE.ACCUMULATE_FALSE
       const config = generateTestConfig({
         accumulate: false,

@@ -168,7 +168,7 @@ function generateCashFundEntries(
   const movements = [...cashTracker.movements].sort((a, b) => a.date.localeCompare(b.date))
 
   // Track fund_size (initial deposit + dividends - withdrawn profits)
-  // For liquidate mode funds, we don't increase fund_size on SELL deposits
+  // For harvest mode funds, we don't increase fund_size on SELL deposits
   let fundSize = initialDeposit
   let currentCash = initialDeposit
   let lastMonth = startDate.substring(0, 7)
@@ -391,7 +391,7 @@ function processWeekForFund(
       ...(weekIndex === 0 ? { fund_size: fundState.config.fund_size_usd } : {})
     })
   } else if (recommendation.action === 'SELL') {
-    // SELL: liquidate mode sells entire position, accumulate sells DCA amount
+    // SELL: harvest mode sells entire position, accumulate sells DCA amount
     const sellAmount = recommendation.amount
     const sharesToSell = sellAmount / price
     const actualSharesToSell = Math.min(sharesToSell, fundState.totalShares)
@@ -476,7 +476,7 @@ function processWeekForFund(
  * The recommendation system determines:
  * - BUY: when below target, limited by available cash
  * - SELL: when above target by min_profit_usd
- *   - Liquidate mode (accumulate=false): sell entire position
+ *   - Harvest mode (accumulate=false): sell entire position
  *   - Accumulate mode (accumulate=true): sell only DCA amount
  * - HOLD: when no cash available for buying
  */
@@ -559,7 +559,7 @@ export function generateTestFunds(options: GeneratorOptions = {}): FundData[] {
   )
   const btcEntries = coinbaseEntries.get('btc') ?? []
 
-  // robinhoodtest funds (liquidate mode) - interleaved to share cash properly
+  // robinhoodtest funds (harvest mode) - interleaved to share cash properly
   const tqqqConfig = createTradingFundConfig('stock', initialFundSize, startDate)
   tqqqConfig.accumulate = false
 

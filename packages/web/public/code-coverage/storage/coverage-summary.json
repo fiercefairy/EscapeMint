@@ -1,0 +1,112 @@
+{
+  "total": {
+    "lines": {
+      "total": 549,
+      "covered": 42,
+      "skipped": 0,
+      "pct": 7.65
+    },
+    "statements": {
+      "total": 549,
+      "covered": 42,
+      "skipped": 0,
+      "pct": 7.65
+    },
+    "functions": {
+      "total": 23,
+      "covered": 5,
+      "skipped": 0,
+      "pct": 21.73
+    },
+    "branches": {
+      "total": 23,
+      "covered": 19,
+      "skipped": 0,
+      "pct": 82.6
+    },
+    "branchesTrue": {
+      "total": 0,
+      "covered": 0,
+      "skipped": 0,
+      "pct": "Unknown"
+    }
+  },
+  "packages/storage/src/backup.ts": {
+    "lines": {
+      "total": 208,
+      "covered": 0,
+      "skipped": 0,
+      "pct": 0
+    },
+    "functions": {
+      "total": 1,
+      "covered": 0,
+      "skipped": 0,
+      "pct": 0
+    },
+    "statements": {
+      "total": 208,
+      "covered": 0,
+      "skipped": 0,
+      "pct": 0
+    },
+    "branches": {
+      "total": 1,
+      "covered": 0,
+      "skipped": 0,
+      "pct": 0
+    }
+  },
+  "packages/storage/src/fund-store.ts": {
+    "lines": {
+      "total": 339,
+      "covered": 42,
+      "skipped": 0,
+      "pct": 12.38
+    },
+    "functions": {
+      "total": 21,
+      "covered": 5,
+      "skipped": 0,
+      "pct": 23.8
+    },
+    "statements": {
+      "total": 339,
+      "covered": 42,
+      "skipped": 0,
+      "pct": 12.38
+    },
+    "branches": {
+      "total": 21,
+      "covered": 19,
+      "skipped": 0,
+      "pct": 90.47
+    }
+  },
+  "packages/storage/src/index.ts": {
+    "lines": {
+      "total": 2,
+      "covered": 0,
+      "skipped": 0,
+      "pct": 0
+    },
+    "functions": {
+      "total": 1,
+      "covered": 0,
+      "skipped": 0,
+      "pct": 0
+    },
+    "statements": {
+      "total": 2,
+      "covered": 0,
+      "skipped": 0,
+      "pct": 0
+    },
+    "branches": {
+      "total": 1,
+      "covered": 0,
+      "skipped": 0,
+      "pct": 0
+    }
+  }
+}

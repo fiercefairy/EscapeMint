@@ -1,0 +1,1790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EscapeMint Test Coverage Report</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.6;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: #f8fafc;
+    }
+    .subtitle {
+      color: #94a3b8;
+      margin-bottom: 2rem;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: #1e293b;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      border: 1px solid #334155;
+    }
+    .stat-label {
+      font-size: 0.875rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .stat-value {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin: 0.25rem 0;
+    }
+    .stat-detail {
+      font-size: 0.875rem;
+      color: #64748b;
+    }
+    .progress-bar {
+      height: 8px;
+      background: #334155;
+      border-radius: 4px;
+      margin-top: 0.5rem;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+    .section {
+      background: #1e293b;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      border: 1px solid #334155;
+    }
+    .section-title {
+      font-size: 1.25rem;
+      margin-bottom: 1rem;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .section-badge {
+      font-size: 0.875rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+    .category {
+      margin-bottom: 1.5rem;
+    }
+    .category:last-child {
+      margin-bottom: 0;
+    }
+    .category-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      background: #0f172a;
+      border-radius: 0.5rem;
+      margin-bottom: 0.75rem;
+      cursor: pointer;
+    }
+    .category-header:hover {
+      background: #1e3a5f;
+    }
+    .category-name {
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+    .category-stats {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .feature-list {
+      display: grid;
+      gap: 0.5rem;
+      padding-left: 1rem;
+    }
+    .feature {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0.75rem;
+      background: #0f172a;
+      border-radius: 0.375rem;
+      font-size: 0.875rem;
+    }
+    .feature-name {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .feature-status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .feature-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .priority-badge {
+      font-size: 0.75rem;
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .spec-link {
+      color: #60a5fa;
+      text-decoration: none;
+      font-size: 0.75rem;
+    }
+    .spec-link:hover {
+      text-decoration: underline;
+    }
+    .alert {
+      padding: 1rem;
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .alert-critical {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .alert-warning {
+      background: rgba(234, 179, 8, 0.1);
+      border: 1px solid rgba(234, 179, 8, 0.3);
+    }
+    .alert-title {
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .alert-list {
+      list-style: none;
+      font-size: 0.875rem;
+      color: #94a3b8;
+    }
+    .alert-list li {
+      padding: 0.25rem 0;
+    }
+    .timestamp {
+      text-align: center;
+      color: #64748b;
+      font-size: 0.875rem;
+      margin-top: 2rem;
+    }
+    .priority-legend {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: #94a3b8;
+    }
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>EscapeMint Test Coverage Report</h1>
+    <p class="subtitle">Feature-level test coverage tracking for E2E tests</p>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Overall Coverage</div>
+        <div class="stat-value" style="color: #22c55e">100%</div>
+        <div class="stat-detail">115 of 115 features tested</div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 100%; background: #22c55e"></div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Critical Priority</div>
+        <div class="stat-value" style="color: #22c55e">100%</div>
+        <div class="stat-detail">23 of 23 critical features</div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 100%; background: #22c55e"></div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">High Priority</div>
+        <div class="stat-value" style="color: #22c55e">100%</div>
+        <div class="stat-detail">45 of 45 high priority</div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 100%; background: #22c55e"></div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Medium Priority</div>
+        <div class="stat-value" style="color: #22c55e">100%</div>
+        <div class="stat-detail">39 of 39 medium priority</div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 100%; background: #22c55e"></div>
+        </div>
+      </div>
+    </div>
+
+    
+
+    
+
+    <div class="section">
+      <div class="section-title">
+        Feature Coverage by Category
+        <span class="priority-legend">
+          <span class="legend-item"><span class="legend-dot" style="background: #22c55e"></span> Tested</span>
+          <span class="legend-item"><span class="legend-dot" style="background: #ef4444"></span> Not Tested</span>
+        </span>
+      </div>
+
+      
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Fund Management</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(8/8)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>create-stock-fund</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>create-crypto-fund</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>create-cash-fund</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">cash-funds.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>create-derivatives-fund</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">derivatives-funds.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>edit-fund-config</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">integrity-tests.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>delete-fund</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>close-fund</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>reopen-fund</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Entry Management</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(11/11)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>add-buy-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>add-sell-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">yearly-simulation.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>add-deposit-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>add-withdraw-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>add-hold-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">yearly-simulation.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>add-dividend-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>add-expense-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>add-cash-interest</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>edit-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">integrity-tests.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>delete-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">integrity-tests.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>entry-date-validation</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">integrity-tests.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Derivatives Entry Types</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(4/4)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>add-funding-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">derivatives-funds.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>add-interest-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">derivatives-funds.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>add-rebate-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">derivatives-funds.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>add-fee-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">derivatives-funds.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Fund Configuration Flags</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(12/12)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>manage-cash-enabled</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>manage-cash-disabled</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>accumulate-mode-true</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>accumulate-mode-false</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>margin-enabled</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>margin-disabled</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>dividend-reinvest-true</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>dividend-reinvest-false</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>interest-reinvest-true</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>interest-reinvest-false</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>expense-from-fund-true</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>expense-from-fund-false</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">DCA Tier Logic</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(4/4)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>dca-min-when-profitable</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>dca-mid-when-mild-loss</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>dca-max-when-significant-loss</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>dca-tier-escalation</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">yearly-simulation.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Calculation Accuracy</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(7/7)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>apy-compounding</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">integrity-tests.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>start-input-calculation</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">integrity-tests.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>gain-percentage</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">yearly-simulation.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>cash-plus-invested-equals-fund-size</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">yearly-simulation.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>full-liquidation-reset</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">integrity-tests.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>share-tracking</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">integrity-tests.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>closed-fund-apy</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">fund-configurations.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Derivatives Calculations</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(6/6)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>margin-balance-tracking</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">derivatives-funds.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>leverage-calculation</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">derivatives-funds.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>liquidation-price</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">derivatives-funds.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>funding-payment-pnl</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">derivatives-funds.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>captured-profit</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">derivatives-funds.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>notional-value</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">derivatives-funds.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Market Scenario Simulations</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(6/6)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>bull-market</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">yearly-simulation.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>bear-market</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">yearly-simulation.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>volatile-market</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">yearly-simulation.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>crash-recovery</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">yearly-simulation.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>dividend-interest-flow</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">yearly-simulation.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>full-lifecycle</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">yearly-simulation.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Edge Cases</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(5/5)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>zero-value-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">integrity-tests.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>very-small-amounts</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">integrity-tests.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>very-large-amounts</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">integrity-tests.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>negative-values</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">integrity-tests.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>leap-year-dates</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #6b728020; color: #6b7280">low</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Dashboard UI</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(7/7)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>dashboard-load</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>fund-cards-display</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>fund-card-click-navigate</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>charts-toggle</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>platform-filter</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>aggregate-metrics</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>grid-table-toggle</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #6b728020; color: #6b7280">low</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Fund Detail UI</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(6/6)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>fund-detail-load</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>entry-table-display</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>recommendation-badge</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>charts-expand-collapse</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>chart-y-axis-clamp</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #6b728020; color: #6b7280">low</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>stats-section</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Fund CRUD via UI</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(5/5)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>create-fund-modal-open</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>create-fund-form-fill</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>create-fund-submit</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>edit-fund-panel</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>delete-fund-confirm</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Entry CRUD via UI</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(5/5)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>add-entry-modal</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>entry-form-fill</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>entry-form-submit</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #ef444420; color: #ef4444">critical</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>entry-row-click-edit</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>entry-delete-confirm</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Form Validation</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(6/6)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>required-field-validation</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>number-bounds-validation</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>dca-relationship-validation</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>date-validation</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>duplicate-ticker-prevention</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>platform-id-format</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">platform-management.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Navigation</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(5/5)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>deep-link-fund-detail</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>deep-link-fund-edit</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>deep-link-add-entry</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>breadcrumb-navigation</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>back-button-behavior</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #6b728020; color: #6b7280">low</span>
+                <a class="spec-link" href="#">ui-workflows.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Platform Management</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(5/5)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>create-platform</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">platform-management.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>edit-platform</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">platform-management.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>delete-empty-platform</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">platform-management.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>delete-platform-with-funds-error</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">platform-management.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>platform-cash-tracking-toggle</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">platform-management.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Import/Export</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(5/5)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>export-all-funds</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">import-export.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>import-merge-mode</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">import-export.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>import-replace-mode</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #f9731620; color: #f97316">high</span>
+                <a class="spec-link" href="#">import-export.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>import-preview</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>invalid-json-handling</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">import-export.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Backup &amp; Restore</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(5/5)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>create-backup</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>list-backups</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #6b728020; color: #6b7280">low</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>restore-backup</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>delete-backup</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>backup-ui</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #eab30820; color: #eab308">medium</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <div class="category">
+          <div class="category-header">
+            <span class="category-name">Settings</span>
+            <div class="category-stats">
+              <span style="color: #22c55e">100%</span>
+              <span style="color: #64748b">(3/3)</span>
+            </div>
+          </div>
+          <div class="feature-list">
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>toggle-advanced-tools</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #6b728020; color: #6b7280">low</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>toggle-test-funds</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #6b728020; color: #6b7280">low</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+            <div class="feature">
+              <div class="feature-name">
+                <span class="feature-status" style="background: #22c55e"></span>
+                <span>settings-persistence</span>
+              </div>
+              <div class="feature-meta">
+                <span class="priority-badge" style="background: #6b728020; color: #6b7280">low</span>
+                <a class="spec-link" href="#">high-priority-features.spec.ts</a>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+    </div>
+
+    <p class="timestamp">Generated on 1/11/2026, 5:39:46 PM</p>
+  </div>
+</body>
+</html>

@@ -6,7 +6,17 @@ A local-first, open-source capital allocation engine for rules-based fund manage
 
 ## Overview
 
-EscapeMint helps you manage investments across multiple accounts (Robinhood, Coinbase, M1, etc.) using deterministic, rules-based DCA (Dollar Cost Averaging) logic. It advises buy/sell actions based on your target growth expectations, automatically adjusting DCA amounts based on asset performance.
+EscapeMint is a **retirement system**, not a trading platform. The name says it all: **Escape** the rat race and **Mint** your financial freedom.
+
+It helps you manage investments across multiple accounts (Robinhood, Coinbase, M1, etc.) using deterministic, rules-based DCA (Dollar Cost Averaging) logic. It advises buy/sell actions based on your target growth expectations, automatically adjusting DCA amounts based on asset performance.
+
+**Key principles:**
+- **Long only** - We never short; we only bet on assets going up over time
+- **Forever assets** - Only hold what survives economic catastrophe (indexes, BTC)
+- **Systematic DCA** - Remove emotion, follow the rules
+- **10+ year horizon** - This is a retirement system, not day trading
+
+Read the full [Philosophy Guide](./docs/philosophy.md) to understand why this approach works.
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
@@ -14,7 +24,7 @@ EscapeMint helps you manage investments across multiple accounts (Robinhood, Coi
 
 - **Multi-Account Support**: Track multiple sub-funds with individual configurations
 - **Tiered DCA**: Automatically buy more when assets are down, less when on-target
-- **Accumulate Mode**: Choose to reinvest profits or liquidate when above target
+- **Accumulate/Harvest Modes**: Choose to reinvest profits or harvest gains when above target
 - **Cash Interest Tracking**: Track interest earned on idle cash
 - **Transparent & Auditable**: All data stored as plain TSV files you can inspect
 - **Local-First**: Runs entirely on your machine, no cloud dependencies
@@ -22,7 +32,7 @@ EscapeMint helps you manage investments across multiple accounts (Robinhood, Coi
 
 ## Supported Platforms
 
-EscapeMint has specific fund type handling for the following brokerages:
+EscapeMint has specific fund import handling for the following brokerages:
 
 | Platform | Fund Types | Features |
 |----------|-----------|----------|
@@ -35,49 +45,28 @@ EscapeMint has specific fund type handling for the following brokerages:
 
 ## Quick Start
 
-### Prerequisites
-
-- Node.js 20+ ([download](https://nodejs.org/))
-- pnpm ([install](https://pnpm.io/installation)) - `npm install -g pnpm`
-
-### Installation
-
 ```bash
 # Clone the repository
 git clone https://github.com/atomantic/escapemint.git
 cd escapemint
 
-# Install dependencies
-pnpm install
-
-# Build packages
-pnpm run build:packages
-
-# Create data directory (the test data generator on the Settings page can populate sample data)
-pnpm run setup:data
-
-# Start the development servers
-pnpm run dev
+# Run setup (checks dependencies, installs packages, starts servers)
+./setup.sh
 ```
+
+That's it. The setup script will:
+- Verify Node.js 20+ is installed
+- Install all dependencies
+- Build the packages
+- Start the development servers
 
 The app will be available at:
 - **Frontend**: http://localhost:5550
 - **API**: http://localhost:5551
 
-Press `Ctrl+C` to exit the logs view. The servers will continue running in the background.
+Press `Ctrl+C` to exit the logs view. The servers will continue running in the background with pm2.
 
-### PM2 Commands
-
-The app uses PM2 for process management with automatic restart on file changes:
-
-```bash
-pnpm run dev          # Start both frontend and API servers
-pnpm run dev:stop     # Stop all servers
-pnpm run dev:restart  # Restart all servers
-pnpm run dev:status   # Check server status
-pnpm run dev:logs     # View logs (Ctrl+C to exit)
-pnpm run stop         # Stop all servers
-```
+This is also a [PortOS](https://github.com/atomantic/PortOS) compatible app.
 
 ## How It Works
 
@@ -101,7 +90,7 @@ EscapeMint uses a tiered DCA strategy based on performance:
 
 When your investment is performing well above target (by `min_profit_usd`):
 - **Accumulate mode (true)**: Sell the DCA amount to take profits
-- **Accumulate mode (false)**: Liquidate entire position back to cash
+- **Harvest mode (false)**: Harvest entire position back to cash
 
 ### Example Workflow
 
@@ -141,36 +130,8 @@ Each sub-fund is configured with:
 | `min_profit_usd` | Profit threshold to sell | `100` |
 | `cash_apy` | Interest on idle cash | `0.044` (4.4%) |
 | `margin_apr` | Margin interest rate | `0.0725` (7.25%) |
-| `accumulate` | Reinvest or liquidate profits | `true` |
+| `accumulate` | Reinvest (true) or harvest (false) profits | `true` |
 | `start_date` | When tracking begins | `2024-01-01` |
-
-## Project Structure
-
-```
-escapemint/
-├── packages/
-│   ├── engine/     # Pure calculation functions
-│   ├── storage/    # TSV persistence layer (fund-store)
-│   ├── server/     # Express API (port 5551)
-│   └── web/        # React frontend (port 5550)
-├── data/
-│   └── funds/      # Your fund files (gitignored)
-├── ecosystem.config.cjs  # PM2 configuration
-└── package.json
-```
-
-## Scripts
-
-```bash
-pnpm install         # Install dependencies
-pnpm run build       # Build all packages
-pnpm run dev         # Start development servers (PM2)
-pnpm run dev:stop    # Stop development servers
-pnpm run test        # Run all tests
-pnpm run test:e2e    # Run end-to-end tests
-pnpm run lint        # Lint code
-pnpm run typecheck   # Type check
-```
 
 ## Data Storage
 
@@ -225,28 +186,12 @@ TargetDiff = ActualValue - ExpectedTarget
 
 ## Backup & Restore
 
-Your fund data is stored in plain TSV and JSON files in the `data/funds/` directory. To backup:
+The Settings page provides built-in backup and restore options:
 
-```bash
-# Create a backup
-cp -r data data.backup
+- **iCloud Backup/Restore** - Automatically sync your data to iCloud (macOS)
+- **JSON Export/Import** - Manual backup to a portable JSON file
 
-# Or backup to a cloud-synced folder
-cp -r data ~/iCloud/EscapeMint-backup
-```
-
-To restore:
-```bash
-# Stop the servers first
-pnpm run dev:stop
-
-# Restore from backup
-rm -rf data
-cp -r data.backup data
-
-# Restart servers
-pnpm run dev
-```
+Your fund data is stored as plain TSV and JSON files in `data/funds/`, so you can also backup manually via command line if preferred.
 
 ## Screenshots
 
@@ -270,10 +215,10 @@ Track funds in accumulate mode with profit extraction. Shows value & allocation 
 
 ![Fund Accumulate](docs/screenshots/fund-accumulate.png)
 
-### Fund - Liquidate Mode
-Track funds in liquidate mode with dividend tracking and extracted profits visualization.
+### Fund - Harvest Mode
+Track funds in harvest mode with dividend tracking and extracted profits visualization.
 
-![Fund Liquidate](docs/screenshots/fund-liquidate.png)
+![Fund Harvest](docs/screenshots/fund-harvest.png)
 
 ### Fund - Cash Tracking
 Track cash funds with interest earned, expenses, and balance over time with APY calculation.
@@ -284,6 +229,7 @@ Track cash funds with interest earned, expenses, and balance over time with APY 
 
 For detailed documentation, see the [docs/](./docs/) folder:
 
+- **[Philosophy](./docs/philosophy.md)** - Why this system exists (start here)
 - [Investment Strategy](./docs/investment-strategy.md) - DCA methodology and tiered buying
 - [Fund Management](./docs/fund-management.md) - Position and cash tracking
 - [Configuration Guide](./docs/configuration.md) - All configuration options
@@ -291,23 +237,28 @@ For detailed documentation, see the [docs/](./docs/) folder:
 - [System Architecture](./docs/architecture.md) - Package structure and data flow
 - [Derivatives](./docs/derivatives.md) - Perpetual futures data model
 
-## Development
-
-### Building from Source
+## Running Tests
 
 ```bash
-pnpm run build        # Build all packages
-pnpm run build:web    # Build frontend only
-pnpm run build:server # Build API only
+# Unit tests
+npm run test              # Run all unit tests (engine + storage)
+npm run test:engine       # Engine package only
+npm run test:storage      # Storage package only
+
+# End-to-end tests (Playwright)
+npm run test:e2e          # Run E2E tests headless
+npm run test:e2e:headed   # Run with visible browser
+npm run test:e2e:ui       # Run with Playwright UI
+
+# Code coverage
+npm run test:coverage     # Generate coverage report
+
+# Code quality
+npm run lint              # ESLint check
+npm run typecheck         # TypeScript check
 ```
 
-### Running Tests
-
-```bash
-pnpm run test         # Run all tests
-pnpm run test:engine  # Test calculation engine only
-pnpm run test:e2e     # Run Playwright end-to-end tests
-```
+Test coverage reports and feature coverage status are viewable in the app's Settings page.
 
 ## License
 

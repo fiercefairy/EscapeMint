@@ -99,7 +99,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
       const isFullLiquidation = sharesLiquidated || valueLiquidated
 
       // In accumulate mode, partial sells don't reduce invested (they're profit extraction)
-      // In liquidate mode, all sells reduce invested
+      // In harvest mode, all sells reduce invested
       const isAccumulate = config.accumulate
       if (!isAccumulate || isFullLiquidation) {
         startInput -= entry.amount
@@ -120,7 +120,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
           // Accumulate mode: entire sell amount is profit extraction (cost basis unchanged)
           extracted = entry.amount
         } else {
-          // Liquidate mode: proportional cost basis
+          // Harvest mode: proportional cost basis
           const sellProportion = entry.amount / (entry.value + entry.amount)
           const costBasisReturned = costBasis * sellProportion
           extracted = entry.amount - costBasisReturned

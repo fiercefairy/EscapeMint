@@ -151,7 +151,7 @@ How to handle profits above target.
 | Value | Behavior |
 |-------|----------|
 | `true` | Sell only the DCA limit amount (take partial profits) |
-| `false` | Liquidate entire position (full exit) |
+| `false` | Harvest entire position (full exit, restart cycle) |
 
 ### manage_cash
 

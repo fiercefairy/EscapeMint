@@ -177,7 +177,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         // Accumulate mode: entire sell is profit extraction
         extracted = entry.amount
       } else {
-        // Liquidate mode: proportional cost basis
+        // Harvest mode: proportional cost basis
         const sellProportion = entry.amount / ((entry.value ?? 0) + entry.amount)
         const costBasisReturned = costBasis * sellProportion
         extracted = entry.amount - costBasisReturned

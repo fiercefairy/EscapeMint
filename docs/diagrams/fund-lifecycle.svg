@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <defs>
+    <linearGradient id="seedGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="growGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2563eb;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="liftoffGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7c3aed;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="treeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#d97706;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="500" fill="#f8fafc"/>
+
+  <!-- Title -->
+  <text x="400" y="40" font-family="system-ui, sans-serif" font-size="24" font-weight="bold" fill="#1e293b" text-anchor="middle">Fund Lifecycle: From Seed to Money Tree</text>
+
+  <!-- Phase 1: Seed -->
+  <g transform="translate(100, 100)">
+    <rect x="0" y="0" width="140" height="100" rx="12" fill="url(#seedGrad)" filter="url(#shadow)"/>
+    <text x="70" y="35" font-family="system-ui, sans-serif" font-size="16" font-weight="bold" fill="white" text-anchor="middle">SEED</text>
+    <text x="70" y="55" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">Allocate capital</text>
+    <text x="70" y="70" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">Begin DCA</text>
+    <text x="70" y="85" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">Years 1-2</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <path d="M 250 150 L 290 150" stroke="#94a3b8" stroke-width="3" fill="none" marker-end="url(#arrowhead)"/>
+  <polygon points="290,145 300,150 290,155" fill="#94a3b8"/>
+
+  <!-- Phase 2: Grow -->
+  <g transform="translate(310, 100)">
+    <rect x="0" y="0" width="140" height="100" rx="12" fill="url(#growGrad)" filter="url(#shadow)"/>
+    <text x="70" y="35" font-family="system-ui, sans-serif" font-size="16" font-weight="bold" fill="white" text-anchor="middle">GROW</text>
+    <text x="70" y="55" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">Tiered DCA</text>
+    <text x="70" y="70" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">Weather volatility</text>
+    <text x="70" y="85" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">Years 2-7</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <path d="M 460 150 L 500 150" stroke="#94a3b8" stroke-width="3" fill="none"/>
+  <polygon points="500,145 510,150 500,155" fill="#94a3b8"/>
+
+  <!-- Phase 3: Liftoff -->
+  <g transform="translate(520, 100)">
+    <rect x="0" y="0" width="140" height="100" rx="12" fill="url(#liftoffGrad)" filter="url(#shadow)"/>
+    <text x="70" y="35" font-family="system-ui, sans-serif" font-size="16" font-weight="bold" fill="white" text-anchor="middle">LIFTOFF</text>
+    <text x="70" y="55" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">Above target APY</text>
+    <text x="70" y="70" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">Start harvesting</text>
+    <text x="70" y="85" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">Years 5-10</text>
+  </g>
+
+  <!-- Arrow 3 (down) -->
+  <path d="M 590 210 L 590 250" stroke="#94a3b8" stroke-width="3" fill="none"/>
+  <polygon points="585,250 590,260 595,250" fill="#94a3b8"/>
+
+  <!-- Phase 4: Money Tree -->
+  <g transform="translate(520, 270)">
+    <rect x="0" y="0" width="140" height="120" rx="12" fill="url(#treeGrad)" filter="url(#shadow)"/>
+    <text x="70" y="30" font-family="system-ui, sans-serif" font-size="16" font-weight="bold" fill="white" text-anchor="middle">MONEY TREE</text>
+    <text x="70" y="50" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">Regular cash yield</text>
+    <text x="70" y="65" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">Seeds other funds</text>
+    <text x="70" y="80" font-family="system-ui, sans-serif" font-size="11" fill="white" text-anchor="middle">Self-sustaining</text>
+    <text x="70" y="100" font-family="system-ui, sans-serif" font-size="14" font-weight="bold" fill="white" text-anchor="middle">FREEDOM</text>
+  </g>
+
+  <!-- Cash flow arrows from Money Tree -->
+  <path d="M 520 330 Q 400 330 300 280" stroke="#f59e0b" stroke-width="2" fill="none" stroke-dasharray="5,5"/>
+  <text x="350" y="290" font-family="system-ui, sans-serif" font-size="10" fill="#d97706">Seeds new funds</text>
+
+  <path d="M 520 360 Q 350 360 200 400" stroke="#f59e0b" stroke-width="2" fill="none" stroke-dasharray="5,5"/>
+  <text x="300" y="390" font-family="system-ui, sans-serif" font-size="10" fill="#d97706">Retirement income</text>
+
+  <!-- Key metrics boxes -->
+  <g transform="translate(50, 280)">
+    <rect x="0" y="0" width="180" height="140" rx="8" fill="white" stroke="#e2e8f0" stroke-width="2"/>
+    <text x="90" y="25" font-family="system-ui, sans-serif" font-size="12" font-weight="bold" fill="#475569" text-anchor="middle">Key Principles</text>
+    <line x1="20" y1="35" x2="160" y2="35" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="20" y="55" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Long Only</text>
+    <text x="20" y="75" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Forever Assets</text>
+    <text x="20" y="95" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Systematic DCA</text>
+    <text x="20" y="115" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">No Emotion</text>
+    <text x="20" y="135" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">10+ Year Horizon</text>
+  </g>
+
+  <!-- Timeline bar -->
+  <g transform="translate(100, 450)">
+    <rect x="0" y="0" width="560" height="8" rx="4" fill="#e2e8f0"/>
+    <rect x="0" y="0" width="100" height="8" rx="4" fill="#10b981"/>
+    <rect x="100" y="0" width="200" height="8" fill="#3b82f6"/>
+    <rect x="300" y="0" width="130" height="8" fill="#8b5cf6"/>
+    <rect x="430" y="0" width="130" height="8" rx="4" fill="#f59e0b"/>
+    <text x="50" y="25" font-family="system-ui, sans-serif" font-size="10" fill="#64748b" text-anchor="middle">1-2 yr</text>
+    <text x="200" y="25" font-family="system-ui, sans-serif" font-size="10" fill="#64748b" text-anchor="middle">3-7 yr</text>
+    <text x="365" y="25" font-family="system-ui, sans-serif" font-size="10" fill="#64748b" text-anchor="middle">5-10 yr</text>
+    <text x="495" y="25" font-family="system-ui, sans-serif" font-size="10" fill="#64748b" text-anchor="middle">10+ yr</text>
+  </g>
+</svg>

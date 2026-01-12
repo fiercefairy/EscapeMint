@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 440">
+  <defs>
+    <linearGradient id="accGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2563eb;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="harvGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#d97706;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="cashGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="450" fill="#f8fafc"/>
+
+  <!-- Title -->
+  <text x="400" y="35" font-family="system-ui, sans-serif" font-size="22" font-weight="bold" fill="#1e293b" text-anchor="middle">Two Strategies: Accumulate vs Harvest</text>
+
+  <!-- Left side: Accumulate Mode -->
+  <g transform="translate(30, 60)">
+    <!-- Header -->
+    <rect x="0" y="0" width="350" height="50" rx="8" fill="url(#accGrad)" filter="url(#shadow)"/>
+    <text x="175" y="32" font-family="system-ui, sans-serif" font-size="18" font-weight="bold" fill="white" text-anchor="middle">ACCUMULATE MODE</text>
+
+    <!-- Content box -->
+    <rect x="0" y="55" width="350" height="320" rx="8" fill="white" stroke="#3b82f6" stroke-width="2"/>
+
+    <!-- Subtitle -->
+    <text x="175" y="85" font-family="system-ui, sans-serif" font-size="14" font-weight="bold" fill="#3b82f6" text-anchor="middle">accumulate: true</text>
+
+    <!-- Description -->
+    <text x="175" y="110" font-family="system-ui, sans-serif" font-size="12" fill="#64748b" text-anchor="middle">Build position, sell only profits</text>
+
+    <!-- Visual: Growing position -->
+    <g transform="translate(50, 130)">
+      <rect x="0" y="80" width="40" height="30" fill="#93c5fd" rx="2"/>
+      <rect x="55" y="60" width="40" height="50" fill="#60a5fa" rx="2"/>
+      <rect x="110" y="40" width="40" height="70" fill="#3b82f6" rx="2"/>
+      <rect x="165" y="20" width="40" height="90" fill="#2563eb" rx="2"/>
+      <rect x="220" y="0" width="40" height="110" fill="#1d4ed8" rx="2"/>
+
+      <!-- Arrow showing growth -->
+      <path d="M 20 120 L 240 -10" stroke="#3b82f6" stroke-width="2" stroke-dasharray="4,4" fill="none"/>
+
+      <!-- Label -->
+      <text x="130" y="135" font-family="system-ui, sans-serif" font-size="11" fill="#64748b" text-anchor="middle">Position grows over time</text>
+    </g>
+
+    <!-- Best for section -->
+    <g transform="translate(20, 280)">
+      <text x="0" y="0" font-family="system-ui, sans-serif" font-size="12" font-weight="bold" fill="#475569">Best for:</text>
+      <text x="0" y="20" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Retirement accounts</text>
+      <text x="0" y="38" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Long-term wealth building</text>
+      <text x="0" y="56" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Index funds (VTI, VOO)</text>
+      <text x="0" y="74" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">BTC, ETH long-term holds</text>
+    </g>
+
+    <!-- Small profit extraction icon -->
+    <g transform="translate(220, 280)">
+      <rect x="0" y="0" width="100" height="60" rx="4" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+      <text x="50" y="20" font-family="system-ui, sans-serif" font-size="10" fill="#166534" text-anchor="middle">Sells only</text>
+      <text x="50" y="35" font-family="system-ui, sans-serif" font-size="10" fill="#166534" text-anchor="middle">excess profit</text>
+      <text x="50" y="52" font-family="system-ui, sans-serif" font-size="14" fill="#166534" text-anchor="middle">$$$</text>
+    </g>
+  </g>
+
+  <!-- Right side: Harvest Mode -->
+  <g transform="translate(420, 60)">
+    <!-- Header -->
+    <rect x="0" y="0" width="350" height="50" rx="8" fill="url(#harvGrad)" filter="url(#shadow)"/>
+    <text x="175" y="32" font-family="system-ui, sans-serif" font-size="18" font-weight="bold" fill="white" text-anchor="middle">HARVEST MODE</text>
+
+    <!-- Content box -->
+    <rect x="0" y="55" width="350" height="320" rx="8" fill="white" stroke="#f59e0b" stroke-width="2"/>
+
+    <!-- Subtitle -->
+    <text x="175" y="85" font-family="system-ui, sans-serif" font-size="14" font-weight="bold" fill="#d97706" text-anchor="middle">accumulate: false</text>
+
+    <!-- Description -->
+    <text x="175" y="110" font-family="system-ui, sans-serif" font-size="12" fill="#64748b" text-anchor="middle">Harvest when above target, restart</text>
+
+    <!-- Visual: Sawtooth pattern -->
+    <g transform="translate(30, 130)">
+      <!-- Sawtooth wave -->
+      <polyline points="0,100 50,40 50,100 100,20 100,100 150,30 150,100 200,10 200,100 250,25 250,100 290,50"
+                stroke="#f59e0b" stroke-width="3" fill="none"/>
+
+      <!-- Target line -->
+      <line x1="0" y1="50" x2="290" y2="50" stroke="#94a3b8" stroke-width="1" stroke-dasharray="5,5"/>
+      <text x="295" y="55" font-family="system-ui, sans-serif" font-size="9" fill="#94a3b8">target</text>
+
+      <!-- Cash arrows -->
+      <g transform="translate(50, 0)">
+        <text x="0" y="-5" font-family="system-ui, sans-serif" font-size="10" fill="#10b981">$</text>
+      </g>
+      <g transform="translate(100, 0)">
+        <text x="0" y="-5" font-family="system-ui, sans-serif" font-size="10" fill="#10b981">$$</text>
+      </g>
+      <g transform="translate(150, 0)">
+        <text x="0" y="-5" font-family="system-ui, sans-serif" font-size="10" fill="#10b981">$</text>
+      </g>
+      <g transform="translate(200, 0)">
+        <text x="0" y="-5" font-family="system-ui, sans-serif" font-size="10" fill="#10b981">$$$</text>
+      </g>
+      <g transform="translate(250, 0)">
+        <text x="0" y="-5" font-family="system-ui, sans-serif" font-size="10" fill="#10b981">$$</text>
+      </g>
+
+      <!-- Label -->
+      <text x="145" y="125" font-family="system-ui, sans-serif" font-size="11" fill="#64748b" text-anchor="middle">Cycles: build → harvest → repeat</text>
+    </g>
+
+    <!-- Best for section -->
+    <g transform="translate(20, 280)">
+      <text x="0" y="0" font-family="system-ui, sans-serif" font-size="12" font-weight="bold" fill="#475569">Best for:</text>
+      <text x="0" y="20" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Leveraged ETFs (TQQQ, SPXL)</text>
+      <text x="0" y="38" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Volatile assets</text>
+      <text x="0" y="56" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Cash generation</text>
+      <text x="0" y="74" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Money tree mode</text>
+    </g>
+
+    <!-- Full liquidation icon -->
+    <g transform="translate(220, 280)">
+      <rect x="0" y="0" width="100" height="60" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+      <text x="50" y="20" font-family="system-ui, sans-serif" font-size="10" fill="#92400e" text-anchor="middle">Sells entire</text>
+      <text x="50" y="35" font-family="system-ui, sans-serif" font-size="10" fill="#92400e" text-anchor="middle">position</text>
+      <text x="50" y="52" font-family="system-ui, sans-serif" font-size="14" fill="#92400e" text-anchor="middle">$$$$$</text>
+    </g>
+  </g>
+
+</svg>

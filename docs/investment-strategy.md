@@ -81,7 +81,7 @@ Action: SELL $100-$500 (the current tier amount)
 Result: Lock in some profits, keep the rest invested
 ```
 
-**Accumulate = false**: Liquidate the entire position
+**Harvest mode (accumulate = false)**: Harvest the entire position
 
 ```
 Target value:  $1,200
@@ -97,7 +97,7 @@ Result: Cash out completely, restart DCA cycle
 | Mode | Best For | Behavior |
 |------|----------|----------|
 | `accumulate: true` | Long-term growth | Sells profits, keeps core position |
-| `accumulate: false` | Swing trading | Liquidates when profitable, restarts |
+| `accumulate: false` (Harvest) | Volatile assets, cash generation | Harvests entire position when profitable, restarts |
 
 ## Complete Decision Flow
 

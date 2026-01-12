@@ -84,9 +84,9 @@ export interface SubFundConfig {
   margin_access_usd: number
 
   /**
-   * Accumulation mode:
-   * - true: Buy/sell only the DCA amount (reinvest profits)
-   * - false: When above target, liquidate entire position back to cash
+   * Accumulate vs Harvest mode:
+   * - true (Accumulate): Buy/sell only the DCA amount (reinvest profits, keep position)
+   * - false (Harvest): When above target, harvest entire position back to cash
    */
   accumulate: boolean
 

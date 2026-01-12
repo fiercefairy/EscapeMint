@@ -8,6 +8,7 @@ A local-first, open-source capital allocation engine for rules-based fund manage
 
 See the [docs/](./docs/) folder for detailed documentation:
 
+- **[Philosophy](./docs/philosophy.md)** - Why this system exists (start here)
 - [Investment Strategy](./docs/investment-strategy.md) - DCA methodology
 - [Fund Management](./docs/fund-management.md) - Position and cash tracking
 - [Configuration Guide](./docs/configuration.md) - All config options
@@ -54,10 +55,11 @@ See the [docs/](./docs/) folder for detailed documentation:
 ## Remaining Work
 
 ### Documentation (v1.0)
+- [x] Philosophy Guide (`docs/philosophy.md`) - Why this system exists, retirement focus
+- [x] Visual diagrams (SVG) - Fund lifecycle, DCA tiers, Accumulate vs Harvest
 - [ ] Getting Started Guide
 - [ ] Configuration Reference with examples
 - [ ] Calculation Explainer with flowcharts
-- [ ] Architecture diagrams (SVG)
 - [ ] API Reference (OpenAPI/Swagger)
 
 ### Testing Gaps
