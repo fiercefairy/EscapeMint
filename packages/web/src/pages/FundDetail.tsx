@@ -1094,11 +1094,11 @@ export function FundDetail() {
             <div className="flex-1 min-w-0">
               {/* Breadcrumb with indicators */}
               <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm flex-wrap gap-y-1">
-                <Link to="/" className="text-slate-400 hover:text-white leading-tight">Dashboard</Link>
+                <Link to="/" className="text-slate-400 hover:text-white">Dashboard</Link>
                 <span className="text-slate-600">/</span>
-                <Link to={`/platform/${fund.platform}`} className="text-slate-400 hover:text-white capitalize leading-tight truncate max-w-[100px] sm:max-w-none">{fund.platform}</Link>
+                <Link to={`/platform/${fund.platform}`} className="text-slate-400 hover:text-white capitalize truncate max-w-[100px] sm:max-w-none">{fund.platform}</Link>
                 <span className="text-slate-600">/</span>
-                <span className="text-white font-semibold uppercase leading-tight">{fund.ticker}</span>
+                <span className="text-white font-semibold uppercase">{fund.ticker}</span>
                 {/* Closed Tag */}
                 {(fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)) && (
                   <span className="px-1.5 py-0.5 text-[9px] leading-tight font-medium bg-slate-700 text-slate-400 rounded">Closed</span>
