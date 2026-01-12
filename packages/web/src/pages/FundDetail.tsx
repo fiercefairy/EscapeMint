@@ -360,6 +360,11 @@ export function FundDetail() {
       // Skip check for non-cash managing funds (they don't maintain a cash pool)
       const hasIntegrityIssue = manageCash && fundSize > 0 && netInvested > fundSize + 0.01
 
+      // Data integrity check: margin borrowed exceeds margin available (margin call situation)
+      const marginBorrowed = entry.margin_borrowed ?? 0
+      const marginAvailable = entry.margin_available ?? 0
+      const hasMarginIntegrityIssue = marginBorrowed > 0 && marginAvailable > 0 && marginBorrowed > marginAvailable + 0.01
+
       // Post-action cash (what's available AFTER this entry's action)
       const postActionCash = !manageCash ? 0 : (fundSize === 0 ? 0 : Math.max(0, fundSize - netInvested))
 
@@ -453,6 +458,7 @@ export function FundDetail() {
         realizedApy,
         liquidApy,
         hasIntegrityIssue,
+        hasMarginIntegrityIssue,
         // Derivatives fields (populated when isDerivativesFund)
         derivPosition: undefined as number | undefined,
         derivAvgEntry: undefined as number | undefined,
@@ -561,6 +567,11 @@ export function FundDetail() {
   // Count entries with data integrity issues
   const integrityIssueCount = useMemo(() => {
     return computedEntries.filter(e => e.hasIntegrityIssue).length
+  }, [computedEntries])
+
+  // Count entries with margin integrity issues (borrowed > available)
+  const marginIntegrityIssueCount = useMemo(() => {
+    return computedEntries.filter(e => e.hasMarginIntegrityIssue).length
   }, [computedEntries])
 
   // Draw Fund APY chart (shows both Liquid and Realized APY)
@@ -1523,6 +1534,23 @@ export function FundDetail() {
               </p>
               <p className="text-red-400/80 text-xs">
                 {integrityIssueCount} entr{integrityIssueCount === 1 ? 'y' : 'ies'} where invested amount exceeds fund size (highlighted in red below)
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Margin Integrity Alert */}
+        {marginIntegrityIssueCount > 0 && (
+          <div className="bg-orange-900/30 border border-orange-700 rounded-lg p-3 flex items-center gap-3">
+            <svg className="w-5 h-5 text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-orange-300 text-sm font-medium">
+                Margin Call Warning{marginIntegrityIssueCount > 1 ? 's' : ''}
+              </p>
+              <p className="text-orange-400/80 text-xs">
+                {marginIntegrityIssueCount} entr{marginIntegrityIssueCount === 1 ? 'y' : 'ies'} where margin borrowed exceeds margin available (highlighted in orange below)
               </p>
             </div>
           </div>
