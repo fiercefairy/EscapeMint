@@ -14,7 +14,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: 1, // Single worker to avoid data conflicts
   reporter: [
-    ['html', { outputFolder: 'packages/web/public/playwright-report' }],
+    ['html', { outputFolder: 'packages/web/public/playwright-report', open: 'never' }],
     ['list']
   ],
   use: {
@@ -43,8 +43,9 @@ export default defineConfig({
       timeout: 30000,
     },
   ],
-  timeout: 60000,
+  // Use generous timeouts in CI, faster locally for quick feedback
+  timeout: process.env.CI ? 30000 : 15000,
   expect: {
-    timeout: 10000,
+    timeout: process.env.CI ? 10000 : 5000,
   },
 })

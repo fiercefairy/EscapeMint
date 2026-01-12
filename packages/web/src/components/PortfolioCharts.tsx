@@ -618,7 +618,8 @@ function FundsStackedAreaChart({ data, allocations, resize }: {
       .attr('transform', `translate(${margin.left},${margin.top})`)
 
     // Transform data for D3 stack
-    const stackData = data.map(d => ({
+    type StackDataPoint = { date: Date; [key: string]: number | Date }
+    const stackData: StackDataPoint[] = data.map(d => ({
       date: new Date(d.date),
       ...d.fundBreakdown
     }))

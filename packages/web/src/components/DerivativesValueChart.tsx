@@ -213,8 +213,10 @@ export function DerivativesValueChart({ entries, resize }: DerivativesValueChart
         const i = bisect(data, x0, 1)
         const d0 = data[i - 1]
         const d1 = data[i]
-        const d = d1 && (x0.getTime() - d0.date.getTime() > d1.date.getTime() - x0.getTime()) ? d1 : d0
+        if (!d0 && !d1) return
 
+        // Select closest data point - if only one exists, use it; otherwise pick nearest
+        const d = !d0 ? d1 : !d1 ? d0 : (x0.getTime() - d0.date.getTime() > d1.date.getTime() - x0.getTime()) ? d1 : d0
         if (!d) return
 
         const xPos = x(d.date)

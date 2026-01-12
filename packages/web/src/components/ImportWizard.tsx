@@ -1845,6 +1845,7 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
 
                       for (let i = 0; i < symbols.length; i++) {
                         const symbol = symbols[i]
+                        if (!symbol) continue
                         const data = cryptoParseResult.bySymbol[symbol]
                         if (!data) continue
 

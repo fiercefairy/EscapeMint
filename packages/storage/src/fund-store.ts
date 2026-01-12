@@ -149,6 +149,9 @@ function parseEntry(line: string, headers: string[]): FundEntry {
       case 'margin_borrowed':
         if (val) entry.margin_borrowed = parseFloat(val)
         break
+      case 'margin_expense':
+        if (val) entry.margin_expense = parseFloat(val)
+        break
       case 'notes':
         if (val) entry.notes = val.replace(/\\t/g, '\t').replace(/\\n/g, '\n')
         break
@@ -204,6 +207,7 @@ function serializeEntry(entry: FundEntry): string {
     entry.fund_size?.toString() ?? '',
     entry.margin_available?.toString() ?? '',
     entry.margin_borrowed?.toString() ?? '',
+    entry.margin_expense?.toString() ?? '',  // FIX: Was missing, causing column misalignment
     (entry.notes ?? '').replace(/\t/g, '\\t').replace(/\n/g, '\\n'),
     // Derivatives-specific fields
     entry.contracts?.toString() ?? '',
@@ -244,13 +248,36 @@ export async function readFund(filePath: string): Promise<FundData | null> {
     return null
   }
 
-  const { platform, ticker } = parseFilename(filePath)
   const configPath = getConfigPath(filePath)
 
-  // Read config from JSON file
-  const config = await readConfig(configPath)
-  if (!config) {
+  // Read config from JSON file (now includes platform and ticker metadata)
+  const configData = await readConfig(configPath)
+  if (!configData) {
     return null
+  }
+
+  // Extract platform/ticker from config, fallback to filename parsing for legacy files
+  let platform: string
+  let ticker: string
+  let cleanConfig: SubFundConfig
+
+  type ConfigWithMetadata = SubFundConfig & { __platform?: string; __ticker?: string }
+  const configWithMeta = configData as ConfigWithMetadata
+
+  if ('__platform' in configData && '__ticker' in configData && configWithMeta.__platform && configWithMeta.__ticker) {
+    platform = configWithMeta.__platform
+    ticker = configWithMeta.__ticker
+    // Remove metadata from config by filtering out all keys starting with "__"
+    const cleanConfigEntries = Object.entries(configWithMeta).filter(
+      ([key]) => !key.startsWith('__')
+    )
+    cleanConfig = Object.fromEntries(cleanConfigEntries) as SubFundConfig
+  } else {
+    // Legacy: parse from filename (this has issues with multi-hyphen names)
+    const parsed = parseFilename(filePath)
+    platform = parsed.platform
+    ticker = parsed.ticker
+    cleanConfig = configData
   }
 
   // Read entries from TSV file
@@ -281,7 +308,7 @@ export async function readFund(filePath: string): Promise<FundData | null> {
     id: `${platform}-${ticker}`,
     platform,
     ticker,
-    config,
+    config: cleanConfig,
     entries
   }
 }
@@ -296,9 +323,14 @@ export async function writeFund(filePath: string, data: FundData): Promise<void>
     await mkdir(dir, { recursive: true })
   }
 
-  // Write config to JSON file
+  // Write config to JSON file with platform/ticker metadata
   const configPath = getConfigPath(filePath)
-  await writeConfig(configPath, data.config)
+  const configWithMetadata = {
+    ...data.config,
+    __platform: data.platform,
+    __ticker: data.ticker
+  }
+  await writeConfig(configPath, configWithMetadata as SubFundConfig)
 
   // Write only headers + entries to TSV (no config line)
   const lines: string[] = [

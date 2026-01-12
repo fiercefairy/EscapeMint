@@ -137,6 +137,19 @@ export const TEST_TICKERS = {
     BASIC: 'cash-basic',
     INTEREST: 'cash-interest',
     TWAB: 'cash-twab'
+  },
+
+  // High-priority feature tests
+  HIGH_PRIORITY: {
+    REOPEN_TEST: 'reopen-test',
+    REOPEN_RETAIN: 'reopen-retain',
+    BACKUP_TEST: 'backup-test',
+    DCA_INVALID_1: 'dca-invalid-1',
+    DCA_INVALID_2: 'dca-invalid-2',
+    DCA_VALID: 'dca-valid',
+    DATE_VAL_1: 'date-val-1',
+    DATE_VAL_2: 'date-val-2',
+    DATE_VAL_3: 'date-val-3'
   }
 } as const
 

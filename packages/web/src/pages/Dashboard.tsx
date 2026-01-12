@@ -400,9 +400,10 @@ export function Dashboard() {
           </select>
           <button
             onClick={() => setShowCreateModal(true)}
+            data-testid="create-fund"
             className="px-2.5 xs:px-3 sm:px-4 py-1.5 xs:py-2 text-[11px] xs:text-xs sm:text-sm bg-mint-600 text-white rounded-lg hover:bg-mint-700 active:bg-mint-800 transition-colors font-medium whitespace-nowrap touch-manipulation min-h-[36px] xs:min-h-[40px] md:min-h-[36px]"
           >
-            + Add
+            + Add Fund
           </button>
           <button
             onClick={() => setShowImportModal(true)}

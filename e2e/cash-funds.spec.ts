@@ -16,6 +16,7 @@ import { TEST_PLATFORM, TEST_TICKERS } from './test-fixtures'
 function generateCashFundConfig(overrides: Partial<FundConfig> = {}): FundConfig {
   return {
     status: 'active',
+    fund_type: 'cash',  // Critical: mark as cash fund type
     fund_size_usd: 10000,
     target_apy: 0,  // Cash funds don't have target APY for trading
     interval_days: 1,

@@ -23,7 +23,8 @@ import {
   computeFundMetrics,
   computeAggregateMetrics,
   computeClosedFundMetrics,
-  computeDerivativesEntriesState
+  computeDerivativesEntriesState,
+  type FundState
 } from '@escapemint/engine'
 import { notFound, badRequest } from '../middleware/error-handler.js'
 import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
@@ -210,6 +211,16 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
           latestValue,
           latest.date
         )
+
+        // For cash funds, override computed interest with actual cash_interest values from entries
+        if (isCashFund && state) {
+          const actualCashInterest = entriesToCashInterest(fund.entries)
+          state.cash_interest_usd = actualCashInterest
+          state.realized_gains_usd = actualCashInterest
+          state.start_input_usd = state.actual_value_usd - actualCashInterest
+          state.gain_usd = actualCashInterest
+          state.gain_pct = state.start_input_usd > 0 ? actualCashInterest / state.start_input_usd : 0
+        }
       }
     }
 
@@ -396,6 +407,16 @@ fundsRouter.get('/history', async (req, res, next) => {
           equityValue,
           date
         )
+
+        // For cash funds, override computed interest with actual cash_interest values from entries
+        if (isCashFund) {
+          const actualCashInterest = entriesToCashInterest(entriesUpToDate)
+          state.cash_interest_usd = actualCashInterest
+          state.realized_gains_usd = actualCashInterest
+          state.start_input_usd = state.actual_value_usd - actualCashInterest
+          state.gain_usd = actualCashInterest
+          state.gain_pct = state.start_input_usd > 0 ? actualCashInterest / state.start_input_usd : 0
+        }
 
         // Use actual_value_usd and start_input_usd from state (same as aggregate endpoint)
         totalValue += state.actual_value_usd
@@ -612,6 +633,16 @@ fundsRouter.get('/history', async (req, res, next) => {
           latestValue,
           latest.date
         )
+
+        // For cash funds, override computed interest with actual cash_interest values from entries
+        if (isCashFund && state) {
+          const actualCashInterest = entriesToCashInterest(fund.entries)
+          state.cash_interest_usd = actualCashInterest
+          state.realized_gains_usd = actualCashInterest
+          state.start_input_usd = state.actual_value_usd - actualCashInterest
+          state.gain_usd = actualCashInterest
+          state.gain_pct = state.start_input_usd > 0 ? actualCashInterest / state.start_input_usd : 0
+        }
       }
     }
 
@@ -681,14 +712,28 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
   const latestEntry = fund.entries.length > 0 ? fund.entries[fund.entries.length - 1] : null
 
   if (!latestEntry) {
+    // For funds with no entries, return initial state based on fund_size
+    const initialState = fund.config.fund_size_usd > 0 ? {
+      fund_size_usd: fund.config.fund_size_usd,
+      equity_usd: fund.config.fund_size_usd,
+      cash_available_usd: fund.config.fund_size_usd,
+      invested_usd: 0,
+      realized_gains_usd: 0,
+      unrealized_gains_usd: 0,
+      total_gains_usd: 0,
+      total_roi_pct: 0,
+      margin_borrowed_usd: 0,
+      equity_pct: 100
+    } : null
+
     return res.json({
       fund,
-      state: null,
+      state: initialState,
       recommendation: null,
       closedMetrics: null,
       margin_available: 0,
-      cash_available: 0,
-      message: 'No entries yet'
+      cash_available: fund.config.fund_size_usd,
+      message: initialState ? 'Initial state' : 'No entries yet'
     })
   }
 
@@ -730,16 +775,83 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
   }
 
   const manageCash = fund.config.manage_cash ?? true
+  const isDerivativesFund = fund.config.fund_type === 'derivatives'
 
-  const state = computeFundState(
-    configWithActualFundSize,
-    trades,
-    [],  // cashflows not stored in entries
-    dividends,
-    expenses,
-    latestEntry.value,
-    latestEntry.date
-  )
+  // For derivatives funds, compute state differently (don't use computeFundState)
+  let state
+  if (isDerivativesFund) {
+    const contractMultiplier = fund.config.contract_multiplier ?? 0.01
+    const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier)
+    const lastState = derivStates[derivStates.length - 1]
+
+    if (lastState) {
+      // Add dividends and subtract expenses (funding payments via dividend/expense fields in HOLD entries)
+      const totalDividends = dividends.reduce((sum, d) => sum + d.amount_usd, 0)
+      const totalExpenses = expenses.reduce((sum, e) => sum + e.amount_usd, 0)
+      // Get actual cash interest from entries (not from cumInterest which is for INTEREST actions)
+      const actualCashInterest = entriesToCashInterest(fund.entries)
+
+      // Realized P&L includes: trading P&L + dividends - expenses + cash interest
+      const adjustedRealizedPnl = lastState.realizedPnl + totalDividends - totalExpenses + actualCashInterest
+
+      // For derivatives: actual_value_usd represents current position value (notional), not total equity
+      // Current position value = cost basis + unrealized P&L
+      const currentPositionValue = lastState.costBasis + lastState.unrealizedPnl
+
+      state = {
+        actual_value_usd: currentPositionValue,
+        start_input_usd: lastState.costBasis,
+        realized_gains_usd: adjustedRealizedPnl,
+        gain_usd: lastState.unrealizedPnl + adjustedRealizedPnl,
+        gain_pct: lastState.costBasis > 0
+          ? (lastState.unrealizedPnl + adjustedRealizedPnl) / lastState.costBasis
+          : 0,
+        expected_target_usd: currentPositionValue,
+        target_diff_usd: 0,
+        cash_interest_usd: actualCashInterest,
+        // Cash available = margin balance - locked margin - expenses + dividends + interest
+        cash_available_usd: lastState.marginBalance - lastState.costBasis - totalExpenses + totalDividends + actualCashInterest
+      }
+    } else {
+      // No state computed - provide default empty state
+      state = {
+        actual_value_usd: 0,
+        start_input_usd: 0,
+        realized_gains_usd: 0,
+        gain_usd: 0,
+        gain_pct: 0,
+        expected_target_usd: 0,
+        target_diff_usd: 0,
+        cash_interest_usd: 0,
+        cash_available_usd: 0
+      }
+    }
+  } else {
+    // For non-derivatives funds, use computeFundState
+    state = computeFundState(
+      configWithActualFundSize,
+      trades,
+      [],  // cashflows not stored in entries
+      dividends,
+      expenses,
+      latestEntry.value,
+      latestEntry.date
+    )
+  }
+
+  // For cash funds, override computed interest with actual cash_interest values from entries
+  if (fund.config.fund_type === 'cash' && state) {
+    const actualCashInterest = entriesToCashInterest(fund.entries)
+    const expenses = entriesToExpenses(fund.entries)
+    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount_usd, 0)
+    // Recalculate all gain-related fields to be consistent with explicit cash_interest values
+    // Realized gains = interest - expenses
+    state.cash_interest_usd = actualCashInterest
+    state.realized_gains_usd = actualCashInterest - totalExpenses
+    state.start_input_usd = state.actual_value_usd - (actualCashInterest - totalExpenses)
+    state.gain_usd = actualCashInterest - totalExpenses
+    state.gain_pct = state.start_input_usd > 0 ? (actualCashInterest - totalExpenses) / state.start_input_usd : 0
+  }
 
   // Calculate post-action cash (cash available AFTER the latest entry's action)
   // Entry.cash is pre-action cash; we need to adjust for the action taken
@@ -827,9 +939,9 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
     marginBorrowed = latestEntry.margin_borrowed ?? 0
   }
 
-  const correctedState = { ...state, cash_available_usd: cashAvailable }
+  const correctedState: FundState = { ...state, cash_available_usd: cashAvailable }
 
-  // Skip recommendation for cash funds - they don't need trading recommendations
+  // Skip recommendation for cash funds and derivatives funds - they don't need trading recommendations
   const isCashFund = fund.config.fund_type === 'cash'
   // For recommendation, use POST-action equity (after SELL, equity is reduced)
   const postActionEquity = computePostActionEquity(latestEntry)
@@ -841,8 +953,8 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
     effectiveCash = cashAvailable + marginAvailable
   }
 
-  const stateForRecommendation = { ...correctedState, actual_value_usd: postActionEquity, cash_available_usd: effectiveCash }
-  const recommendation = isCashFund ? null : computeRecommendation(configWithActualFundSize, stateForRecommendation)
+  const stateForRecommendation: FundState = { ...correctedState, actual_value_usd: postActionEquity, cash_available_usd: effectiveCash }
+  const recommendation = (isCashFund || isDerivativesFund) ? null : computeRecommendation(configWithActualFundSize, stateForRecommendation)
 
   // Compute closed fund metrics if fund is closed (explicit status or legacy undefined status with zero fund size)
   let closedMetrics = null
@@ -865,7 +977,6 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
   }
 
   // Compute derivatives state for derivatives funds
-  const isDerivativesFund = fund.config.fund_type === 'derivatives'
   let derivativesEntriesState = null
 
   if (isDerivativesFund) {
@@ -1137,6 +1248,14 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
     snapshotDate
   )
 
+  // For cash funds, override computed interest with actual cash_interest values from entries
+  const isCashFund = fund.config.fund_type === 'cash'
+  if (isCashFund) {
+    const actualCashInterest = entriesToCashInterest(entriesUpToDate)
+    state.cash_interest_usd = actualCashInterest
+    state.realized_gains_usd = actualCashInterest
+  }
+
   // Calculate cash available and margin info
   let correctedCashAvailable: number
   let marginAvailable = 0
@@ -1167,7 +1286,7 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
   const correctedState = { ...state, cash_available_usd: correctedCashAvailable }
 
   // Skip recommendation for cash funds - they don't need trading recommendations
-  const isCashFund = fund.config.fund_type === 'cash'
+  // isCashFund already declared above
 
   // For M1 platform with margin enabled, add margin_available to cash for recommendation calculation
   let effectiveCash = correctedCashAvailable
@@ -1264,7 +1383,10 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
       )
       const entriesBefore = sortedEntries.filter(e => e.date < entry.date)
       const prevEntry = entriesBefore[entriesBefore.length - 1]
-      const prevFundSize = prevEntry?.fund_size ?? fund.config.fund_size_usd
+      // For derivatives funds, margin balance starts at 0 (not fund_size_usd)
+      // fund_size_usd for derivatives represents max position size, not initial balance
+      const isDerivativesFund = fund.config.fund_type === 'derivatives'
+      const prevFundSize = prevEntry?.fund_size ?? (isDerivativesFund ? 0 : fund.config.fund_size_usd)
 
       // Check for deposit in notes (format: "Deposit: $X")
       let depositAmount = 0
@@ -1318,6 +1440,10 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     // Add cash interest if provided
     if (entry.cash_interest) {
       newBalance += entry.cash_interest
+    }
+    // Subtract expense if provided
+    if (entry.expense) {
+      newBalance -= entry.expense
     }
 
     entry.value = Math.round(newBalance * 100) / 100
@@ -1567,6 +1693,16 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     entry.value,
     entry.date
   )
+
+  // For cash funds, override computed interest with actual cash_interest values from entries
+  if (isCashFund) {
+    const actualCashInterest = entriesToCashInterest(updated.entries)
+    state.cash_interest_usd = actualCashInterest
+    state.realized_gains_usd = actualCashInterest
+    state.start_input_usd = state.actual_value_usd - actualCashInterest
+    state.gain_usd = actualCashInterest
+    state.gain_pct = state.start_input_usd > 0 ? actualCashInterest / state.start_input_usd : 0
+  }
 
   // Correct cash_available for funds that don't manage their own cash
   const manageCashSelf2 = updated.config.manage_cash === true

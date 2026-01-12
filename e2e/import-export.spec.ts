@@ -45,7 +45,7 @@ test.describe('Export Functionality', () => {
 
     // Verify export structure
     expect(exportData).toHaveProperty('version')
-    expect(exportData).toHaveProperty('timestamp')
+    expect(exportData).toHaveProperty('exported_at')
     expect(exportData).toHaveProperty('funds')
     expect(Array.isArray(exportData.funds)).toBe(true)
 
@@ -114,11 +114,11 @@ test.describe('Export Functionality', () => {
 
     // Check metadata
     expect(exportData.version).toBeDefined()
-    expect(exportData.timestamp).toBeDefined()
-    expect(typeof exportData.timestamp).toBe('string')
+    expect(exportData.exported_at).toBeDefined()
+    expect(typeof exportData.exported_at).toBe('string')
 
     // Timestamp should be a valid ISO date string and not in the future
-    const exportTime = new Date(exportData.timestamp)
+    const exportTime = new Date(exportData.exported_at)
     expect(Number.isNaN(exportTime.getTime())).toBe(false)
     expect(exportTime.getTime()).toBeLessThanOrEqual(Date.now())
 
@@ -157,7 +157,7 @@ test.describe('Import Functionality', () => {
 
     // Import in merge mode
     const response = await page.request.post(`${API_BASE}/export/import`, {
-      data: { data: importData, mode: 'merge' }
+      data: { funds: importData.funds, mode: 'merge' }
     })
 
     expect(response.ok()).toBeTruthy()
@@ -203,7 +203,7 @@ test.describe('Import Functionality', () => {
 
     // Import in replace mode
     const response = await page.request.post(`${API_BASE}/export/import`, {
-      data: { data: importData, mode: 'replace' }
+      data: { funds: importData.funds, mode: 'replace' }
     })
 
     expect(response.ok()).toBeTruthy()
@@ -239,7 +239,7 @@ test.describe('Import Functionality', () => {
     }
 
     const response = await page.request.post(`${API_BASE}/export/import`, {
-      data: { data: invalidData, mode: 'merge' }
+      data: { ...invalidData, mode: 'merge' }
     })
 
     // Should fail validation with appropriate error
@@ -299,7 +299,7 @@ test.describe('Export/Import Round Trip', () => {
 
     // Import
     const importResponse = await page.request.post(`${API_BASE}/export/import`, {
-      data: { data: exportData, mode: 'merge' }
+      data: { funds: exportData.funds, mode: 'merge' }
     })
     expect(importResponse.ok()).toBeTruthy()
 
@@ -342,27 +342,22 @@ test.describe('Export/Import UI', () => {
     await deleteFundViaAPI(page, fund.id)
   })
 
-  test('import wizard shows in UI', async ({ page }) => {
+  test('import button exists in UI', async ({ page }) => {
     await page.goto(`${WEB_BASE}/settings`)
     await waitForPageReady(page)
 
-    // Look for import button on settings page
-    const importButton = page.locator('button:has-text("Import"), [data-testid="import"]')
+    // Verify import section exists with merge/replace options and file selection button
+    const importSection = page.locator('text=Import Data').locator('..')
+    await expect(importSection).toBeVisible()
 
-    // Import button must be visible for this test to be meaningful
-    await expect(importButton.first()).toBeVisible()
+    // Verify mode selection radios exist
+    const mergeRadio = importSection.locator('input[value="merge"]')
+    const replaceRadio = importSection.locator('input[value="replace"]')
+    await expect(mergeRadio).toBeVisible()
+    await expect(replaceRadio).toBeVisible()
 
-    await importButton.first().click()
-    await page.waitForTimeout(300)
-
-    // Import wizard/modal should appear
-    const importModal = page.locator('[role="dialog"], .modal, [data-testid="import-wizard"]')
-    await expect(importModal.first()).toBeVisible()
-
-    // Close it (best-effort cleanup)
-    const closeButton = page.locator('button:has-text("Cancel"), button:has-text("Close")')
-    if (await closeButton.count() > 0) {
-      await closeButton.first().click()
-    }
+    // Verify file selection button exists
+    const selectFileButton = importSection.locator('button:has-text("Select File")')
+    await expect(selectFileButton).toBeVisible()
   })
 })

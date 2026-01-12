@@ -4,7 +4,6 @@ import { toast } from 'sonner'
 import { createFund, notifyFundsChanged, type FundConfig, type FundType } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
 import {
-  isCashFund as checkIsCashFund,
   getFundTypeFeatures,
   FUND_TYPE_DEFAULTS
 } from '@escapemint/engine'
@@ -47,7 +46,6 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     start_date: new Date().toISOString().slice(0, 10)
   })
 
-  const _isCashFund = checkIsCashFund(fundType)
   const features = getFundTypeFeatures(fundType)
   const defaults = FUND_TYPE_DEFAULTS[fundType]
 
@@ -141,7 +139,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-slate-800 rounded-lg p-6 w-full max-w-lg border border-slate-700 max-h-[90vh] overflow-y-auto">
+      <div role="dialog" data-testid="create-fund-modal" className="bg-slate-800 rounded-lg p-6 w-full max-w-lg border border-slate-700 max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-bold text-white mb-2">Create New Fund</h2>
         <p className="text-slate-400 text-sm mb-4">Set up a new investment tracking fund</p>
 
@@ -202,6 +200,8 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
               <label className="block text-xs text-slate-400 mb-1">Ticker</label>
               <input
                 type="text"
+                name="ticker"
+                id="ticker"
                 value={ticker}
                 onChange={e => setTicker(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white uppercase focus:outline-none focus:border-mint-500"
@@ -217,6 +217,8 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
               <label className="block text-xs text-slate-400 mb-1">{!features.allowsTrading ? 'Initial Balance ($)' : 'Fund Size ($)'}</label>
               <input
                 type="number"
+                name="fund_size_usd"
+                id="fund-size"
                 value={formData.fund_size_usd}
                 onChange={e => setFormData({ ...formData, fund_size_usd: parseFloat(e.target.value) || 0 })}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
