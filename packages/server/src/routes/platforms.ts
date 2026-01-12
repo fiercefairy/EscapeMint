@@ -140,9 +140,10 @@ platformsRouter.post('/', async (req, res, next) => {
   if (!id) return next(badRequest('id is required'))
   if (!name) return next(badRequest('name is required'))
 
-  // Validate platform ID format: lowercase letters, numbers, and hyphens only
+  // Validate platform ID format: lowercase letters, numbers, and hyphens only.
+  // The ID is used as-is and is not auto-sanitized.
   if (!/^[a-z0-9-]+$/.test(id)) {
-    return next(badRequest('Platform ID must contain only lowercase letters, numbers, and hyphens'))
+    return next(badRequest('Platform ID must contain only lowercase letters, numbers, and hyphens (e.g., "my-broker-1")'))
   }
 
   const platformId = id

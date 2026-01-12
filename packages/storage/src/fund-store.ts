@@ -149,6 +149,9 @@ function parseEntry(line: string, headers: string[]): FundEntry {
       case 'margin_borrowed':
         if (val) entry.margin_borrowed = parseFloat(val)
         break
+      case 'margin_expense':
+        if (val) entry.margin_expense = parseFloat(val)
+        break
       case 'notes':
         if (val) entry.notes = val.replace(/\\t/g, '\t').replace(/\\n/g, '\n')
         break

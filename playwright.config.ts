@@ -43,8 +43,9 @@ export default defineConfig({
       timeout: 30000,
     },
   ],
-  timeout: 15000, // Fail faster - reduced from 60s to 15s
+  // Use generous timeouts in CI, faster locally for quick feedback
+  timeout: process.env.CI ? 30000 : 15000,
   expect: {
-    timeout: 5000, // Reduced from 10s to 5s
+    timeout: process.env.CI ? 10000 : 5000,
   },
 })
