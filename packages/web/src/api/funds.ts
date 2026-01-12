@@ -2,8 +2,7 @@ import { fetchJson, postJson, putJson, deleteResource, API_BASE } from './utils'
 import type { ApiResult } from './utils'
 import type { DerivativesEntryState } from '@escapemint/engine'
 
-// Re-export for backwards compatibility
-export type { ApiResult, DerivativesEntryState }
+export type { ApiResult }
 
 // Event to notify components when funds list changes
 export const FUNDS_CHANGED_EVENT = 'escapemint:funds-changed'
