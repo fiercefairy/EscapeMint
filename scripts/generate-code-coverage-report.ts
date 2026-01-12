@@ -10,8 +10,8 @@
  * Run with: npm run test:coverage
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync } from 'fs'
-import { join } from 'path'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, readdirSync } from 'fs'
+import { join, basename } from 'path'
 
 interface PackageCoverage {
   name: string
@@ -105,6 +105,29 @@ function getStatusColor(percentage: number): string {
   if (percentage >= 60) return '#eab308' // yellow
   if (percentage >= 40) return '#f97316' // orange
   return '#ef4444' // red
+}
+
+/**
+ * Sanitize coverage-summary.json by converting absolute paths to relative paths
+ * e.g., "/Users/foo/project/packages/engine/src/file.ts" -> "packages/engine/src/file.ts"
+ */
+function sanitizeCoverageSummary(sourcePath: string, destPath: string): void {
+  const content = readFileSync(sourcePath, 'utf-8')
+  const data = JSON.parse(content)
+  const sanitized: Record<string, unknown> = {}
+
+  for (const [key, value] of Object.entries(data)) {
+    if (key === 'total') {
+      sanitized[key] = value
+    } else {
+      // Convert absolute path to relative path starting from "packages/"
+      const match = key.match(/packages\/.*$/)
+      const relativePath = match ? match[0] : basename(key)
+      sanitized[relativePath] = value
+    }
+  }
+
+  writeFileSync(destPath, JSON.stringify(sanitized, null, 2))
 }
 
 function generateHTML(packages: PackageCoverage[], lowCoverage: FileCoverage[]): string {
@@ -427,6 +450,18 @@ for (const pkg of PACKAGES) {
     if (existsSync(pkgCoverageDir)) {
       mkdirSync(publicCoverageDir, { recursive: true })
       cpSync(pkgCoverageDir, publicCoverageDir, { recursive: true })
+
+      // Sanitize coverage-summary.json to remove absolute paths
+      const summaryPath = join(publicCoverageDir, 'coverage-summary.json')
+      if (existsSync(summaryPath)) {
+        sanitizeCoverageSummary(summaryPath, summaryPath)
+      }
+      // Also check lcov-report subdirectory
+      const lcovSummaryPath = join(publicCoverageDir, 'lcov-report', 'coverage-summary.json')
+      if (existsSync(lcovSummaryPath)) {
+        sanitizeCoverageSummary(lcovSummaryPath, lcovSummaryPath)
+      }
+
       console.log(`   📦 Copied ${pkg.name} coverage to public directory`)
     }
   } else {

@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EscapeMint Code Coverage Report</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.6;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: #f8fafc;
+    }
+    .subtitle {
+      color: #94a3b8;
+      margin-bottom: 2rem;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: #1e293b;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      border: 1px solid #334155;
+    }
+    .stat-label {
+      font-size: 0.875rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .stat-value {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin: 0.25rem 0;
+    }
+    .stat-detail {
+      font-size: 0.875rem;
+      color: #64748b;
+    }
+    .progress-bar {
+      height: 8px;
+      background: #334155;
+      border-radius: 4px;
+      margin-top: 0.5rem;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+    .section {
+      background: #1e293b;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      border: 1px solid #334155;
+    }
+    .section-title {
+      font-size: 1.25rem;
+      margin-bottom: 1.5rem;
+      color: #f8fafc;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th {
+      text-align: left;
+      padding: 0.75rem;
+      font-weight: 600;
+      color: #94a3b8;
+      border-bottom: 2px solid #334155;
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    td {
+      padding: 0.75rem;
+      border-bottom: 1px solid #334155;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    .package-name {
+      font-weight: 600;
+      color: #f8fafc;
+    }
+    .coverage-cell {
+      font-weight: 600;
+      text-align: right;
+    }
+    .alert {
+      padding: 1rem;
+      border-radius: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .alert-warning {
+      background: rgba(234, 179, 8, 0.1);
+      border: 1px solid rgba(234, 179, 8, 0.3);
+    }
+    .alert-title {
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: #eab308;
+    }
+    .file-list {
+      font-size: 0.875rem;
+      color: #94a3b8;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .file-item {
+      display: grid;
+      grid-template-columns: 1fr 1fr 4fr;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #334155;
+    }
+    .file-item:last-child {
+      border-bottom: none;
+    }
+    .file-package {
+      color: #60a5fa;
+      font-weight: 600;
+    }
+    .file-coverage {
+      color: #64748b;
+    }
+    .timestamp {
+      text-align: center;
+      color: #64748b;
+      font-size: 0.875rem;
+      margin-top: 2rem;
+    }
+    .links {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+    .link {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      color: #60a5fa;
+      text-decoration: none;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+    .link:hover {
+      background: #334155;
+      border-color: #60a5fa;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>EscapeMint Code Coverage Report</h1>
+    <p class="subtitle">Lines, statements, functions, and branches covered by unit tests</p>
+
+    <div class="links">
+      <a href="engine/index.html" class="link">📦 Engine Coverage</a>
+      <a href="storage/index.html" class="link">📦 Storage Coverage</a>
+      <a href="server/index.html" class="link">📦 Server Coverage</a>
+      <a href="web/index.html" class="link">📦 Web Coverage</a>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Lines</div>
+        <div class="stat-value" style="color: #ef4444">5.17%</div>
+        <div class="stat-detail">1355 of 26223 lines</div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 5.17%; background: #ef4444"></div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Statements</div>
+        <div class="stat-value" style="color: #ef4444">5.17%</div>
+        <div class="stat-detail">1355 of 26223 statements</div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 5.17%; background: #ef4444"></div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Functions</div>
+        <div class="stat-value" style="color: #ef4444">33.33%</div>
+        <div class="stat-detail">42 of 126 functions</div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 33.33%; background: #ef4444"></div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Branches</div>
+        <div class="stat-value" style="color: #eab308">68.25%</div>
+        <div class="stat-detail">273 of 400 branches</div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 68.25%; background: #eab308"></div>
+        </div>
+      </div>
+    </div>
+
+    
+    <div class="alert alert-warning">
+      <div class="alert-title">⚠ Files with Low Coverage (&lt;50%) - 64 files</div>
+      <div class="file-list">
+        
+        <div class="file-item">
+          <span class="file-package">engine</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/derivatives-types.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">engine</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/index.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">engine</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/types.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">storage</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/backup.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">storage</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/index.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">storage</span>
+          <span class="file-coverage">34.8%</span>
+          <span>src/fund-store.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">server</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/index.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">server</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/routes/backup.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">server</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/routes/compute.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">server</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/routes/export.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">server</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/routes/funds.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">server</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/routes/import.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">server</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/routes/platforms.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">server</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/routes/test-data.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">server</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/services/dashboard-cache.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">server</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/services/websocket.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">server</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/utils/fund-metrics.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">server</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/utils/platforms.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">server</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/utils/test-data-generator.ts</span>
+        </div>
+        
+        <div class="file-item">
+          <span class="file-package">web</span>
+          <span class="file-coverage">0.0%</span>
+          <span>src/App.tsx</span>
+        </div>
+        
+        <div style="padding: 0.5rem 0; color: #64748b;"><em>...and 44 more files</em></div>
+      </div>
+    </div>
+    
+
+    <div class="section">
+      <div class="section-title">Coverage by Package</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Package</th>
+            <th style="text-align: right">Lines</th>
+            <th style="text-align: right">Statements</th>
+            <th style="text-align: right">Functions</th>
+            <th style="text-align: right">Branches</th>
+          </tr>
+        </thead>
+        <tbody>
+          
+          <tr>
+            <td class="package-name">engine</td>
+            <td class="coverage-cell" style="color: #22c55e">
+              90.30%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(1313/1454)</span>
+            </td>
+            <td class="coverage-cell" style="color: #22c55e">
+              90.30%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(1313/1454)</span>
+            </td>
+            <td class="coverage-cell" style="color: #22c55e">
+              80.00%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(32/40)</span>
+            </td>
+            <td class="coverage-cell" style="color: #eab308">
+              79.29%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(249/314)</span>
+            </td>
+          </tr>
+          
+          <tr>
+            <td class="package-name">storage</td>
+            <td class="coverage-cell" style="color: #ef4444">
+              7.65%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(42/549)</span>
+            </td>
+            <td class="coverage-cell" style="color: #ef4444">
+              7.65%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(42/549)</span>
+            </td>
+            <td class="coverage-cell" style="color: #ef4444">
+              21.73%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(5/23)</span>
+            </td>
+            <td class="coverage-cell" style="color: #22c55e">
+              82.60%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(19/23)</span>
+            </td>
+          </tr>
+          
+          <tr>
+            <td class="package-name">server</td>
+            <td class="coverage-cell" style="color: #ef4444">
+              0.00%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(0/8376)</span>
+            </td>
+            <td class="coverage-cell" style="color: #ef4444">
+              0.00%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(0/8376)</span>
+            </td>
+            <td class="coverage-cell" style="color: #ef4444">
+              13.33%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(2/15)</span>
+            </td>
+            <td class="coverage-cell" style="color: #ef4444">
+              13.33%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(2/15)</span>
+            </td>
+          </tr>
+          
+          <tr>
+            <td class="package-name">web</td>
+            <td class="coverage-cell" style="color: #ef4444">
+              0.00%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(0/15844)</span>
+            </td>
+            <td class="coverage-cell" style="color: #ef4444">
+              0.00%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(0/15844)</span>
+            </td>
+            <td class="coverage-cell" style="color: #ef4444">
+              6.25%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(3/48)</span>
+            </td>
+            <td class="coverage-cell" style="color: #ef4444">
+              6.25%
+              <span style="color: #64748b; font-weight: normal; font-size: 0.875rem">(3/48)</span>
+            </td>
+          </tr>
+          
+        </tbody>
+      </table>
+    </div>
+
+    <p class="timestamp">Generated on 1/11/2026, 7:41:14 PM</p>
+  </div>
+</body>
+</html>

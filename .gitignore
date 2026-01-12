@@ -22,15 +22,14 @@ dist/
 Thumbs.db
 *.log
 
-# Test coverage
-coverage/
-coverage-report/
 
-# Playwright & Test Reports
+# Raw test coverage (contains absolute paths - use sanitized public versions instead)
+packages/*/coverage/
 test-results/
-packages/web/public/playwright-report/
-packages/web/public/coverage-report/
-packages/web/public/code-coverage/
+
+# Shipped reports (sanitized, commented to track in git)
+#packages/web/public/playwright-report/
+#packages/web/public/code-coverage/
 
 # Legacy test directory (defunct - using e2e/ now)
 test/
