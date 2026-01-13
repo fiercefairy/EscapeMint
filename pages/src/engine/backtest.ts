@@ -309,7 +309,9 @@ export function runBacktest(
         const remainingEquity = equity - sellAmount
         const sharesLiquidated = shares < 0.0001
         const valueLiquidated = remainingEquity <= sellAmount + 0.01
-        const isFullLiquidation = sharesLiquidated || valueLiquidated
+        // Dollar-based: total extracted (sells) >= total invested (buys)
+        const dollarsLiquidated = totalExtracted >= totalInvested
+        const isFullLiquidation = sharesLiquidated || valueLiquidated || dollarsLiquidated
 
         if (isFullLiquidation) {
           costBasis = 0

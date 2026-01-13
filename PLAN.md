@@ -10,7 +10,7 @@ See the [docs/](./docs/) folder for detailed documentation:
 
 - **[Philosophy](./docs/philosophy.md)** - Why this system exists (start here)
 - [Investment Strategy](./docs/investment-strategy.md) - DCA methodology
-- [Ticker Choices](./docs/ticker-choices.md) - Why we prefer volatile assets like TQQQ
+- Ticker Choices (documentation coming soon) - Why we prefer volatile assets like TQQQ
 - [Fund Management](./docs/fund-management.md) - Position and cash tracking
 - [Configuration Guide](./docs/configuration.md) - All config options
 - [Data Format](./docs/data-format.md) - TSV file structure
