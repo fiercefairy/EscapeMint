@@ -13,6 +13,7 @@ export const SIDEBAR_TOGGLED_EVENT = 'escapemint-sidebar-toggled'
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: '📊' },
+  { path: '/backtest', label: 'Backtest', icon: '📈' },
   { path: '/audit', label: 'Audit Trail', icon: '📋' },
   { path: '/platforms', label: 'Platforms', icon: '🏦' }
 ]

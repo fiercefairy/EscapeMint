@@ -4,9 +4,13 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "outDir": "./dist",
-    "rootDir": "./src",
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "~pages/*": ["../../pages/src/*"],
+      "~web/*": ["./src/*"],
+      "@escapemint/engine": ["../engine/src/index.ts"]
+    }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "../../pages/src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

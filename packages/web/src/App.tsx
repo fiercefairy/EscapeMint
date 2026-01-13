@@ -5,6 +5,7 @@ import { PlatformDetail } from './pages/PlatformDetail'
 import { AuditTrail } from './pages/AuditTrail'
 import { Platforms } from './pages/Platforms'
 import { Settings } from './pages/Settings'
+import { Backtest } from './pages/Backtest'
 import { Layout } from './components/Layout'
 import { DashboardProvider } from './contexts/DashboardContext'
 
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="audit" element={<AuditTrail />} />
         <Route path="platforms" element={<Platforms />} />
         <Route path="settings" element={<SettingsWithProvider />} />
+        <Route path="backtest" element={<Backtest />} />
       </Route>
     </Routes>
   )

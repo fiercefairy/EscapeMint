@@ -23,7 +23,7 @@ interface FundChartsProps {
   resize?: number | undefined
 }
 
-interface TimeSeriesPoint {
+export interface ChartTimeSeriesPoint {
   date: Date
   value: number
   startInput: number
@@ -42,6 +42,9 @@ interface TimeSeriesPoint {
   marginBorrowed: number
   expectedTarget: number
 }
+
+// Alias for internal use
+type TimeSeriesPoint = ChartTimeSeriesPoint
 
 // Compute time series data from entries
 function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeriesPoint[] {
@@ -233,7 +236,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
 }
 
 // Stacked Area Chart Component with hover tooltips
-function StackedAreaChart({
+export function StackedAreaChart({
   data,
   title,
   series,
@@ -559,7 +562,7 @@ function ChartSettings({
 }
 
 // Line/Area Chart Component with hover tooltips
-function AreaChart({
+export function AreaChart({
   data,
   title,
   valueKey,
@@ -814,7 +817,7 @@ function AreaChart({
 }
 
 // Combined Value & Fund Size Chart - shows fund allocation with asset value overlay
-function ValueAndFundSizeChart({
+export function ValueAndFundSizeChart({
   data,
   title,
   manageCash = true,
@@ -1122,7 +1125,7 @@ function ValueAndFundSizeChart({
 }
 
 // Margin Chart Component - shows margin available with borrowed as inner filled area
-function MarginChart({
+export function MarginChart({
   data,
   title,
   resize
