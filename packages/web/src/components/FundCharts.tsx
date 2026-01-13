@@ -57,6 +57,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
 
   let startInput = 0
   let costBasis = 0
+  let totalSells = 0  // For dollar-based liquidation detection
   let cumulativeDividends = 0
   let cumulativeExpenses = 0
   let cumulativeCashInterest = 0
@@ -68,7 +69,9 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
   // Track buy trades with their dates for expected target calculation
   // Each buy compounds individually from its purchase date
   const buyTrades: { date: Date; amount: number }[] = []
-  let expectedGainMultiplier = 1 // Tracks reduction from partial sells
+  // In harvest mode, tracks reduction from partial sells
+  // In accumulate mode, expected gain is NOT reduced by sells (it's based on invested principal)
+  let expectedGainMultiplier = 1
 
   for (const entry of sorted) {
     const date = new Date(entry.date)
@@ -92,14 +95,15 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
       // Track this buy for expected target calculation
       buyTrades.push({ date, amount: entry.amount })
     } else if (entry.action === 'SELL' && entry.amount) {
+      totalSells += entry.amount
       // Calculate extracted profit using proper cost basis
       let extracted = 0
-      // Check for full liquidation - use OR logic to match table calculation
-      // Either condition triggers liquidation (share tracking can accumulate errors over time)
+      // Check for full liquidation using multiple detection methods (matches engine)
       const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
       const sharesLiquidated = hasShareTracking && Math.abs(cumShares) < 0.0001
       const valueLiquidated = entry.value <= entry.amount + 0.01
-      const isFullLiquidation = sharesLiquidated || valueLiquidated
+      const dollarLiquidated = totalSells >= costBasis
+      const isFullLiquidation = sharesLiquidated || valueLiquidated || dollarLiquidated
 
       // In accumulate mode, partial sells don't reduce invested (they're profit extraction)
       // In harvest mode, all sells reduce invested
@@ -112,6 +116,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
         // Full liquidation - extract remaining profit
         extracted = entry.amount - costBasis
         costBasis = 0
+        totalSells = 0
         startInput = 0
         cumShares = 0
         // Reset expected target tracking
@@ -129,17 +134,20 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
           extracted = entry.amount - costBasisReturned
           costBasis -= costBasisReturned
         }
-        // Reduce expected gain for partial sells
-        // Use share-based fraction when available, else dollar-based
-        if (hasShareTracking) {
-          const sharesBeforeSell = cumShares + Math.abs(entry.shares!)
-          const sellFraction = sharesBeforeSell > 0
-            ? Math.abs(entry.shares!) / sharesBeforeSell
-            : 1
-          expectedGainMultiplier *= (1 - sellFraction)
-        } else if (startInput > 0) {
-          const sellFraction = Math.min(1, entry.amount / (startInput + entry.amount))
-          expectedGainMultiplier *= (1 - sellFraction)
+        // In harvest mode, reduce expected gain for partial sells
+        // In accumulate mode, expected gain is NOT reduced (based on invested principal)
+        if (!isAccumulate) {
+          // Use share-based fraction when available, else dollar-based
+          if (hasShareTracking) {
+            const sharesBeforeSell = cumShares + Math.abs(entry.shares!)
+            const sellFraction = sharesBeforeSell > 0
+              ? Math.abs(entry.shares!) / sharesBeforeSell
+              : 1
+            expectedGainMultiplier *= (1 - sellFraction)
+          } else if (startInput > 0) {
+            const sellFraction = Math.min(1, entry.amount / (startInput + entry.amount))
+            expectedGainMultiplier *= (1 - sellFraction)
+          }
         }
       }
       realizedGains += extracted

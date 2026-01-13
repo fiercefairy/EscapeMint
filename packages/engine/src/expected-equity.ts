@@ -39,13 +39,15 @@ export function computeStartInput(trades: Trade[], asOfDate: string, config?: Su
       totalBuys += trade.amount_usd
     } else {
       totalSells += trade.amount_usd
-      // Check for full liquidation using share-based detection if available
+      // Check for full liquidation using multiple detection methods
       const hasShareTracking = trade.shares !== undefined && trade.shares !== 0
-      const isFullLiquidation = hasShareTracking
-        ? Math.abs(cumShares) < 0.0001
-        : (trade.value !== undefined
-          ? trade.value <= trade.amount_usd + 0.01
-          : totalSells >= totalBuys)
+      const shareBasedLiquidation = hasShareTracking && Math.abs(cumShares) < 0.0001
+      // Value-based: remaining value is dust compared to sale (value <= sale amount)
+      const valueBasedLiquidation = trade.value !== undefined && trade.value <= trade.amount_usd + 0.01
+      // Dollar-based fallback: total sells >= total buys
+      const dollarBasedLiquidation = totalSells >= totalBuys
+      // Full liquidation if ANY detection method triggers
+      const isFullLiquidation = shareBasedLiquidation || valueBasedLiquidation || dollarBasedLiquidation
       if (isFullLiquidation) {
         totalBuys = 0
         totalSells = 0
@@ -117,13 +119,15 @@ export function computeExpectedTarget(
       expectedGain += gain
     } else {
       totalSells += trade.amount_usd
-      // Check for full liquidation using share-based detection if available
+      // Check for full liquidation using multiple detection methods
       const hasShareTracking = trade.shares !== undefined && trade.shares !== 0
-      const isFullLiquidation = hasShareTracking
-        ? Math.abs(cumShares) < 0.0001
-        : (trade.value !== undefined
-          ? trade.value <= trade.amount_usd + 0.01
-          : totalSells >= totalBuys)
+      const shareBasedLiquidation = hasShareTracking && Math.abs(cumShares) < 0.0001
+      // Value-based: remaining value is dust compared to sale (value <= sale amount)
+      const valueBasedLiquidation = trade.value !== undefined && trade.value <= trade.amount_usd + 0.01
+      // Dollar-based fallback: total sells >= total buys
+      const dollarBasedLiquidation = totalSells >= totalBuys
+      // Full liquidation if ANY detection method triggers
+      const isFullLiquidation = shareBasedLiquidation || valueBasedLiquidation || dollarBasedLiquidation
       if (isFullLiquidation) {
         startInput = 0
         expectedGain = 0
@@ -133,25 +137,21 @@ export function computeExpectedTarget(
       } else {
         // In accumulate mode, partial sells are profit extraction only -
         // principal remains invested, so don't reduce startInput or expectedGain.
-        // In harvest mode (or when accumulate is false/undefined), reduce proportionally.
+        // Expected target represents what invested capital SHOULD grow to at target APY.
+        // In harvest mode, reduce both proportionally (closing out position).
         const isAccumulateMode = config.accumulate === true
         if (!isAccumulateMode && startInput > 0) {
-          // SELL reduces the invested amount and proportionally reduces expected gain
-          // Use share-based fraction when available for accurate position tracking
+          // Harvest mode: reduce expected gain and startInput proportionally
           let sellFraction: number
           if (hasShareTracking) {
-            // Share-based: what fraction of position are we selling
-            // cumShares is AFTER the sell, so add back shares to get pre-sell total
             const sharesBeforeSell = cumShares + Math.abs(trade.shares!)
             sellFraction = sharesBeforeSell > 0
               ? Math.abs(trade.shares!) / sharesBeforeSell
               : 1
           } else {
-            // Dollar-based fallback (less accurate for appreciated/depreciated assets)
             sellFraction = Math.min(1, trade.amount_usd / startInput)
           }
           expectedGain *= (1 - sellFraction)
-          // Reduce startInput proportionally by the fraction sold
           startInput = Math.max(0, startInput * (1 - sellFraction))
         }
       }
