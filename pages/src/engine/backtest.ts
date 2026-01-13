@@ -304,8 +304,14 @@ export function runBacktest(
         spxlEquivShares *= (1 - sellProportion)
         tqqqEquivShares *= (1 - sellProportion)
 
-        // Check for full liquidation
-        const isFullLiquidation = shares < 0.0001
+        // Check for full liquidation using multiple detection methods (matches engine)
+        // After selling, remaining equity = (shares - sharesToSell) * price = equity - sellAmount
+        const remainingEquity = equity - sellAmount
+        const sharesLiquidated = shares < 0.0001
+        const valueLiquidated = remainingEquity <= sellAmount + 0.01
+        // Dollar-based: total extracted (sells) >= total invested (buys)
+        const dollarsLiquidated = totalExtracted >= totalInvested
+        const isFullLiquidation = sharesLiquidated || valueLiquidated || dollarsLiquidated
 
         if (isFullLiquidation) {
           costBasis = 0

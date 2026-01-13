@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, memo } from 'react'
 import * as d3 from 'd3'
 import type { TimeSeriesPoint, AllocationData } from '../api/funds'
 import { formatCurrencyCompact, formatPercentSimple } from '../utils/format'
@@ -30,7 +30,7 @@ const COLORS = [
 ]
 
 // Mobile-friendly allocation list (replaces pie charts on small screens)
-function AllocationList({ data, title, valueKey, showPlatformOnly = false }: {
+const AllocationList = memo(function AllocationList({ data, title, valueKey, showPlatformOnly = false }: {
   data: AllocationData[]
   title: string
   valueKey: 'value' | 'cash' | 'fundSize'
@@ -85,10 +85,10 @@ function AllocationList({ data, title, valueKey, showPlatformOnly = false }: {
       </div>
     </div>
   )
-}
+})
 
 // Pie Chart Component with side-by-side legend
-function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: string; valueKey: 'value' | 'cash' | 'fundSize' }) {
+const PieChart = memo(function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: string; valueKey: 'value' | 'cash' | 'fundSize' }) {
   const ref = useRef<SVGSVGElement>(null)
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -206,10 +206,10 @@ function PieChart({ data, title, valueKey }: { data: AllocationData[]; title: st
       />
     </div>
   )
-}
+})
 
 // Platform Pie Chart Component (shows just platform name in legend)
-function PlatformPieChart({ data, title, valueKey }: { data: AllocationData[]; title: string; valueKey: 'value' | 'cash' | 'fundSize' }) {
+const PlatformPieChart = memo(function PlatformPieChart({ data, title, valueKey }: { data: AllocationData[]; title: string; valueKey: 'value' | 'cash' | 'fundSize' }) {
   const ref = useRef<SVGSVGElement>(null)
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
@@ -321,10 +321,10 @@ function PlatformPieChart({ data, title, valueKey }: { data: AllocationData[]; t
       />
     </div>
   )
-}
+})
 
 // Area Chart Component
-function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = formatCurrencyCompact, resize }: {
+const AreaChart = memo(function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = formatCurrencyCompact, resize }: {
   data: TimeSeriesPoint[]
   title: string
   valueKey: keyof TimeSeriesPoint
@@ -453,10 +453,10 @@ function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = for
       />
     </div>
   )
-}
+})
 
 // Stacked Area Chart for Cash vs Asset
-function StackedAreaChart({ data, resize }: { data: TimeSeriesPoint[]; resize?: number }) {
+const StackedAreaChart = memo(function StackedAreaChart({ data, resize }: { data: TimeSeriesPoint[]; resize?: number }) {
   const ref = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
 
@@ -584,10 +584,10 @@ function StackedAreaChart({ data, resize }: { data: TimeSeriesPoint[]; resize?: 
       </div>
     </div>
   )
-}
+})
 
 // Stacked Area Chart showing individual fund contributions to Total Fund Size
-function FundsStackedAreaChart({ data, allocations, resize }: {
+const FundsStackedAreaChart = memo(function FundsStackedAreaChart({ data, allocations, resize }: {
   data: TimeSeriesPoint[]
   allocations: AllocationData[]
   resize?: number
@@ -742,10 +742,10 @@ function FundsStackedAreaChart({ data, allocations, resize }: {
       </div>
     </div>
   )
-}
+})
 
 // Combined Realized + Unrealized + Liquid Gains Chart
-function GainsChart({ data, currentRealized, currentUnrealized, currentLiquid, resize, storageKey = 'gains' }: {
+const GainsChart = memo(function GainsChart({ data, currentRealized, currentUnrealized, currentLiquid, resize, storageKey = 'gains' }: {
   data: TimeSeriesPoint[]
   currentRealized: number
   currentUnrealized: number
@@ -1084,10 +1084,10 @@ function GainsChart({ data, currentRealized, currentUnrealized, currentLiquid, r
       />
     </div>
   )
-}
+})
 
 // Combined Realized + Liquid APY Chart
-function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize, storageKey = 'apy' }: {
+const APYChart = memo(function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize, storageKey = 'apy' }: {
   data: TimeSeriesPoint[]
   currentRealizedAPY: number
   currentLiquidAPY: number
@@ -1392,10 +1392,10 @@ function APYChart({ data, currentRealizedAPY, currentLiquidAPY, resize, storageK
       />
     </div>
   )
-}
+})
 
 // Combined Margin Access + Borrowed Chart
-function MarginChart({ data, currentAccess, currentBorrowed, resize }: {
+const MarginChart = memo(function MarginChart({ data, currentAccess, currentBorrowed, resize }: {
   data: TimeSeriesPoint[]
   currentAccess: number
   currentBorrowed: number
@@ -1585,9 +1585,9 @@ function MarginChart({ data, currentAccess, currentBorrowed, resize }: {
       />
     </div>
   )
-}
+})
 
-export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTotals }: PortfolioChartsProps) {
+export const PortfolioCharts = memo(function PortfolioCharts({ timeSeries, allocations, totals, aggregateTotals }: PortfolioChartsProps) {
   const hasMarginAccess = totals.totalCurrentMarginAccess > 0
   const [resize, setResize] = useState(0)
 
@@ -1703,4 +1703,4 @@ export function PortfolioCharts({ timeSeries, allocations, totals, aggregateTota
       </div>
     </div>
   )
-}
+})

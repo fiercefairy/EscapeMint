@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -13,8 +13,10 @@ import {
 import { notifyFundsChanged } from '../api/funds'
 
 import { ConfirmDialog } from '../components/ConfirmDialog'
-import { ImportWizard } from '../components/ImportWizard'
 import { FundsTable } from '../components/fundsTable'
+
+// Lazy load the heavy ImportWizard component
+const ImportWizard = lazy(() => import('../components/ImportWizard').then(m => ({ default: m.ImportWizard })))
 
 export function PlatformDetail() {
   const { platformId } = useParams<{ platformId: string }>()
@@ -347,13 +349,15 @@ export function PlatformDetail() {
         onReload={loadData}
       />
 
-      {/* Import Wizard */}
+      {/* Import Wizard - lazy loaded */}
       {showImportWizard && (
-        <ImportWizard
-          onClose={() => setShowImportWizard(false)}
-          onImported={loadData}
-          platform={platformId}
-        />
+        <Suspense fallback={<div className="fixed inset-0 bg-slate-900/80 flex items-center justify-center z-50"><div className="animate-spin h-8 w-8 border-2 border-mint-500 border-t-transparent rounded-full" /></div>}>
+          <ImportWizard
+            onClose={() => setShowImportWizard(false)}
+            onImported={loadData}
+            platform={platformId}
+          />
+        </Suspense>
       )}
 
       {/* Cash Tracking Confirmation Dialogs */}

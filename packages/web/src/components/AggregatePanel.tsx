@@ -1,10 +1,11 @@
+import { memo } from 'react'
 import type { AggregateMetrics } from '../api/funds'
 
 interface AggregatePanelProps {
   metrics: AggregateMetrics
 }
 
-export function AggregatePanel({ metrics }: AggregatePanelProps) {
+export const AggregatePanel = memo(function AggregatePanel({ metrics }: AggregatePanelProps) {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -117,4 +118,4 @@ export function AggregatePanel({ metrics }: AggregatePanelProps) {
       </div>
     </div>
   )
-}
+})
