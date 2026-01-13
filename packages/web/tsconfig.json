@@ -6,11 +6,10 @@
     "outDir": "./dist",
     "noEmit": true,
     "paths": {
-      "~pages/*": ["../../pages/src/*"],
       "~web/*": ["./src/*"],
       "@escapemint/engine": ["../engine/src/index.ts"]
     }
   },
-  "include": ["src/**/*", "../../pages/src/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

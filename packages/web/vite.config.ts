@@ -12,8 +12,6 @@ export default defineConfig({
     alias: {
       // Allow backtest page to import engine directly
       '@escapemint/engine': resolve(__dirname, '../engine/src/index.ts'),
-      // Allow importing from pages directory
-      '~pages': resolve(__dirname, '../../pages/src'),
       // Allow pages to import from web package
       '~web': resolve(__dirname, './src')
     }
