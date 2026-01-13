@@ -121,6 +121,7 @@ export interface ComputedEntry extends FundEntry {
   realizedApy: number
   liquidApy: number
   hasIntegrityIssue: boolean
+  hasMarginIntegrityIssue: boolean  // margin_borrowed > margin_available
   // Derivatives-specific computed fields
   derivPosition?: number       // Net contract position
   derivAvgEntry?: number       // Average entry price (BTC price)

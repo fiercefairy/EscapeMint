@@ -111,6 +111,51 @@ Replace static sample data with dynamic test data generation using real historic
 - [x] Add UI button to load test data (Settings page)
 - [x] Removed `data.example/` directory - new users run `npm run setup:data` to create data directory, then use Settings > Generate Test Data
 
+### M1 Test Platform with Margin (Complete)
+
+Added m1test platform with margin-enabled stock fund simulation:
+
+**Test Funds:**
+- `m1test-cash` - Cash fund providing margin access
+- `m1test-pie` - Blended stock fund (50% BTC + 25% TQQQ + 25% SPXL) with margin
+
+**Margin Configuration:**
+- 48% of equity available as margin
+- 25% buffer on utilization (HOLD when >75% utilized)
+- 5% APR margin interest, 4% APY cash interest
+- Dividends and sells pay down margin first
+
+**Implementation:**
+- [x] Create pie-weekly.json blended price history
+- [x] Create generate-m1test.cjs generation script
+- [x] Add margin integrity warnings to UI (orange highlighting)
+- [ ] Integrate m1test generation into "Load Test Data" button
+- [ ] Parameterized test data generation (see below)
+
+### Parameterized Test Data Generation (Planned)
+
+Enable loading test data with configurable parameters via the Settings UI.
+
+**Goals:**
+- Allow users to customize test fund parameters when loading demo data
+- Support different scenarios (aggressive margin, conservative, etc.)
+
+**Parameters to Support:**
+- `initialCash` - Starting cash balance (default: $20,000)
+- `fundSize` - Target fund size (default: $20,000)
+- `marginRate` - Margin available as % of equity (default: 48%)
+- `marginBuffer` - Utilization limit before HOLD (default: 25%)
+- `marginApr` - Margin interest rate (default: 5%)
+- `cashApy` - Cash interest rate (default: 4%)
+- `dcaMin/Mid/Max` - DCA amounts (default: $200/$350/$500)
+
+**Implementation Steps:**
+- [ ] Add parameter inputs to Test/Demo Data settings section
+- [ ] Convert generate-m1test.cjs to TypeScript function in test-data-generator.ts
+- [ ] Update POST /api/v1/test-data/generate to accept m1test parameters
+- [ ] Store last-used parameters in localStorage for convenience
+- [ ] Add preset configurations (Conservative, Moderate, Aggressive)
+
 ### Future Features (v1.1+)
 - Tax Lot Tracking (FIFO/LIFO/specific lot)
 - Benchmark Comparison (vs SPY, BTC)

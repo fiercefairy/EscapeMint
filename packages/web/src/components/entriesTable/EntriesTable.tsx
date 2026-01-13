@@ -513,9 +513,16 @@ export function EntriesTable({
               <tr
                 key={i}
                 className={`border-b border-slate-700/50 text-xs hover:bg-slate-700/30 ${
-                  entry.hasIntegrityIssue ? 'bg-red-900/40 hover:bg-red-900/50' : ''
+                  entry.hasIntegrityIssue ? 'bg-red-900/40 hover:bg-red-900/50' :
+                  entry.hasMarginIntegrityIssue ? 'bg-orange-900/40 hover:bg-orange-900/50' : ''
                 }`}
-                title={entry.hasIntegrityIssue ? `Data integrity issue: invested ($${entry.totalInvested.toFixed(2)}) exceeds fund size ($${entry.fundSize.toFixed(2)})` : undefined}
+                title={
+                  entry.hasIntegrityIssue
+                    ? `Data integrity issue: invested ($${entry.totalInvested.toFixed(2)}) exceeds fund size ($${entry.fundSize.toFixed(2)})`
+                    : entry.hasMarginIntegrityIssue
+                    ? `Margin call: borrowed ($${(entry.margin_borrowed ?? 0).toFixed(2)}) exceeds available ($${(entry.margin_available ?? 0).toFixed(2)})`
+                    : undefined
+                }
               >
                 {visibleOrderedColumns.map((col, idx) => {
                   const isFirst = idx === 0
