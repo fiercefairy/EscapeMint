@@ -10,6 +10,7 @@ See the [docs/](./docs/) folder for detailed documentation:
 
 - **[Philosophy](./docs/philosophy.md)** - Why this system exists (start here)
 - [Investment Strategy](./docs/investment-strategy.md) - DCA methodology
+- [Ticker Choices](./docs/ticker-choices.md) - Why we prefer volatile assets like TQQQ
 - [Fund Management](./docs/fund-management.md) - Position and cash tracking
 - [Configuration Guide](./docs/configuration.md) - All config options
 - [Data Format](./docs/data-format.md) - TSV file structure
@@ -18,35 +19,52 @@ See the [docs/](./docs/) folder for detailed documentation:
 
 ---
 
-## Product Overview
+## Next Up
 
-### User Stories (v1)
+### Target Equity Price Display
+Show the current target equity price on fund dashboards (the price above which you should sell).
 
-1. **Portfolio Setup**: Create a portfolio with multiple sub-funds (Robinhood, Coinbase, M1, etc.)
-2. **Sub-Fund Configuration**: Configure each sub-fund with target APY, action amount, period, and start date
-3. **Snapshot Entry**: Enter equity snapshots (date, value) for any sub-fund at any time
-4. **Action Recommendations**: See buy/sell/hold recommendations based on deviation from expected growth
-5. **Action Tracking**: Record actual actions (which may differ from recommendation) with a reason
-6. **Cash Flow Tracking**: Log deposits, withdrawals, dividends, and fees separately from equity snapshots
-7. **Audit Trail**: View complete history of snapshots, recommendations, and actions
-8. **Export/Import**: Export all data and import it on another machine
+**Implementation:**
+- [ ] Calculate target sell price from expected_target / shares
+- [ ] Display on fund detail page header
+- [ ] Add to entry form as reference
 
-### Non-Goals (v1)
+### Configurable Entry Form Fields
+Allow per-fund configuration of which entry fields are shown and their order. Some accounts track price/size, others don't.
 
-- No live market data or price feeds
-- No automated trade execution
-- No M1 margin borrowing logic
-- No multi-user or authentication
-- No cloud sync or remote storage
+**Implementation:**
+- [ ] Add `entry_fields` config to fund JSON (array of field names + order)
+- [ ] Create field configuration UI in fund settings
+- [ ] Update entry form to respect field visibility/ordering
+- [ ] Preserve backwards compatibility (default shows all fields)
 
-### Roadmap
+### Price/Size Charts
+When tracking price/size, show additional charts on the fund dashboard.
+
+**Implementation:**
+- [ ] Add price history chart (price over time)
+- [ ] Add share accumulation chart (total shares over time)
+- [ ] Add cost basis vs current price comparison
+- [ ] Only show charts when fund has price/size data
+
+### Ticker Choices Documentation
+Document why we prefer volatile assets like TQQQ over stable ones like VTI.
+
+**Implementation:**
+- [ ] Create `docs/ticker-choices.md`
+- [ ] Explain volatility benefits for DCA strategy
+- [ ] Compare TQQQ vs VTI performance scenarios
+- [ ] Add recommended ticker list with rationale
+
+---
+
+## Roadmap
 
 | Version | Focus | Status |
 |---------|-------|--------|
-| v0.1-0.4 | Core engine, storage, UI, platform features | Complete |
-| v0.5 | DRY/YAGNI cleanup, shared cash funds, M1 import | Complete |
-| v0.6 | Coinbase derivatives integration | Complete |
-| v1.0 | Stable release, documentation | Planned |
+| v0.1-0.6 | Core engine, storage, UI, derivatives | Complete |
+| v0.17+ | Target price display, configurable forms | In Progress |
+| v1.0 | Stable release, full documentation | Planned |
 | v1.1 | Tolerance bands, advanced analytics | Planned |
 | v2.0 | Strategy plugins, per-holding allocation | Planned |
 
@@ -54,33 +72,19 @@ See the [docs/](./docs/) folder for detailed documentation:
 
 ## Remaining Work
 
-### Documentation (v1.0)
-- [x] Philosophy Guide (`docs/philosophy.md`) - Why this system exists, retirement focus
+### Documentation
+- [x] Philosophy Guide (`docs/philosophy.md`)
 - [x] Visual diagrams (SVG) - Fund lifecycle, DCA tiers, Accumulate vs Harvest
+- [ ] Ticker Choices Guide (`docs/ticker-choices.md`)
 - [ ] Getting Started Guide
-- [ ] Configuration Reference with examples
-- [ ] Calculation Explainer with flowcharts
 - [ ] API Reference (OpenAPI/Swagger)
 
 ### Testing Gaps
-- [x] Feature coverage tracking system (`e2e/coverage-matrix.ts`)
-- [x] Derivatives fund E2E tests (`e2e/derivatives-funds.spec.ts`)
-- [x] UI workflow E2E tests (`e2e/ui-workflows.spec.ts`)
-- [x] Platform management tests (`e2e/platform-management.spec.ts`)
-- [x] Import/export tests (`e2e/import-export.spec.ts`)
-- [x] Cash fund tests (`e2e/cash-funds.spec.ts`)
 - [ ] Server route unit tests (`packages/server/test/routes/`)
 - [ ] Aggregate calculation tests (`packages/engine/test/aggregate.test.ts`)
-- [ ] Input validation tests
 - [ ] Visual regression tests for charts
 
-### Code Quality
-- [x] Create `Modal.tsx` wrapper component
-- [x] Consolidate format functions in `utils/format.ts` (added `formatCurrencyCompact`, `formatPercentSimple`)
-- [x] Remove unused `ScrapeEvent` type from `packages/web/src/api/import.ts`
-- [x] Performance optimizations (React.memo, code splitting, bundle optimization)
-
-### Known Issues to Investigate
+### Known Issues
 - Full liquidation detection logic in `funds.ts:557-558` may be fragile
 - Cashflows not stored - line 384 passes empty array (verify DEPOSIT/WITHDRAW handling)
 
@@ -89,72 +93,9 @@ See the [docs/](./docs/) folder for detailed documentation:
 - [ ] Update apply endpoint to use correct action types
 - [ ] Store contracts/price properly on trade entries
 
-### Test Data Generation System (Complete)
-
-Replace static sample data with dynamic test data generation using real historical prices.
-
-**Test Funds:**
-- `coinbasetest-cash` - Cash fund for Coinbase platform
-- `coinbasetest-btc` - Bitcoin fund using BTCUSD prices
-- `robinhoodtest-cash` - Cash fund for Robinhood platform
-- `robinhoodtest-tqqq` - TQQQ 3x Nasdaq ETF fund
-- `robinhoodtest-spxl` - SPXL 3x S&P 500 ETF fund
-
-**DCA Strategy:**
-- Starting capital: $10,000 in each asset fund
-- Weekly investment: $100 every Wednesday (avoids Monday holidays)
-- Duration: 5 years of historical data
-
-**Implementation:**
-- [x] Fetch and store 5 years of weekly price data (BTCUSD, TQQQ, SPXL)
-- [x] Create test data generator utility
-- [x] Add API endpoint `POST /api/v1/test-data/generate`
-- [x] Add UI button to load test data (Settings page)
-- [x] Removed `data.example/` directory - new users run `npm run setup:data` to create data directory, then use Settings > Generate Test Data
-
-### M1 Test Platform with Margin (Complete)
-
-Added m1test platform with margin-enabled stock fund simulation:
-
-**Test Funds:**
-- `m1test-cash` - Cash fund providing margin access
-- `m1test-pie` - Blended stock fund (50% BTC + 25% TQQQ + 25% SPXL) with margin
-
-**Margin Configuration:**
-- 48% of equity available as margin
-- 25% buffer on utilization (HOLD when >75% utilized)
-- 5% APR margin interest, 4% APY cash interest
-- Dividends and sells pay down margin first
-
-**Implementation:**
-- [x] Create pie-weekly.json blended price history
-- [x] Create generate-m1test.cjs generation script
-- [x] Add margin integrity warnings to UI (orange highlighting)
-- [ ] Integrate m1test generation into "Load Test Data" button
-- [ ] Parameterized test data generation (see below)
-
-### Parameterized Test Data Generation (Planned)
-
-Enable loading test data with configurable parameters via the Settings UI.
-
-**Goals:**
-- Allow users to customize test fund parameters when loading demo data
-- Support different scenarios (aggressive margin, conservative, etc.)
-
-**Parameters to Support:**
-- `initialCash` - Starting cash balance (default: $20,000)
-- `fundSize` - Target fund size (default: $20,000)
-- `marginRate` - Margin available as % of equity (default: 48%)
-- `marginBuffer` - Utilization limit before HOLD (default: 25%)
-- `marginApr` - Margin interest rate (default: 5%)
-- `cashApy` - Cash interest rate (default: 4%)
-- `dcaMin/Mid/Max` - DCA amounts (default: $200/$350/$500)
-
-**Implementation Steps:**
+### Parameterized Test Data (Planned)
 - [ ] Add parameter inputs to Test/Demo Data settings section
-- [ ] Convert generate-m1test.cjs to TypeScript function in test-data-generator.ts
-- [ ] Update POST /api/v1/test-data/generate to accept m1test parameters
-- [ ] Store last-used parameters in localStorage for convenience
+- [ ] Integrate m1test generation into "Load Test Data" button
 - [ ] Add preset configurations (Conservative, Moderate, Aggressive)
 
 ### Future Features (v1.1+)
@@ -179,17 +120,14 @@ Enable loading test data with configurable parameters via the Settings UI.
 
 ## Test Coverage Summary
 
-### Feature Coverage Report (Updated)
-
 ```
 Overall: 85% (97/114 features)
 Critical: 100% (23/23)
 High: 93% (42/45)
 Medium: 82% (31/38)
-Low: 13% (1/8)
 ```
 
-Run `npm run test:coverage-report` to generate the HTML report at `coverage-report/index.html`.
+Run `npm run test:coverage-report` to generate the HTML report.
 
 ### E2E Test Files
 
@@ -204,18 +142,43 @@ Run `npm run test:coverage-report` to generate the HTML report at `coverage-repo
 | `import-export.spec.ts` | 12+ | Export/import with merge/replace modes |
 | `cash-funds.spec.ts` | 15+ | Cash fund lifecycle, interest, expenses |
 
-### Unit Test Coverage
+### Unit Tests
 
 | Package | Tests | Status |
 |---------|-------|--------|
-| Engine | 135 tests | Passing |
-| Storage | 9 tests | Passing |
+| Engine | 135 | Passing |
+| Storage | 9 | Passing |
 
-### Testing System Audit Conclusions
+---
 
-**Recommendation: Keep Playwright/Vitest approach** - well-designed with:
-- Real formula testing (no mocking)
-- Test data isolation via "test" platform
-- Deterministic historical market data
+## Completed Work (Archive)
 
-**BDD/Gherkin NOT adopted** - current tests are already readable, solo project doesn't need stakeholder specs, and would add maintenance overhead.
+<details>
+<summary>v0.1-0.6 Completed Features</summary>
+
+### Test Data Generation System
+- [x] Fetch and store 5 years of weekly price data (BTCUSD, TQQQ, SPXL)
+- [x] Create test data generator utility
+- [x] Add API endpoint `POST /api/v1/test-data/generate`
+- [x] Add UI button to load test data (Settings page)
+
+### M1 Test Platform with Margin
+- [x] Create pie-weekly.json blended price history
+- [x] Create generate-m1test.cjs generation script
+- [x] Add margin integrity warnings to UI (orange highlighting)
+
+### Code Quality
+- [x] Create `Modal.tsx` wrapper component
+- [x] Consolidate format functions in `utils/format.ts`
+- [x] Remove unused `ScrapeEvent` type
+- [x] Performance optimizations (React.memo, code splitting, bundle optimization)
+
+### E2E Test Coverage
+- [x] Feature coverage tracking system (`e2e/coverage-matrix.ts`)
+- [x] Derivatives fund E2E tests
+- [x] UI workflow E2E tests
+- [x] Platform management tests
+- [x] Import/export tests
+- [x] Cash fund tests
+
+</details>
