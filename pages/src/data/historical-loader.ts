@@ -14,18 +14,20 @@ export async function loadHistoricalData(): Promise<Record<string, HistoricalDat
   }
 
   try {
+    // Use Vite's base URL for correct path in production
+    const base = import.meta.env.BASE_URL
     // Add cache-busting timestamp to ensure fresh data
     const cacheBust = `?t=${Date.now()}`
     const [spxl, tqqq, btc] = await Promise.all([
-      fetch(`/data/spxl-weekly.json${cacheBust}`).then(r => {
+      fetch(`${base}data/spxl-weekly.json${cacheBust}`).then(r => {
         if (!r.ok) throw new Error(`Failed to load SPXL data: ${r.statusText}`)
         return r.json()
       }),
-      fetch(`/data/tqqq-weekly.json${cacheBust}`).then(r => {
+      fetch(`${base}data/tqqq-weekly.json${cacheBust}`).then(r => {
         if (!r.ok) throw new Error(`Failed to load TQQQ data: ${r.statusText}`)
         return r.json()
       }),
-      fetch(`/data/btc-weekly.json${cacheBust}`).then(r => {
+      fetch(`${base}data/btc-weekly.json${cacheBust}`).then(r => {
         if (!r.ok) throw new Error(`Failed to load BTC data: ${r.statusText}`)
         return r.json()
       })
