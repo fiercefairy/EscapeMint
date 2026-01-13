@@ -78,6 +78,7 @@ See the [docs/](./docs/) folder for detailed documentation:
 - [x] Create `Modal.tsx` wrapper component
 - [x] Consolidate format functions in `utils/format.ts` (added `formatCurrencyCompact`, `formatPercentSimple`)
 - [x] Remove unused `ScrapeEvent` type from `packages/web/src/api/import.ts`
+- [x] Performance optimizations (React.memo, code splitting, bundle optimization)
 
 ### Known Issues to Investigate
 - Full liquidation detection logic in `funds.ts:557-558` may be fragile

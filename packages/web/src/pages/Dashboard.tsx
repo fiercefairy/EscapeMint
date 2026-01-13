@@ -1,13 +1,15 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, lazy, Suspense } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { FundCard } from '../components/FundCard'
 import { AggregatePanel } from '../components/AggregatePanel'
 import { PortfolioCharts } from '../components/PortfolioCharts'
 import { CreateFundModal } from '../components/CreateFundModal'
-import { ImportWizard } from '../components/ImportWizard'
 import { WelcomePanel } from '../components/WelcomePanel'
 import { useDashboard } from '../contexts/DashboardContext'
 import type { FundSummary, AggregateMetrics } from '../api/funds'
+
+// Lazy load the heavy ImportWizard component (3000+ lines)
+const ImportWizard = lazy(() => import('../components/ImportWizard').then(m => ({ default: m.ImportWizard })))
 
 // Skeleton for metrics panel
 function MetricsPanelSkeleton() {
@@ -571,12 +573,14 @@ export function Dashboard() {
         />
       )}
 
-      {/* Import Wizard */}
+      {/* Import Wizard - lazy loaded */}
       {showImportModal && (
-        <ImportWizard
-          onClose={() => setShowImportModal(false)}
-          onImported={refresh}
-        />
+        <Suspense fallback={<div className="fixed inset-0 bg-slate-900/80 flex items-center justify-center z-50"><div className="animate-spin h-8 w-8 border-2 border-mint-500 border-t-transparent rounded-full" /></div>}>
+          <ImportWizard
+            onClose={() => setShowImportModal(false)}
+            onImported={refresh}
+          />
+        </Suspense>
       )}
     </div>
   )

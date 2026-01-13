@@ -16,6 +16,20 @@ export default defineConfig({
       '~web': resolve(__dirname, './src')
     }
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split D3 into its own chunk (large library)
+          d3: ['d3'],
+          // Split Recharts into its own chunk
+          recharts: ['recharts'],
+          // Split React vendor bundle
+          vendor: ['react', 'react-dom', 'react-router-dom']
+        }
+      }
+    }
+  },
   server: {
     port: PORTS.WEB,
     proxy: {

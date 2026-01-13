@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { FundSummary } from '../api/funds'
 import {
   isCashFund as checkIsCashFund,
@@ -13,7 +14,7 @@ export interface FundCardProps {
   realizedGains?: number | undefined
 }
 
-export function FundCard({ fund, impactPct, realizedAPY, liquidAPY, realizedGains }: FundCardProps) {
+export const FundCard = memo(function FundCard({ fund, impactPct, realizedAPY, liquidAPY, realizedGains }: FundCardProps) {
   const hasValue = fund.latestEquity && fund.latestEquity.value > 0
   // Use latestFundSize from entries, fall back to config
   const fundSize = fund.latestFundSize ?? fund.config.fund_size_usd
@@ -152,4 +153,4 @@ export function FundCard({ fund, impactPct, realizedAPY, liquidAPY, realizedGain
       </div>
     </div>
   )
-}
+})
