@@ -145,7 +145,7 @@ function SliderControl({ label, value, onChange, color, locked, onToggleLock }: 
     <div className="flex items-center gap-1.5">
       <button
         onClick={onToggleLock}
-        className={`w-4 h-4 flex items-center justify-center rounded text-[10px] transition-colors ${
+        className={`w-4 h-4 flex items-center justify-center rounded text-[10px] transition-colors cursor-pointer ${
           locked ? 'bg-yellow-600 text-white' : 'bg-slate-600 text-slate-400 hover:bg-slate-500'
         }`}
         title={locked ? 'Unlock' : 'Lock'}

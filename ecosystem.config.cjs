@@ -4,7 +4,8 @@
 const PORTS = {
   WEB: 5550,      // Vite dev server (UI)
   API: 5551,      // Express API server
-  CDP: 5549       // Chrome DevTools Protocol (browser automation)
+  CDP: 5549,      // Chrome DevTools Protocol (browser automation)
+  PAGES: 5561     // Pages (backtest) Vite dev server
 }
 
 const BROWSER_USER_DATA_DIR = './.browser'
@@ -62,7 +63,18 @@ module.exports = {
         NODE_ENV: 'development',
         VITE_PORT: PORTS.WEB,
         VITE_API_PORT: PORTS.API,
-        VITE_CDP_PORT: PORTS.CDP
+        VITE_CDP_PORT: PORTS.CDP,
+        VITE_PAGES_PORT: PORTS.PAGES
+      }
+    },
+    {
+      name: 'escapemint-pages',
+      cwd: './pages',
+      script: 'npx',
+      args: `vite --port ${PORTS.PAGES} --host`,
+      watch: false, // Vite handles its own HMR
+      env: {
+        NODE_ENV: 'development'
       }
     }
   ]

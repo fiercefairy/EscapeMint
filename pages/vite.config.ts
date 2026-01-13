@@ -35,8 +35,9 @@ export default defineConfig(({ mode }) => ({
   },
 
   // Development server
+  // Port configured in ecosystem.config.cjs (PORTS.PAGES = 5561)
   server: {
-    port: 5552,
-    open: true
+    port: 5561,
+    open: false  // PM2 manages startup, don't auto-open browser
   }
 }))

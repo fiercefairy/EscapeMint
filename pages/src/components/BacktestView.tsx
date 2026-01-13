@@ -411,11 +411,11 @@ export function BacktestView({ config, historicalData, dateRange, onChange, onRe
 
           {/* Mode Toggle */}
           <div>
-            <h3 className="text-xs font-medium text-slate-400 mb-2">Sell Mode</h3>
+            <h3 className="text-xs font-medium text-slate-400 mb-2">Fund Mode</h3>
             <div className="flex gap-1">
               <button
                 onClick={() => updateConfig({ accumulate: true })}
-                className={`flex-1 px-2 py-1 text-[10px] rounded transition-colors ${
+                className={`flex-1 px-2 py-1 text-[10px] rounded transition-colors cursor-pointer ${
                   config.accumulate
                     ? 'bg-blue-600 text-white'
                     : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
@@ -425,7 +425,7 @@ export function BacktestView({ config, historicalData, dateRange, onChange, onRe
               </button>
               <button
                 onClick={() => updateConfig({ accumulate: false })}
-                className={`flex-1 px-2 py-1 text-[10px] rounded transition-colors ${
+                className={`flex-1 px-2 py-1 text-[10px] rounded transition-colors cursor-pointer ${
                   !config.accumulate
                     ? 'bg-orange-600 text-white'
                     : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
@@ -442,7 +442,7 @@ export function BacktestView({ config, historicalData, dateRange, onChange, onRe
             </p>
             <button
               onClick={onReset}
-              className="mt-2 w-full px-2 py-1 text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 rounded transition-colors"
+              className="mt-2 w-full px-2 py-1 text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 rounded transition-colors cursor-pointer"
             >
               Reset to Defaults
             </button>
