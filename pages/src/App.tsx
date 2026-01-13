@@ -5,9 +5,34 @@ import type { ScenarioConfig } from './engine/backtest'
 import { BacktestView } from './components/BacktestView'
 import { DateRangePicker } from './components/DateRangePicker'
 
-const STORAGE_KEY = 'escapemint-backtest-config'
+// Separate storage keys for each mode
+const STORAGE_KEY_ACCUMULATE = 'escapemint-backtest-accumulate'
+const STORAGE_KEY_HARVEST = 'escapemint-backtest-harvest'
+const STORAGE_KEY_LAST_MODE = 'escapemint-backtest-last-mode'
 
-function getDefaultConfig(): ScenarioConfig {
+function getDefaultAccumulateConfig(): ScenarioConfig {
+  return {
+    id: 'backtest',
+    name: 'DCA Backtest',
+    spxlPct: 50,
+    tqqqPct: 25,
+    btcPct: 25,
+    initialCash: 10000,
+    weeklyDCA: 100,
+    targetAPY: 0.20,
+    minProfitUSD: 1000,
+    accumulate: true,
+    inputMin: 100,
+    inputMid: 200,
+    inputMax: 250,
+    maxAtPct: -0.25,
+    marginAccessUSD: 0,
+    marginAPR: 0.05,
+    cashAPY: 0.04
+  }
+}
+
+function getDefaultHarvestConfig(): ScenarioConfig {
   return {
     id: 'backtest',
     name: 'DCA Backtest',
@@ -29,38 +54,75 @@ function getDefaultConfig(): ScenarioConfig {
   }
 }
 
-function loadStoredConfig(): ScenarioConfig {
-  const stored = localStorage.getItem(STORAGE_KEY)
+function getDefaultConfig(accumulate: boolean): ScenarioConfig {
+  return accumulate ? getDefaultAccumulateConfig() : getDefaultHarvestConfig()
+}
+
+function getStorageKey(accumulate: boolean): string {
+  return accumulate ? STORAGE_KEY_ACCUMULATE : STORAGE_KEY_HARVEST
+}
+
+function loadLastMode(): boolean {
+  const stored = localStorage.getItem(STORAGE_KEY_LAST_MODE)
+  // Default to accumulate mode if no preference saved
+  return stored === 'harvest' ? false : true
+}
+
+function saveLastMode(accumulate: boolean): void {
+  localStorage.setItem(STORAGE_KEY_LAST_MODE, accumulate ? 'accumulate' : 'harvest')
+}
+
+function loadStoredConfig(accumulate: boolean): ScenarioConfig {
+  const storageKey = getStorageKey(accumulate)
+  const stored = localStorage.getItem(storageKey)
   if (stored) {
     const parsed = JSON.parse(stored)
-    // Merge with defaults to handle any new fields
-    return { ...getDefaultConfig(), ...parsed }
+    // Merge with defaults to handle any new fields, ensure mode matches
+    return { ...getDefaultConfig(accumulate), ...parsed, accumulate }
   }
-  return getDefaultConfig()
+  return getDefaultConfig(accumulate)
 }
 
 function saveConfig(config: ScenarioConfig): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
+  const storageKey = getStorageKey(config.accumulate)
+  localStorage.setItem(storageKey, JSON.stringify(config))
+  saveLastMode(config.accumulate)
 }
 
 export function BacktestApp() {
   const [historicalData, setHistoricalData] = useState<Record<string, HistoricalData> | null>(null)
-  const [config, setConfig] = useState<ScenarioConfig>(loadStoredConfig)
+  // Initialize with last used mode
+  const [config, setConfig] = useState<ScenarioConfig>(() => {
+    const lastMode = loadLastMode()
+    return loadStoredConfig(lastMode)
+  })
   const [availableRange, setAvailableRange] = useState<DateRange | null>(null)
   const [selectedRange, setSelectedRange] = useState<DateRange | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const handleConfigChange = useCallback((newConfig: ScenarioConfig) => {
-    setConfig(newConfig)
-    saveConfig(newConfig)
-  }, [])
+    // Check if mode is being toggled
+    if (newConfig.accumulate !== config.accumulate) {
+      // Save current config to its mode-specific storage
+      saveConfig(config)
+      // Load the other mode's config (or defaults if none saved)
+      const otherModeConfig = loadStoredConfig(newConfig.accumulate)
+      setConfig(otherModeConfig)
+      saveLastMode(newConfig.accumulate)
+    } else {
+      // Normal config update within the same mode
+      setConfig(newConfig)
+      saveConfig(newConfig)
+    }
+  }, [config])
 
   const handleReset = useCallback(() => {
-    const defaults = getDefaultConfig()
+    // Reset only the current mode to its defaults
+    const defaults = getDefaultConfig(config.accumulate)
     setConfig(defaults)
     saveConfig(defaults)
-  }, [])
+  }, [config.accumulate])
 
   useEffect(() => {
     loadHistoricalData()

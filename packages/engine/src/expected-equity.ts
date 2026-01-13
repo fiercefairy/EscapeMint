@@ -13,11 +13,15 @@ function daysBetween(startDate: string, endDate: string): number {
  * Computes the total amount currently invested (start input / cost basis).
  * This is the sum of all buys minus the sum of all sells, with liquidation detection.
  * When position is fully liquidated (based on shares or value), totals are reset.
+ *
+ * In accumulate mode, partial sells are profit extraction and don't reduce cost basis.
+ * In harvest mode, partial sells reduce cost basis proportionally.
  */
-export function computeStartInput(trades: Trade[], asOfDate: string): number {
+export function computeStartInput(trades: Trade[], asOfDate: string, config?: SubFundConfig): number {
   let totalBuys = 0
   let totalSells = 0
   let cumShares = 0
+  const isAccumulateMode = config?.accumulate === true
 
   // Sort trades by date to process in chronological order
   const sortedTrades = [...trades].sort((a, b) => a.date.localeCompare(b.date))
@@ -46,8 +50,9 @@ export function computeStartInput(trades: Trade[], asOfDate: string): number {
         totalBuys = 0
         totalSells = 0
         cumShares = 0
-      } else if (hasShareTracking && totalBuys > 0) {
-        // Use share-based fraction for accurate cost basis tracking
+      } else if (!isAccumulateMode && hasShareTracking && totalBuys > 0) {
+        // Harvest mode: reduce cost basis proportionally
+        // In accumulate mode, partial sells are profit extraction (cost basis unchanged)
         // cumShares is AFTER the sell, so add back shares to get pre-sell total
         const sharesBeforeSell = cumShares + Math.abs(trade.shares!)
         const sellFraction = sharesBeforeSell > 0
@@ -57,6 +62,10 @@ export function computeStartInput(trades: Trade[], asOfDate: string): number {
         const costBasisSold = totalBuys * sellFraction
         totalBuys = totalBuys - costBasisSold
         totalSells = 0 // Reset sells since we're tracking proportionally
+      } else if (isAccumulateMode) {
+        // Accumulate mode: partial sells don't affect cost basis
+        // Reset totalSells since we're not tracking them against cost basis
+        totalSells = 0
       }
     }
   }
@@ -122,9 +131,13 @@ export function computeExpectedTarget(
         totalSells = 0
         cumShares = 0
       } else {
-        // SELL reduces the invested amount and proportionally reduces expected gain
-        // Use share-based fraction when available for accurate position tracking
-        if (startInput > 0) {
+        // In accumulate mode, partial sells are profit extraction only -
+        // principal remains invested, so don't reduce startInput or expectedGain.
+        // In harvest mode (or when accumulate is false/undefined), reduce proportionally.
+        const isAccumulateMode = config.accumulate === true
+        if (!isAccumulateMode && startInput > 0) {
+          // SELL reduces the invested amount and proportionally reduces expected gain
+          // Use share-based fraction when available for accurate position tracking
           let sellFraction: number
           if (hasShareTracking) {
             // Share-based: what fraction of position are we selling
@@ -164,7 +177,7 @@ export function computeCashAvailable(
   expenses: Expense[],
   asOfDate: string
 ): number {
-  const startInput = computeStartInput(trades, asOfDate)
+  const startInput = computeStartInput(trades, asOfDate, config)
   let cash = config.fund_size_usd - startInput
 
   // Apply external cash flows (deposits/withdrawals to the fund)
@@ -397,7 +410,7 @@ export function computeFundState(
     }
   }
 
-  const startInput = computeStartInput(trades, asOfDate)
+  const startInput = computeStartInput(trades, asOfDate, config)
   const expectedTarget = computeExpectedTarget(config, trades, asOfDate)
   const cashAvailable = computeCashAvailable(config, trades, cashflows, dividends, expenses, asOfDate)
   const cashInterest = computeCashInterest(config, trades, cashflows, asOfDate)
