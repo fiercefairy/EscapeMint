@@ -840,6 +840,7 @@ export interface CoinbaseScrapeCompleteEvent {
   stoppedAtDate: boolean
   entriesApplied?: number  // Number of entries applied after batch processing
   cashBalance?: number | null  // Current cash balance from Coinbase home page
+  cashUpdated?: boolean  // Whether the fund's cash balance was updated
   message: string
 }
 
