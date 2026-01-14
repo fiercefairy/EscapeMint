@@ -42,11 +42,14 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     }
 
     // For derivatives funds: value is always 0 (calculated), focus on cash
+    // HOLD is the appropriate default because derivatives entries are typically
+    // cash balance updates (scraped from exchange) rather than manual trades.
+    // Manual BUY/SELL trades are usually imported via the transaction scraper.
     if (fundType === 'derivatives') {
       return {
         ...empty,
         value: '0',  // Derivatives equity is calculated, not entered
-        action: 'HOLD',  // Default to HOLD for cash updates
+        action: 'HOLD',
         cash: lastEntry.cash?.toFixed(2) ?? '',
         margin_available: lastEntry.margin_available?.toFixed(2) ?? '',
         margin_borrowed: lastEntry.margin_borrowed?.toFixed(2) ?? ''

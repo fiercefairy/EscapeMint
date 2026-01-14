@@ -835,7 +835,7 @@ export function EntriesTable({
                       return (
                         <td key={col.id} className={`px-2 py-1.5 text-right ${
                           entry.derivLiquidationPrice !== undefined
-                            ? entry.derivLiquidationPrice <= 0 ? 'text-green-400'  // Negative = over-collateralized (safe)
+                            ? entry.derivLiquidationPrice <= 0 ? 'text-green-400'  // Zero or negative = over-collateralized (safe)
                             : 'text-orange-400'
                             : 'text-slate-500'
                         }`}>

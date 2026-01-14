@@ -17,6 +17,9 @@ const STATEMENTS_DIR = join(DATA_DIR, 'statements')
 const CRYPTO_STATEMENTS_DIR = join(STATEMENTS_DIR, 'robinhood')
 const M1_STATEMENTS_DIR = join(STATEMENTS_DIR, 'm1')
 
+// Minimum change threshold for cash balance updates (in USD)
+const CASH_BALANCE_UPDATE_THRESHOLD = 0.01
+
 // CDP connection for browser scraping
 let connectedBrowser: Browser | null = null
 let launchedChromeProcess: ChildProcess | null = null
@@ -5030,6 +5033,9 @@ const extractFeeFromDetailDialog = async (
   // CRITICAL: Verify the dialog is for a BUY/SELL, not a Funding entry
   // The dialog title should contain "Bought" or "Sold"
   // Target the h1 title element specifically (e.g., "Bought 1 BTC Perpetual contract")
+  // NOTE: This selector uses partial class match [class*="title"] which may break if
+  // Coinbase changes their styling. If scraping fails, check the dialog structure.
+  // Expected: h1 with a class containing "title" inside the trade details body.
   const dialogTitle = await page.$eval(
     '[data-testid="advanced-trade-details-body"] h1[class*="title"]',
     el => el.textContent
@@ -6403,8 +6409,8 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     const latestCash = latestEntry?.cash ?? 0
     const today = new Date().toISOString().slice(0, 10)
 
-    // Only update if cash changed significantly (> $0.01)
-    if (Math.abs(cashBalance - latestCash) > 0.01) {
+    // Only update if cash changed significantly
+    if (Math.abs(cashBalance - latestCash) > CASH_BALANCE_UPDATE_THRESHOLD) {
       // Check if latest entry is from today and is HOLD - update it
       if (latestEntry && latestEntry.date === today && latestEntry.action === 'HOLD') {
         latestEntry.cash = cashBalance
