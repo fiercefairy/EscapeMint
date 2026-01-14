@@ -835,12 +835,13 @@ export function EntriesTable({
                       return (
                         <td key={col.id} className={`px-2 py-1.5 text-right ${
                           entry.derivLiquidationPrice !== undefined
-                            ? entry.derivLiquidationPrice <= 0 ? 'text-green-400'  // Zero or negative = over-collateralized (safe)
-                            : 'text-orange-400'
+                            ? entry.derivLiquidationPrice === 0 ? 'text-slate-400'  // Zero = no position or fully collateralized
+                            : entry.derivLiquidationPrice < 0 ? 'text-green-400'  // Negative = over-collateralized (safe)
+                            : 'text-orange-400'  // Positive = has liquidation risk
                             : 'text-slate-500'
                         }`}>
                           {entry.derivLiquidationPrice !== undefined
-                            ? formatCurrency(entry.derivLiquidationPrice)
+                            ? entry.derivLiquidationPrice === 0 ? '-' : formatCurrency(entry.derivLiquidationPrice)
                             : '-'}
                         </td>
                       )

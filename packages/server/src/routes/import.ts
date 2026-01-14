@@ -5036,6 +5036,9 @@ const extractFeeFromDetailDialog = async (
   // NOTE: This selector uses partial class match [class*="title"] which may break if
   // Coinbase changes their styling. If scraping fails, check the dialog structure.
   // Expected: h1 with a class containing "title" inside the trade details body.
+  // FALLBACK: If selector fails (returns null), we skip title verification and attempt
+  // to parse the transaction anyway. This allows scraping to continue even if the
+  // dialog structure changes, though it may occasionally parse non-trade entries.
   const dialogTitle = await page.$eval(
     '[data-testid="advanced-trade-details-body"] h1[class*="title"]',
     el => el.textContent

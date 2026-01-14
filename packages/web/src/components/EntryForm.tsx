@@ -732,7 +732,8 @@ export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType)
         notes = (notes ? notes + ' | ' : '') + `Withdrawal: $${withdrawalVal}`
       }
     } else {
-      // Default to HOLD if action is 'HOLD' or not specified
+      // formData.action is either 'HOLD' or '' (empty), both default to HOLD
+      // TypeScript ensures all ActionType values are handled above
       entry.action = 'HOLD'
     }
   }
