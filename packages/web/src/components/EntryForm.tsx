@@ -132,9 +132,34 @@ export const parseFormulaValue = (input: string): number => {
   return parseFloat(trimmed) || 0
 }
 
+// Wizard indicator component - animated arrow pointing to a field
+function WizardIndicator({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-1 animate-pulse">
+      <span className="text-mint-400 animate-bounce text-lg">→</span>
+      <span className="text-mint-400 text-xs font-medium">{label}</span>
+    </div>
+  )
+}
+
 export function EntryForm({ formData, setFormData, existingEntries = [], baseFundSize = 0, showFundSizeAdjustment = false, cashAvailable, marginAvailable, currentFundSize, fundType = 'stock', manageCash = true, marginEnabled = false, platform }: EntryFormProps) {
   const isCashFund = checkIsCashFund(fundType)
   const isCryptoFund = fundType === 'crypto'
+
+  // Wizard step: 1 = update equity, 2 = update margin available, 0 = done
+  // Start at step 1 for non-derivatives funds
+  const [wizardStep, setWizardStep] = useState<number>(fundType === 'derivatives' ? 0 : 1)
+
+  // Track initial equity value to detect when user has changed it
+  const initialEquityRef = useRef<string>(formData.value)
+
+  // Move wizard to next step when equity is changed
+  useEffect(() => {
+    if (wizardStep === 1 && formData.value !== initialEquityRef.current) {
+      // User changed equity, move to margin available step if margin is enabled
+      setWizardStep(marginEnabled ? 2 : 0)
+    }
+  }, [formData.value, wizardStep, marginEnabled])
 
   // Track which values we've already warned about to avoid duplicate toasts
   const warnedValueRef = useRef<string>('')
@@ -348,13 +373,19 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Cash Balance ($)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm text-slate-400">Cash Balance ($)</label>
+                {wizardStep === 1 && <WizardIndicator label="Update first" />}
+              </div>
               <input
                 type="number"
                 value={formData.value}
-                onChange={e => setFormData(prev => ({ ...prev, value: e.target.value }))}
+                onChange={e => {
+                  setFormData(prev => ({ ...prev, value: e.target.value }))
+                  if (wizardStep === 1) setWizardStep(0)
+                }}
                 onBlur={handleEquityBlur}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-blue-500 ${wizardStep === 1 ? 'border-mint-500 ring-2 ring-mint-500/30' : 'border-slate-600'}`}
                 placeholder="Current cash balance"
                 step="0.01"
                 required
@@ -469,9 +500,12 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
             />
           </div>
           <div>
-            <label className="block text-sm text-slate-400 mb-1">
-              {fundType === 'derivatives' ? 'Equity ($) - calculated' : 'Equity ($)'}
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm text-slate-400">
+                {fundType === 'derivatives' ? 'Equity ($) - calculated' : 'Equity ($)'}
+              </label>
+              {wizardStep === 1 && <WizardIndicator label="Update first" />}
+            </div>
             <input
               type="number"
               name="value"
@@ -479,7 +513,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               value={formData.value}
               onChange={e => setFormData(prev => ({ ...prev, value: e.target.value }))}
               onBlur={handleEquityBlur}
-              className={`w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500 ${fundType === 'derivatives' ? 'opacity-60' : ''}`}
+              className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-mint-500 ${fundType === 'derivatives' ? 'opacity-60' : ''} ${wizardStep === 1 ? 'border-mint-500 ring-2 ring-mint-500/30' : 'border-slate-600'}`}
               placeholder={fundType === 'derivatives' ? '0 (auto-calculated)' : 'Asset value'}
               step="0.01"
               min="0"
@@ -583,12 +617,18 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
         {marginEnabled && !isCashFund && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Margin Available ($)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm text-slate-400">Margin Available ($)</label>
+                {wizardStep === 2 && <WizardIndicator label="Update next" />}
+              </div>
               <input
                 type="number"
                 value={formData.margin_available}
-                onChange={e => setFormData(prev => ({ ...prev, margin_available: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                onChange={e => {
+                  setFormData(prev => ({ ...prev, margin_available: e.target.value }))
+                  if (wizardStep === 2) setWizardStep(0)
+                }}
+                className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-purple-500 ${wizardStep === 2 ? 'border-purple-500 ring-2 ring-purple-500/30' : 'border-slate-600'}`}
                 placeholder="Current margin available"
                 step="0.01"
                 min="0"
