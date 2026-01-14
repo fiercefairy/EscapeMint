@@ -21,14 +21,15 @@ See the [docs/](./docs/) folder for detailed documentation:
 
 ## Next Up
 
-### Quick Value Entry (High Value)
-One-click to record today's value without opening the full entry form.
+### Configurable Entry Form Fields (High Value)
+Allow per-fund configuration of which entry fields are shown and their order. This also enables "quick entry" - configure a fund to show only date + value, and the Take Action form becomes minimal.
 
 **Implementation:**
-- [ ] Add "Quick Update" button on fund card/detail
-- [ ] Modal with just date + value fields (pre-filled with today)
-- [ ] Auto-set action to HOLD
-- [ ] Keyboard shortcut (q) to open quick entry
+- [ ] Add `entry_fields` config to fund JSON (array of field names + order)
+- [ ] Create field configuration UI in fund settings
+- [ ] Update AddEntryModal to respect field visibility/ordering
+- [ ] Preserve backwards compatibility (default shows all fields)
+- [ ] Pre-fill date with today, value with latest value
 
 ### Chart Date Range Selector
 Filter charts to specific time periods (1M, 3M, 6M, YTD, 1Y, All).
@@ -38,15 +39,6 @@ Filter charts to specific time periods (1M, 3M, 6M, YTD, 1Y, All).
 - [ ] Filter chart data to selected range
 - [ ] Persist selection per fund in config
 - [ ] Apply to all charts on the page
-
-### Configurable Entry Form Fields
-Allow per-fund configuration of which entry fields are shown and their order.
-
-**Implementation:**
-- [ ] Add `entry_fields` config to fund JSON (array of field names + order)
-- [ ] Create field configuration UI in fund settings
-- [ ] Update entry form to respect field visibility/ordering
-- [ ] Preserve backwards compatibility (default shows all fields)
 
 ### Price/Size Charts
 When tracking price/size, show additional charts on the fund dashboard.
