@@ -21,16 +21,6 @@ See the [docs/](./docs/) folder for detailed documentation:
 
 ## Next Up
 
-### Dashboard Portfolio Summary (High Value)
-Show aggregate metrics across all funds on the dashboard.
-
-**Implementation:**
-- [ ] Total portfolio value (sum of all fund sizes)
-- [ ] Total gains (realized + unrealized across all funds)
-- [ ] Weighted average APY
-- [ ] Total cash available across platforms
-- [ ] Mini sparkline showing portfolio growth
-
 ### Quick Value Entry (High Value)
 One-click to record today's value without opening the full entry form.
 
