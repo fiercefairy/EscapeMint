@@ -1425,10 +1425,12 @@ export function FundDetail() {
                           {formatCurrency(latestEntry.unrealized)}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-slate-400">Cash</p>
-                        <p className="font-medium text-white">{formatCurrency(latestEntry.postActionCash)}</p>
-                      </div>
+                      {fund.config.manage_cash && (
+                        <div>
+                          <p className="text-[10px] text-slate-400">Cash</p>
+                          <p className="font-medium text-white">{formatCurrency(latestEntry.postActionCash)}</p>
+                        </div>
+                      )}
                       <div>
                         <p className="text-[10px] text-slate-400">Realized</p>
                         <p className={`font-medium ${latestEntry.realized >= 0 ? 'text-green-400' : 'text-red-400'}`}>
