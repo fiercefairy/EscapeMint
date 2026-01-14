@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { addFundEntry, previewRecommendation, type FundEntry, type FundState, type Recommendation, type FundType } from '../api/funds'
-import { EntryForm, buildEntryFromForm, createEmptyFormData, type EntryFormData, type ActionType } from './EntryForm'
+import { EntryForm, buildEntryFromForm, createEmptyFormData, type EntryFormData } from './EntryForm'
 
 export interface AddEntryModalProps {
   fundId: string
@@ -46,6 +46,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
       return {
         ...empty,
         value: '0',  // Derivatives equity is calculated, not entered
+        action: 'HOLD',  // Default to HOLD for cash updates
         cash: lastEntry.cash?.toFixed(2) ?? '',
         margin_available: lastEntry.margin_available?.toFixed(2) ?? '',
         margin_borrowed: lastEntry.margin_borrowed?.toFixed(2) ?? ''

@@ -733,6 +733,9 @@ export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType)
       }
     } else if (formData.action === 'HOLD') {
       entry.action = 'HOLD'
+    } else {
+      // Default to HOLD if no action specified
+      entry.action = 'HOLD'
     }
   }
 
