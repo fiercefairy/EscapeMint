@@ -217,18 +217,21 @@ interface NumberSliderProps {
 }
 
 function NumberSlider({ label, value, min, max, step, format, onChange }: NumberSliderProps) {
+  // Round value to step precision to avoid floating point display errors
+  const decimals = step < 1 ? Math.ceil(-Math.log10(step)) : 0
+  const roundedValue = Math.round(value * Math.pow(10, decimals)) / Math.pow(10, decimals)
   return (
     <div>
       <div className="flex items-center justify-between text-xs mb-1">
         <span className="text-slate-400">{label}</span>
-        <span className="text-slate-300 font-mono">{format(value)}</span>
+        <span className="text-slate-300 font-mono">{format(roundedValue)}</span>
       </div>
       <input
         type="range"
         min={min}
         max={max}
         step={step}
-        value={value}
+        value={roundedValue}
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-700"
       />
