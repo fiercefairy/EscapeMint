@@ -49,6 +49,23 @@ When tracking price/size, show additional charts on the fund dashboard.
 - [ ] Add cost basis vs current price comparison
 - [ ] Only show charts when fund has price/size data
 
+### Action Due Prompts (High Value)
+Prompt users to take action on funds when the configured interval threshold is reached. When opening the app, show a wizard/indicator highlighting funds that need attention today.
+
+**Behavior:**
+- If a fund's `interval_days` is 7 and the last entry was 7+ days ago → prompt to act
+- If `interval_days` is 1 and there's no entry for today → prompt to act
+- Indicator should appear on dashboard and/or nav until action is taken
+- Clicking the indicator opens Take Action form for that fund
+
+**Implementation:**
+- [ ] Add API endpoint to get "actionable" funds (where days since last entry >= interval_days)
+- [ ] Add dashboard banner/widget showing funds due for action today
+- [ ] Add nav indicator (badge/dot) when any funds need attention
+- [ ] Sort actionable funds by priority (most overdue first)
+- [ ] Dismiss indicator once entry is added for that fund
+- [ ] Consider optional browser notifications for funds past due
+
 ---
 
 ## Brainstormed Ideas
