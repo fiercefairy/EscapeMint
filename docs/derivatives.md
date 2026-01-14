@@ -2,6 +2,15 @@
 
 EscapeMint supports perpetual futures tracking through the `derivatives` fund type. This document describes the data model specific to derivatives funds.
 
+> **Advanced Feature**: Derivatives tracking is an advanced feature currently only supported for **Coinbase perpetual futures**. The primary method of data entry is automated scraping from coinbase.com, which requires a browser session logged into your Coinbase account. Manual entry is also supported but requires understanding of futures accounting.
+
+## Platform Support
+
+| Platform | Status | Data Import Method |
+|----------|--------|-------------------|
+| Coinbase | ✅ Supported | Browser scraping from coinbase.com/transactions |
+| Other platforms | Not yet supported | Manual entry only |
+
 ## Overview
 
 Derivatives funds differ from stock/crypto funds in several key ways:

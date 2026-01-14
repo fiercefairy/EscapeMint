@@ -257,6 +257,12 @@ export function StackedAreaChart({
 }) {
   const ref = useRef<SVGSVGElement>(null)
 
+  // Get latest values for legend display
+  const latestData = useMemo(() => {
+    if (data.length === 0) return null
+    return data[data.length - 1]
+  }, [data])
+
   useEffect(() => {
     if (!ref.current || data.length === 0) return
 
@@ -439,11 +445,11 @@ export function StackedAreaChart({
     <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 flex flex-col h-[200px]">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-medium text-white">{title}</h3>
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           {series.map(s => (
             <span key={s.key} className="text-[10px] text-slate-400 flex items-center gap-1">
               <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: s.color }} />
-              {s.label}
+              {s.label}{latestData && <span className="text-white ml-1">{formatCurrencyCompact(latestData[s.key] as number)}</span>}
             </span>
           ))}
         </div>
@@ -841,6 +847,12 @@ export function ValueAndFundSizeChart({
   // Check if we have target data to display (memoized for both useEffect and JSX)
   const hasTarget = useMemo(() => data.some(d => d.expectedTarget > 0), [data])
 
+  // Get latest values for legend display
+  const latestData = useMemo(() => {
+    if (data.length === 0) return null
+    return data[data.length - 1]
+  }, [data])
+
   useEffect(() => {
     if (!ref.current || data.length === 0) return
 
@@ -1104,14 +1116,14 @@ export function ValueAndFundSizeChart({
     <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 flex flex-col h-[200px]">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-medium text-white">{title}</h3>
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           <span className="text-[10px] text-slate-400 flex items-center gap-1">
             <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#f59e0b' }} />
-            Value
+            Value{latestData && <span className="text-white ml-1">{formatCurrencyCompact(latestData.value)}</span>}
           </span>
           <span className="text-[10px] text-slate-400 flex items-center gap-1">
             <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#8b5cf6' }} />
-            Invested
+            Invested{latestData && <span className="text-white ml-1">{formatCurrencyCompact(latestData.startInput)}</span>}
           </span>
           {manageCash && (
             <span className="text-[10px] text-slate-400 flex items-center gap-1">
@@ -1122,7 +1134,7 @@ export function ValueAndFundSizeChart({
           {hasTarget && (
             <span className="text-[10px] text-slate-400 flex items-center gap-1">
               <span className="w-2 h-0.5 rounded-sm" style={{ backgroundColor: '#06b6d4', borderTop: '1px dashed #06b6d4' }} />
-              Target
+              Target{latestData && <span className="text-white ml-1">{formatCurrencyCompact(latestData.expectedTarget)}</span>}
             </span>
           )}
         </div>

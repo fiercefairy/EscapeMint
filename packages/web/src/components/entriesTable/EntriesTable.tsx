@@ -762,12 +762,15 @@ export function EntriesTable({
                           {entry.derivAvgEntry ? formatCurrency(entry.derivAvgEntry) : '-'}
                         </td>
                       )
-                    case 'marginBalance':
+                    case 'marginBalance': {
+                      // Prefer tracked cash from entry, fall back to calculated margin balance
+                      const displayMarginBalance = entry.cash ?? entry.derivMarginBalance
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-cyan-400">
-                          {entry.derivMarginBalance !== undefined ? formatCurrency(entry.derivMarginBalance) : '-'}
+                          {displayMarginBalance !== undefined ? formatCurrency(displayMarginBalance) : '-'}
                         </td>
                       )
+                    }
                     case 'derivEquity':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-mint-400">
@@ -832,12 +835,13 @@ export function EntriesTable({
                       return (
                         <td key={col.id} className={`px-2 py-1.5 text-right ${
                           entry.derivLiquidationPrice !== undefined
-                            ? entry.derivLiquidationPrice < 0 ? 'text-green-400'  // Negative = over-collateralized
-                            : 'text-orange-400'
+                            ? entry.derivLiquidationPrice === 0 ? 'text-slate-400'  // Zero = no position or fully collateralized
+                            : entry.derivLiquidationPrice < 0 ? 'text-green-400'  // Negative = over-collateralized (safe)
+                            : 'text-orange-400'  // Positive = has liquidation risk
                             : 'text-slate-500'
                         }`}>
                           {entry.derivLiquidationPrice !== undefined
-                            ? formatCurrency(entry.derivLiquidationPrice)
+                            ? entry.derivLiquidationPrice === 0 ? '-' : formatCurrency(entry.derivLiquidationPrice)
                             : '-'}
                         </td>
                       )

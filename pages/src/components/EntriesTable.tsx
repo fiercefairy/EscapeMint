@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { TimeSeriesPoint } from '../engine/backtest'
 import { formatCurrency } from '../utils/format'
 
@@ -5,7 +6,11 @@ interface Props {
   timeSeries: TimeSeriesPoint[]
 }
 
+type SortOrder = 'asc' | 'desc'
+
 export function EntriesTable({ timeSeries }: Props) {
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
+
   // Calculate running metrics for each row
   const entries = timeSeries.map((point, index) => {
     // Find cost basis (invested amount)
@@ -25,13 +30,25 @@ export function EntriesTable({ timeSeries }: Props) {
     }
   })
 
+  const sortedEntries = sortOrder === 'asc' ? entries : [...entries].reverse()
+
+  const toggleSort = () => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')
+
   return (
     <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[600px]">
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-slate-800 z-30">
             <tr className="border-b border-slate-700 text-slate-400 text-xs">
-              <th className="px-2 py-2 font-medium sticky left-0 bg-slate-800 z-40">Date</th>
+              <th
+                className="px-2 py-2 font-medium sticky left-0 bg-slate-800 z-40 cursor-pointer hover:text-slate-200 select-none"
+                onClick={toggleSort}
+              >
+                <span className="flex items-center gap-1">
+                  Date
+                  <span className="text-[10px]">{sortOrder === 'asc' ? '▲' : '▼'}</span>
+                </span>
+              </th>
               <th className="px-2 py-2 font-medium text-right">Fund Size</th>
               <th className="px-2 py-2 font-medium text-right">Equity</th>
               <th className="px-2 py-2 font-medium text-right">Cash</th>
@@ -49,7 +66,7 @@ export function EntriesTable({ timeSeries }: Props) {
             </tr>
           </thead>
           <tbody>
-            {entries.map((entry) => (
+            {sortedEntries.map((entry) => (
               <tr
                 key={entry.index}
                 className={`border-b border-slate-700/50 text-xs hover:bg-slate-700/30 ${

@@ -19,6 +19,7 @@ interface ScrapeProgress {
   total: number
   newCount: number
   perpRelatedCount?: number
+  cashBalance?: number | null
   lastTx: {
     date: string
     type: string
@@ -94,7 +95,8 @@ export function CoinbaseScrapeButton({
             ...prev,
             phase: 'complete',
             status: data.message,
-            perpRelatedCount: data.perpRelatedCount
+            perpRelatedCount: data.perpRelatedCount,
+            cashBalance: data.cashBalance
           }))
           toast.success(data.message)
           setIsScraping(false)
@@ -203,9 +205,16 @@ export function CoinbaseScrapeButton({
           )}
 
           {/* Summary */}
-          {progress.phase === 'complete' && progress.perpRelatedCount !== undefined && (
-            <div className="text-xs text-slate-400">
-              {progress.perpRelatedCount} perp-related transactions found
+          {progress.phase === 'complete' && (
+            <div className="text-xs text-slate-400 space-y-1">
+              {progress.perpRelatedCount !== undefined && (
+                <div>{progress.perpRelatedCount} perp-related transactions found</div>
+              )}
+              {progress.cashBalance !== undefined && progress.cashBalance !== null && (
+                <div className="text-blue-400">
+                  Cash Balance: ${progress.cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -24,17 +24,49 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
   const [result, setResult] = useState<{ state: FundState; recommendation: Recommendation; margin_available?: number; margin_borrowed?: number } | null>(null)
   const [preview, setPreview] = useState<{ state: FundState; recommendation: Recommendation | null; margin_available: number; fund_size: number } | null>(null)
 
-  // For cash funds, pre-populate equity with latest cash balance
+  // Pre-populate form with latest entry values for continuity
   const getInitialFormData = (): EntryFormData => {
     const empty = createEmptyFormData()
-    if (fundType === 'cash' && existingEntries.length > 0) {
-      const sorted = [...existingEntries].sort((a, b) => a.date.localeCompare(b.date))
-      const lastEntry = sorted[sorted.length - 1]
-      // Use cash (post-action balance) as the starting equity for new entry
-      const lastCash = lastEntry?.cash ?? lastEntry?.value ?? 0
+
+    if (existingEntries.length === 0) return empty
+
+    const sorted = [...existingEntries].sort((a, b) => a.date.localeCompare(b.date))
+    const lastEntry = sorted[sorted.length - 1]
+    if (!lastEntry) return empty
+
+    // For cash funds: use cash balance as starting equity
+    if (fundType === 'cash') {
+      const lastCash = lastEntry.cash ?? lastEntry.value ?? 0
       empty.value = lastCash.toFixed(2)
+      return empty
     }
-    return empty
+
+    // For derivatives funds: value is always 0 (calculated), focus on cash
+    // HOLD is the appropriate default because derivatives entries are typically
+    // cash balance updates (scraped from exchange) rather than manual trades.
+    // Manual BUY/SELL trades are usually imported via the transaction scraper.
+    if (fundType === 'derivatives') {
+      return {
+        ...empty,
+        value: '0',  // Derivatives equity is calculated, not entered
+        action: 'HOLD',
+        cash: lastEntry.cash?.toFixed(2) ?? '',
+        margin_available: lastEntry.margin_available?.toFixed(2) ?? '',
+        margin_borrowed: lastEntry.margin_borrowed?.toFixed(2) ?? ''
+      }
+    }
+
+    // For trading funds: pre-fill from latest entry
+    // Keep date as today (already set), action empty, amount empty, notes empty
+    // But carry forward: value, cash, shares, margin fields
+    return {
+      ...empty,
+      value: lastEntry.value.toFixed(2),
+      cash: lastEntry.cash?.toFixed(2) ?? '',
+      shares: lastEntry.shares?.toString() ?? '',
+      margin_available: lastEntry.margin_available?.toFixed(2) ?? '',
+      margin_borrowed: lastEntry.margin_borrowed?.toFixed(2) ?? ''
+    }
   }
   const [formData, setFormData] = useState<EntryFormData>(getInitialFormData)
 

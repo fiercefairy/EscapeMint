@@ -345,19 +345,24 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
             />
           </div>
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Equity ($)</label>
+            <label className="block text-sm text-slate-400 mb-1">
+              {fundType === 'derivatives' ? 'Equity ($) - calculated' : 'Equity ($)'}
+            </label>
             <input
               type="number"
               name="value"
               id="value"
               value={formData.value}
               onChange={e => setFormData(prev => ({ ...prev, value: e.target.value }))}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-              placeholder="Asset value"
+              className={`w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500 ${fundType === 'derivatives' ? 'opacity-60' : ''}`}
+              placeholder={fundType === 'derivatives' ? '0 (auto-calculated)' : 'Asset value'}
               step="0.01"
               min="0"
-              required
+              required={fundType !== 'derivatives'}
             />
+            {fundType === 'derivatives' && (
+              <p className="text-xs text-slate-500 mt-1">Leave as 0 - equity is calculated from margin + P&L</p>
+            )}
           </div>
           <div>
             <label className="block text-sm text-slate-400 mb-1">Action</label>
@@ -726,7 +731,9 @@ export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType)
       if (withdrawalVal > 0) {
         notes = (notes ? notes + ' | ' : '') + `Withdrawal: $${withdrawalVal}`
       }
-    } else if (formData.action === 'HOLD') {
+    } else {
+      // formData.action is either 'HOLD' or '' (empty), both default to HOLD
+      // TypeScript ensures all ActionType values are handled above
       entry.action = 'HOLD'
     }
   }
