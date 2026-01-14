@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useCallback, useRef } from 'react'
+import { useMemo, useEffect, useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type { FundEntry, FundType } from '../api/funds'
 import {
@@ -273,13 +273,25 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
   // Use a ref that captures the value on first render
   const initialMarginBorrowedRef = useRef<number>(parseFloat(formData.margin_borrowed) || 0)
 
+  // Track auto-adjustment amount for display purposes
+  const [marginAutoAdjustment, setMarginAutoAdjustment] = useState<number>(0)
+
   // Auto-update margin_borrowed for M1 platform when there's a shortfall on BUY
   // M1 automatically borrows from margin, so we should reflect the expected new total
   useEffect(() => {
     const isM1Platform = platform?.toLowerCase() === 'm1'
-    if (!isM1Platform) return
-    if (formData.action !== 'BUY') return
-    if (cashAvailable === undefined) return
+    if (!isM1Platform) {
+      setMarginAutoAdjustment(0)
+      return
+    }
+    if (formData.action !== 'BUY') {
+      setMarginAutoAdjustment(0)
+      return
+    }
+    if (cashAvailable === undefined) {
+      setMarginAutoAdjustment(0)
+      return
+    }
 
     const amount = parseFloat(formData.amount) || 0
     const shortfall = amount - cashAvailable
@@ -296,6 +308,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
         }
         return prev
       })
+      setMarginAutoAdjustment(shortfall)
     } else {
       // No shortfall - reset to initial value if needed
       setFormData(prev => {
@@ -305,6 +318,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
         }
         return prev
       })
+      setMarginAutoAdjustment(0)
     }
   }, [formData.action, formData.amount, cashAvailable, platform, setFormData])
 
@@ -594,14 +608,20 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 type="number"
                 value={formData.margin_borrowed}
                 onChange={e => setFormData(prev => ({ ...prev, margin_borrowed: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-purple-500 ${marginAutoAdjustment > 0 ? 'border-purple-500' : 'border-slate-600'}`}
                 placeholder="0"
                 step="0.01"
                 min="0"
               />
-              <p className="text-xs text-slate-500 mt-1">
-                Margin borrowed in this entry (may be auto-filled by some platforms, but can be adjusted)
-              </p>
+              {marginAutoAdjustment > 0 ? (
+                <p className="text-xs text-purple-400 mt-1">
+                  Auto-adjusted: +{formatCurrency(marginAutoAdjustment)} for shortfall (M1 auto-borrows from margin)
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500 mt-1">
+                  Margin borrowed in this entry (may be auto-filled by some platforms, but can be adjusted)
+                </p>
+              )}
             </div>
           </div>
         )}
