@@ -21,13 +21,13 @@ See the [docs/](./docs/) folder for detailed documentation:
 
 ## Next Up
 
-### Target Equity Price Display
+### Target Equity Price Display ✅
 Show the current target equity price on fund dashboards (the price above which you should sell).
 
 **Implementation:**
-- [ ] Calculate target sell price from expected_target / shares
-- [ ] Display on fund detail page header
-- [ ] Add to entry form as reference
+- [x] Calculate target sell price from expected_target / shares
+- [x] Display on fund detail page header
+- [x] Display in Current State section
 
 ### Configurable Entry Form Fields
 Allow per-fund configuration of which entry fields are shown and their order. Some accounts track price/size, others don't.

@@ -1185,7 +1185,15 @@ export function FundDetail() {
                     <span title="Target APY" className="whitespace-nowrap hidden md:inline">
                       <span className="text-slate-500">Target APY: </span><span className="text-mint-400">{(fund.config.target_apy * 100).toFixed(0)}%</span>
                     </span>
-                    <span className="text-slate-600 hidden md:inline">|</span>
+                    {state?.state?.expected_target_usd && latestEntry?.cumShares && Math.abs(latestEntry.cumShares) > 0.0001 && (
+                      <>
+                        <span className="text-slate-600 hidden md:inline">|</span>
+                        <span title={`Sell above this price to meet ${(fund.config.target_apy * 100).toFixed(0)}% APY target`} className="whitespace-nowrap hidden md:inline">
+                          <span className="text-slate-500">Target Price: </span><span className="text-cyan-400">{formatCurrency(state.state.expected_target_usd / latestEntry.cumShares)}</span>
+                        </span>
+                      </>
+                    )}
+                    <span className="text-slate-600 hidden lg:inline">|</span>
                     <span title="Check Interval" className="whitespace-nowrap hidden lg:inline">
                       <span className="text-slate-500">Every: </span><span className="text-white">{fund.config.interval_days}d</span>
                     </span>
@@ -1419,6 +1427,14 @@ export function FundDetail() {
                         <p className="text-[10px] text-slate-400">Asset Value</p>
                         <p className="font-medium text-mint-400">{formatCurrency(latestEntry.value)}</p>
                       </div>
+                      {state?.state?.expected_target_usd && latestEntry.cumShares && Math.abs(latestEntry.cumShares) > 0.0001 && (
+                        <div>
+                          <p className="text-[10px] text-slate-400">Target Price</p>
+                          <p className="font-medium text-cyan-400" title={`Sell above this price to meet ${(fund.config.target_apy * 100).toFixed(0)}% APY target`}>
+                            {formatCurrency(state.state.expected_target_usd / latestEntry.cumShares)}
+                          </p>
+                        </div>
+                      )}
                       <div>
                         <p className="text-[10px] text-slate-400">Unrealized</p>
                         <p className={`font-medium ${latestEntry.unrealized >= 0 ? 'text-green-400' : 'text-red-400'}`}>
