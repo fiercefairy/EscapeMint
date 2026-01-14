@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { addFundEntry, previewRecommendation, type FundEntry, type FundState, type Recommendation, type FundType } from '../api/funds'
 import { EntryForm, buildEntryFromForm, createEmptyFormData, detectDigitError, type EntryFormData, type ActionType } from './EntryForm'
@@ -85,25 +85,19 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'
   }
 
-  // Detect digit errors in equity input
-  const digitErrorInfo = useMemo(() => {
-    if (existingEntries.length === 0) return null
-    const sorted = [...existingEntries].sort((a, b) => a.date.localeCompare(b.date))
-    const priorEquity = sorted[sorted.length - 1]?.value ?? null
-    if (priorEquity === null) return null
+  // Get prior equity for digit error detection
+  const priorEquity = existingEntries.length > 0
+    ? [...existingEntries].sort((a, b) => a.date.localeCompare(b.date))[existingEntries.length - 1]?.value ?? null
+    : null
 
-    const newValue = parseFloat(formData.value)
-    if (isNaN(newValue) || newValue === 0) return null
-
-    const errorType = detectDigitError(newValue, priorEquity)
-    if (!errorType) return null
-
-    return {
-      type: errorType,
-      priorValue: priorEquity,
-      newValue
-    }
-  }, [formData.value, existingEntries])
+  // Detect digit errors in equity input (computed on every render for reliability)
+  const newEquityValue = parseFloat(formData.value)
+  const digitErrorType = priorEquity !== null && !isNaN(newEquityValue) && newEquityValue > 0
+    ? detectDigitError(newEquityValue, priorEquity)
+    : null
+  const digitErrorInfo = digitErrorType
+    ? { type: digitErrorType, priorValue: priorEquity, newValue: newEquityValue }
+    : null
 
   // Debounced preview fetch
   const fetchPreview = useCallback(async (equityValue: number, date: string) => {
