@@ -1,10 +1,40 @@
-import { useMemo, useEffect, useCallback } from 'react'
+import { useMemo, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import type { FundEntry, FundType } from '../api/funds'
 import {
   isCashFund as checkIsCashFund
 } from '@escapemint/engine'
 import { formatCurrency, formatLocalDate } from '../utils/format'
+
+// Detect if a value change looks like a digit error (missing or extra digit)
+// Returns 'extra' if user likely added a digit, 'missing' if likely removed one, null if ok
+function detectDigitError(newValue: number, priorValue: number): 'extra' | 'missing' | null {
+  // Skip if either value is 0 or negative
+  if (newValue <= 0 || priorValue <= 0) return null
+
+  // Calculate the ratio
+  const ratio = newValue / priorValue
+
+  // Check for ~10x increase (extra digit)
+  if (ratio >= 8 && ratio <= 12) {
+    // But allow natural transitions like 999 -> 1000 (small % change)
+    const percentChange = Math.abs(newValue - priorValue) / priorValue
+    // If the actual dollar change is > 50% of prior value, it's suspicious
+    if (percentChange > 0.5) {
+      return 'extra'
+    }
+  }
+
+  // Check for ~0.1x decrease (missing digit)
+  if (ratio >= 0.08 && ratio <= 0.12) {
+    const percentChange = Math.abs(newValue - priorValue) / priorValue
+    if (percentChange > 0.5) {
+      return 'missing'
+    }
+  }
+
+  return null
+}
 
 export type ActionType = '' | 'BUY' | 'SELL' | 'HOLD'
 
@@ -105,6 +135,46 @@ export const parseFormulaValue = (input: string): number => {
 export function EntryForm({ formData, setFormData, existingEntries = [], baseFundSize = 0, showFundSizeAdjustment = false, cashAvailable, marginAvailable, currentFundSize, fundType = 'stock', manageCash = true, marginEnabled = false, platform }: EntryFormProps) {
   const isCashFund = checkIsCashFund(fundType)
   const isCryptoFund = fundType === 'crypto'
+
+  // Track which values we've already warned about to avoid duplicate toasts
+  const warnedValueRef = useRef<string>('')
+
+  // Get the prior entry's equity for digit error detection
+  const priorEquity = useMemo(() => {
+    if (existingEntries.length === 0) return null
+    const sorted = [...existingEntries].sort((a, b) => a.date.localeCompare(b.date))
+    return sorted[sorted.length - 1]?.value ?? null
+  }, [existingEntries])
+
+  // Detect digit errors when equity value changes
+  useEffect(() => {
+    if (priorEquity === null) return
+    const newValue = parseFloat(formData.value)
+    if (isNaN(newValue) || newValue === 0) return
+
+    // Skip if we've already warned about this exact value
+    if (warnedValueRef.current === formData.value) return
+
+    const digitError = detectDigitError(newValue, priorEquity)
+    if (digitError) {
+      warnedValueRef.current = formData.value
+      const priorFormatted = formatCurrency(priorEquity)
+      const newFormatted = formatCurrency(newValue)
+
+      if (digitError === 'extra') {
+        toast.warning(
+          `Possible extra digit? Prior equity was ${priorFormatted}, you entered ${newFormatted}`,
+          { duration: 8000 }
+        )
+      } else {
+        toast.warning(
+          `Possible missing digit? Prior equity was ${priorFormatted}, you entered ${newFormatted}`,
+          { duration: 8000 }
+        )
+      }
+    }
+  }, [formData.value, priorEquity])
+
   // Get cumulative shares from entries BEFORE the current date
   const getCumulativeShares = useCallback((beforeDate: string) => {
     let total = 0
