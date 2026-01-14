@@ -5029,8 +5029,9 @@ const extractFeeFromDetailDialog = async (
 
   // CRITICAL: Verify the dialog is for a BUY/SELL, not a Funding entry
   // The dialog title should contain "Bought" or "Sold"
+  // Target the h1 title element specifically (e.g., "Bought 1 BTC Perpetual contract")
   const dialogTitle = await page.$eval(
-    '[data-testid="advanced-trade-details-body"] [class*="headline"]',
+    '[data-testid="advanced-trade-details-body"] h1[class*="title"]',
     el => el.textContent
   ).catch(() => null)
 
@@ -6289,24 +6290,23 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
   const shouldApplyToFund = fundId !== undefined
   let entriesApplied = 0
 
-  if (fundId && shouldClearFund) {
+  // Always load fund when fundId is provided (needed for cash balance update)
+  if (fundId) {
     fundPath = join(FUNDS_DIR, `${fundId}.tsv`)
     fund = await readFund(fundPath).catch(() => null)
+  }
 
-    if (fund) {
-      // Clear fund entries immediately
-      const previousCount = fund.entries.length
-      fund.entries = []
-      await writeFund(fundPath, fund)
-      sendEvent('status', {
-        message: `Cleared ${previousCount} existing entries from fund`,
-        phase: 'loading',
-        cleared: previousCount
-      })
-      console.log(`[Coinbase TX] Cleared ${previousCount} entries from fund ${fundId}`)
-    } else {
-      console.warn(`[Coinbase TX] Could not load fund ${fundId}`)
-    }
+  if (fundId && shouldClearFund && fund && fundPath) {
+    // Clear fund entries immediately
+    const previousCount = fund.entries.length
+    fund.entries = []
+    await writeFund(fundPath, fund)
+    sendEvent('status', {
+      message: `Cleared ${previousCount} existing entries from fund`,
+      phase: 'loading',
+      cleared: previousCount
+    })
+    console.log(`[Coinbase TX] Cleared ${previousCount} entries from fund ${fundId}`)
   }
 
   // Load existing archive
@@ -6350,55 +6350,55 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
   })
 
   // Batch apply all perp-related transactions to fund after scraping completes
-  if (result && shouldApplyToFund && fundId) {
+  if (result && shouldApplyToFund && fundId && fund && fundPath) {
     sendEvent('status', {
       message: 'Applying transactions to fund...',
       phase: 'applying'
     })
 
-    // Re-load the fund (it was cleared earlier)
-    fundPath = join(FUNDS_DIR, `${fundId}.tsv`)
-    fund = await readFund(fundPath).catch(() => null)
+    // Fund was already loaded earlier (and cleared if clearFundEntries was set)
+    // Convert all perp-related transactions to fund entries
+    const perpTxns = archive.transactions.filter(t => t.isPerpRelated)
+    const allEntries: FundEntry[] = []
 
-    if (fund) {
-      // Convert all perp-related transactions to fund entries
-      const perpTxns = archive.transactions.filter(t => t.isPerpRelated)
-      const allEntries: FundEntry[] = []
-
-      // Add initial deposit from config if set (for derivatives funds)
-      const initialDeposit = (fund.config as { initial_deposit?: number }).initial_deposit
-      if (initialDeposit && initialDeposit > 0) {
-        allEntries.push({
-          date: fund.config.start_date,
-          value: 0,
-          action: 'DEPOSIT',
-          amount: initialDeposit,
-          notes: 'Initial margin deposit'
-        })
-      }
-
-      for (const tx of perpTxns) {
-        const entries = coinbaseTxToFundEntries(tx)
-        allEntries.push(...entries)
-      }
-
-      // Sort all entries properly and add to fund
-      fund.entries = sortFundEntries(allEntries)
-      entriesApplied = fund.entries.length
-
-      await writeFund(fundPath, fund)
-      console.log(`[Coinbase TX] Batch applied ${entriesApplied} entries to fund ${fundId}`)
-
-      sendEvent('applied', { entriesApplied, lastDate: fund.entries[fund.entries.length - 1]?.date || '' })
+    // Add initial deposit from config if set (for derivatives funds)
+    const initialDeposit = (fund.config as { initial_deposit?: number }).initial_deposit
+    if (initialDeposit && initialDeposit > 0) {
+      allEntries.push({
+        date: fund.config.start_date,
+        value: 0,
+        action: 'DEPOSIT',
+        amount: initialDeposit,
+        notes: 'Initial margin deposit'
+      })
     }
+
+    for (const tx of perpTxns) {
+      const entries = coinbaseTxToFundEntries(tx)
+      allEntries.push(...entries)
+    }
+
+    // Sort all entries properly and add to fund
+    fund.entries = sortFundEntries(allEntries)
+    entriesApplied = fund.entries.length
+
+    await writeFund(fundPath, fund)
+    console.log(`[Coinbase TX] Batch applied ${entriesApplied} entries to fund ${fundId}`)
+
+    sendEvent('applied', { entriesApplied, lastDate: fund.entries[fund.entries.length - 1]?.date || '' })
   }
 
   // Keep the Coinbase page open for user reference (don't close it)
 
   // Fetch current cash balance from Coinbase home page
+  console.log(`[Coinbase TX] About to fetch cash balance, page exists: ${!!page}`)
   let cashBalance: number | null = null
   if (page) {
+    console.log(`[Coinbase TX] Calling fetchCoinbaseCashBalance...`)
     cashBalance = await fetchCoinbaseCashBalance(page, sendEvent)
+    console.log(`[Coinbase TX] Cash balance result: ${cashBalance}`)
+  } else {
+    console.log(`[Coinbase TX] No page available, skipping cash balance fetch`)
   }
 
   // Update or create cash entry if we have a fund and cash balance
@@ -6407,7 +6407,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     // Check if we need to update - compare to latest entry's cash
     const latestEntry = fund.entries[fund.entries.length - 1]
     const latestCash = latestEntry?.cash ?? 0
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Date().toISOString().slice(0, 10)
 
     // Only update if cash changed significantly (> $0.01)
     if (Math.abs(cashBalance - latestCash) > 0.01) {

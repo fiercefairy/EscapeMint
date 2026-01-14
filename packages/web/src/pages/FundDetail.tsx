@@ -518,6 +518,25 @@ export function FundDetail() {
           derivLiquidApy = Math.max(-0.99, Math.min(derivLiquidApy, 10))
         }
 
+        // Use tracked cash (entry.cash) when available, otherwise use calculated marginBalance
+        const effectiveCash = entry.cash ?? derivState.marginBalance
+        const effectiveEquity = effectiveCash + derivState.unrealizedPnl
+        const effectiveAvailableFunds = effectiveCash - derivState.marginLocked
+
+        // Recalculate liquidation price using effective cash
+        // Formula: liqPrice = avgEntry - (cash - maintenanceMargin) / notionalSize
+        const contractMultiplier = fund.config.contract_multiplier ?? 0.01
+        const notionalSize = derivState.position * contractMultiplier
+        let effectiveLiqPrice = derivState.liquidationPrice
+        let effectiveDistanceToLiq = derivState.distanceToLiquidation
+        if (entry.cash !== undefined && derivState.position > 0 && notionalSize > 0) {
+          const buffer = effectiveCash - derivState.maintenanceMargin
+          effectiveLiqPrice = derivState.avgEntry - (buffer / notionalSize)
+          effectiveDistanceToLiq = derivState.avgEntry > 0
+            ? (derivState.avgEntry - effectiveLiqPrice) / derivState.avgEntry
+            : 0
+        }
+
         return {
           ...baseEntry,
           // Override with derivatives-specific computed values
@@ -527,7 +546,7 @@ export function FundDetail() {
           derivCostBasis: derivState.costBasis,
           derivUnrealized: derivState.unrealizedPnl,
           derivRealized: derivState.realizedPnl,
-          derivEquity: derivState.equity,
+          derivEquity: effectiveEquity,  // Use tracked cash for equity calculation
           derivCumFunding: derivState.cumFunding,
           derivCumInterest: derivState.cumInterest,
           derivCumRebates: derivState.cumRebates,
@@ -537,15 +556,15 @@ export function FundDetail() {
           derivInitialMargin: derivState.initialMargin,
           derivMarginLocked: derivState.marginLocked,
           derivMaintenanceMargin: derivState.maintenanceMargin,
-          derivAvailableFunds: derivState.availableFunds,
+          derivAvailableFunds: effectiveAvailableFunds,  // Use tracked cash for available funds
           derivMarginRatio: derivState.marginRatio,
           derivLeverage: derivState.leverage,
-          // Liquidation tracking
-          derivLiquidationPrice: derivState.liquidationPrice,
+          // Liquidation tracking - use recalculated values when we have tracked cash
+          derivLiquidationPrice: effectiveLiqPrice,
           derivMarginHealth: derivState.marginHealth,
-          derivDistanceToLiq: derivState.distanceToLiquidation,
+          derivDistanceToLiq: effectiveDistanceToLiq,
           // Also use derivatives values for fundSize and P&L
-          fundSize: derivState.marginBalance + derivState.unrealizedPnl,  // Account value = cash + unrealized
+          fundSize: effectiveEquity,  // Account value = cash + unrealized
           realized: derivState.realizedPnl,
           unrealized: derivState.unrealizedPnl,
           liquidPnl: derivLiquidPnl,
@@ -1301,7 +1320,7 @@ export function FundDetail() {
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-400">Margin Balance</p>
-                        <p className="font-medium text-blue-400">{formatCurrency(latestEntry.derivMarginBalance ?? 0)}</p>
+                        <p className="font-medium text-blue-400">{formatCurrency(latestEntry.cash ?? latestEntry.derivMarginBalance ?? 0)}</p>
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-400">Cost Basis</p>
