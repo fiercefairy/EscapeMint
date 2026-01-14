@@ -21,15 +21,36 @@ See the [docs/](./docs/) folder for detailed documentation:
 
 ## Next Up
 
-### Target Equity Value Display ✅
-Show the current target equity value on fund dashboards (the value above which you should sell).
+### Dashboard Portfolio Summary (High Value)
+Show aggregate metrics across all funds on the dashboard.
 
 **Implementation:**
-- [x] Add latest values to Value & Allocation chart legend (Value, Invested, Target)
-- [x] Target equity value visible in chart legend alongside current value
+- [ ] Total portfolio value (sum of all fund sizes)
+- [ ] Total gains (realized + unrealized across all funds)
+- [ ] Weighted average APY
+- [ ] Total cash available across platforms
+- [ ] Mini sparkline showing portfolio growth
+
+### Quick Value Entry (High Value)
+One-click to record today's value without opening the full entry form.
+
+**Implementation:**
+- [ ] Add "Quick Update" button on fund card/detail
+- [ ] Modal with just date + value fields (pre-filled with today)
+- [ ] Auto-set action to HOLD
+- [ ] Keyboard shortcut (q) to open quick entry
+
+### Chart Date Range Selector
+Filter charts to specific time periods (1M, 3M, 6M, YTD, 1Y, All).
+
+**Implementation:**
+- [ ] Add date range buttons above charts
+- [ ] Filter chart data to selected range
+- [ ] Persist selection per fund in config
+- [ ] Apply to all charts on the page
 
 ### Configurable Entry Form Fields
-Allow per-fund configuration of which entry fields are shown and their order. Some accounts track price/size, others don't.
+Allow per-fund configuration of which entry fields are shown and their order.
 
 **Implementation:**
 - [ ] Add `entry_fields` config to fund JSON (array of field names + order)
@@ -45,6 +66,32 @@ When tracking price/size, show additional charts on the fund dashboard.
 - [ ] Add share accumulation chart (total shares over time)
 - [ ] Add cost basis vs current price comparison
 - [ ] Only show charts when fund has price/size data
+
+---
+
+## Brainstormed Ideas
+
+### UX Improvements
+- **Keyboard shortcuts** - j/k navigation, Enter to open, Esc to close
+- **Comparison mode** - Compare multiple funds side by side
+- **Performance attribution** - Break down gains by source (dividends, price, interest)
+- **Export to CSV** - Export fund data for tax reporting or analysis
+- **Notifications** - Browser notifications when funds hit sell target
+
+### Data/Tracking
+- **Split handling** - Handle stock splits properly (adjust historical prices/shares)
+- **Dividend tracking** - Track dividend yield and dividend growth rate
+- **Currency support** - Track non-USD funds with exchange rate conversion
+- **Multi-account aggregation** - Same ticker across different platforms as single view
+
+### Technical
+- **PWA/Offline mode** - Service worker for offline access
+- **Data backup** - Export/import all data as single archive
+- **API webhooks** - POST to URL when action recommended
+
+---
+
+## Documentation Backlog
 
 ### Ticker Choices Documentation
 Document why we prefer volatile assets like TQQQ over stable ones like VTI.
@@ -62,7 +109,8 @@ Document why we prefer volatile assets like TQQQ over stable ones like VTI.
 | Version | Focus | Status |
 |---------|-------|--------|
 | v0.1-0.6 | Core engine, storage, UI, derivatives | Complete |
-| v0.17+ | Target price display, configurable forms | In Progress |
+| v0.17-0.19 | Chart improvements, target display, UX polish | Complete |
+| v0.20+ | Dashboard summary, quick entry, date ranges | In Progress |
 | v1.0 | Stable release, full documentation | Planned |
 | v1.1 | Tolerance bands, advanced analytics | Planned |
 | v2.0 | Strategy plugins, per-holding allocation | Planned |
