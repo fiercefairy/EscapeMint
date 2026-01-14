@@ -150,6 +150,27 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     }
   }, [formData.value, formData.date, fetchPreview, fundType])
 
+  // Auto-apply recommendation when preview updates
+  useEffect(() => {
+    if (fundType === 'cash') return
+    if (!preview) return
+
+    const rec = preview.recommendation
+    if (rec) {
+      setFormData(prev => ({
+        ...prev,
+        action: rec.action as ActionType,
+        amount: rec.amount.toFixed(2)
+      }))
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        action: 'HOLD',
+        amount: ''
+      }))
+    }
+  }, [preview, fundType])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
