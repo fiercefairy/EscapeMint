@@ -6401,6 +6401,38 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     cashBalance = await fetchCoinbaseCashBalance(page, sendEvent)
   }
 
+  // Update or create cash entry if we have a fund and cash balance
+  let cashUpdated = false
+  if (cashBalance !== null && fundId && fund && fundPath) {
+    // Check if we need to update - compare to latest entry's cash
+    const latestEntry = fund.entries[fund.entries.length - 1]
+    const latestCash = latestEntry?.cash ?? 0
+    const today = new Date().toISOString().split('T')[0]
+
+    // Only update if cash changed significantly (> $0.01)
+    if (Math.abs(cashBalance - latestCash) > 0.01) {
+      // Check if latest entry is from today and is HOLD - update it
+      if (latestEntry && latestEntry.date === today && latestEntry.action === 'HOLD') {
+        latestEntry.cash = cashBalance
+        console.log(`[Coinbase TX] Updated today's HOLD entry with cash: ${cashBalance}`)
+      } else {
+        // Create new HOLD entry with cash update
+        fund.entries.push({
+          date: today,
+          value: 0,
+          action: 'HOLD',
+          cash: cashBalance,
+          notes: 'Cash balance update from scrape'
+        })
+        console.log(`[Coinbase TX] Created new HOLD entry with cash: ${cashBalance}`)
+      }
+
+      await writeFund(fundPath, fund)
+      cashUpdated = true
+      sendEvent('cashUpdated', { cashBalance, date: today })
+    }
+  }
+
   if (result) {
     // Calculate summary of scraped data
     const perpTxns = archive.transactions.filter(t => t.isPerpRelated)
@@ -6419,6 +6451,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
       stoppedAtDate: result.stoppedAtDate,
       entriesApplied,
       cashBalance,
+      cashUpdated,
       message
     })
   }
