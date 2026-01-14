@@ -41,7 +41,18 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
       return empty
     }
 
-    // For trading/derivatives funds: pre-fill from latest entry
+    // For derivatives funds: value is always 0 (calculated), focus on cash
+    if (fundType === 'derivatives') {
+      return {
+        ...empty,
+        value: '0',  // Derivatives equity is calculated, not entered
+        cash: lastEntry.cash?.toFixed(2) ?? '',
+        margin_available: lastEntry.margin_available?.toFixed(2) ?? '',
+        margin_borrowed: lastEntry.margin_borrowed?.toFixed(2) ?? ''
+      }
+    }
+
+    // For trading funds: pre-fill from latest entry
     // Keep date as today (already set), action empty, amount empty, notes empty
     // But carry forward: value, cash, shares, margin fields
     return {
