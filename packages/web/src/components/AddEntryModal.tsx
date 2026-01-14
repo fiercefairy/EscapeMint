@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 import { addFundEntry, previewRecommendation, type FundEntry, type FundState, type Recommendation, type FundType } from '../api/funds'
-import { EntryForm, buildEntryFromForm, createEmptyFormData, type EntryFormData, type ActionType } from './EntryForm'
+import { EntryForm, buildEntryFromForm, createEmptyFormData, detectDigitError, type EntryFormData, type ActionType } from './EntryForm'
 
 export interface AddEntryModalProps {
   fundId: string
@@ -84,6 +84,26 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     const pct = clamped * 100
     return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'
   }
+
+  // Detect digit errors in equity input
+  const digitErrorInfo = useMemo(() => {
+    if (existingEntries.length === 0) return null
+    const sorted = [...existingEntries].sort((a, b) => a.date.localeCompare(b.date))
+    const priorEquity = sorted[sorted.length - 1]?.value ?? null
+    if (priorEquity === null) return null
+
+    const newValue = parseFloat(formData.value)
+    if (isNaN(newValue) || newValue === 0) return null
+
+    const errorType = detectDigitError(newValue, priorEquity)
+    if (!errorType) return null
+
+    return {
+      type: errorType,
+      priorValue: priorEquity,
+      newValue
+    }
+  }, [formData.value, existingEntries])
 
   // Debounced preview fetch
   const fetchPreview = useCallback(async (equityValue: number, date: string) => {
@@ -239,6 +259,23 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
       <div role="dialog" data-testid="add-entry-modal" className="bg-slate-800 rounded-lg p-4 sm:p-6 w-full max-w-4xl border border-slate-700 max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-bold text-white mb-2">Take Action</h2>
         <p className="text-slate-400 text-sm mb-4">Record activity for {fundTicker.toUpperCase()}</p>
+
+        {/* Digit Error Warning Banner */}
+        {digitErrorInfo && (
+          <div className="rounded-lg p-3 mb-4 bg-amber-900/40 border border-amber-600">
+            <div className="flex items-center gap-2">
+              <span className="text-amber-400 text-lg">⚠️</span>
+              <div>
+                <p className="text-amber-200 font-medium text-sm">
+                  Possible {digitErrorInfo.type === 'extra' ? 'extra' : 'missing'} digit
+                </p>
+                <p className="text-amber-300/80 text-xs">
+                  Prior equity: {formatCurrency(digitErrorInfo.priorValue)} → You entered: {formatCurrency(digitErrorInfo.newValue)}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Live Recommendation Banner - not shown for cash funds */}
         {formData.value && fundType !== 'cash' && (

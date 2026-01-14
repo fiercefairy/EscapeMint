@@ -8,7 +8,7 @@ import { formatCurrency, formatLocalDate } from '../utils/format'
 
 // Detect if a value change looks like a digit error (missing or extra digit)
 // Returns 'extra' if user likely added a digit, 'missing' if likely removed one, null if ok
-function detectDigitError(newValue: number, priorValue: number): 'extra' | 'missing' | null {
+export function detectDigitError(newValue: number, priorValue: number): 'extra' | 'missing' | null {
   // Skip if either value is 0 or negative
   if (newValue <= 0 || priorValue <= 0) return null
 
@@ -146,8 +146,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
     return sorted[sorted.length - 1]?.value ?? null
   }, [existingEntries])
 
-  // Detect digit errors when equity value changes
-  useEffect(() => {
+  // Check for digit errors on blur (when user finishes typing)
+  const handleEquityBlur = useCallback(() => {
     if (priorEquity === null) return
     const newValue = parseFloat(formData.value)
     if (isNaN(newValue) || newValue === 0) return
@@ -300,6 +300,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 type="number"
                 value={formData.value}
                 onChange={e => setFormData(prev => ({ ...prev, value: e.target.value }))}
+                onBlur={handleEquityBlur}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 placeholder="Current cash balance"
                 step="0.01"
@@ -424,6 +425,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               id="value"
               value={formData.value}
               onChange={e => setFormData(prev => ({ ...prev, value: e.target.value }))}
+              onBlur={handleEquityBlur}
               className={`w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500 ${fundType === 'derivatives' ? 'opacity-60' : ''}`}
               placeholder={fundType === 'derivatives' ? '0 (auto-calculated)' : 'Asset value'}
               step="0.01"
