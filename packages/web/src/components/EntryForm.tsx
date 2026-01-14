@@ -524,22 +524,17 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               min="0"
               disabled={!formData.action || formData.action === 'HOLD'}
             />
-            {/* Shortfall helper - show info when amount exceeds cash */}
-            {formData.action === 'BUY' && cashAvailable !== undefined && (() => {
+            {/* Shortfall helper - show info when amount exceeds cash (skip for M1 - shown on Margin Borrowed field) */}
+            {formData.action === 'BUY' && cashAvailable !== undefined && platform?.toLowerCase() !== 'm1' && (() => {
               const amount = parseFloat(formData.amount) || 0
               const shortfall = amount - cashAvailable
               if (shortfall > 0.01) {
-                const isM1Platform = platform?.toLowerCase() === 'm1'
-                const shortfallMessage = isM1Platform
-                  ? `Shortfall: ${formatCurrency(shortfall)} - will be automatically borrowed from margin if available`
-                  : `Shortfall: ${formatCurrency(shortfall)} - deposit to platform cash fund`
-
                 return (
                   <div className="mt-1 flex gap-2 flex-wrap items-center">
-                    <span className={`text-xs ${isM1Platform ? 'text-purple-400' : 'text-amber-400'}`}>
-                      {shortfallMessage}
+                    <span className="text-xs text-amber-400">
+                      Shortfall: {formatCurrency(shortfall)} - deposit to platform cash fund
                     </span>
-                    {!isM1Platform && (marginAvailable ?? 0) > 0 && (
+                    {(marginAvailable ?? 0) > 0 && (
                       <button
                         type="button"
                         onClick={() => {
