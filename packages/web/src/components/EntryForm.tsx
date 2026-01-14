@@ -269,6 +269,45 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
     }
   }, [formData.deposit, formData.withdrawal, currentFundSize, showFundSizeAdjustment, setFormData])
 
+  // Track the initial margin_borrowed value for M1 auto-borrow calculation
+  // Use a ref that captures the value on first render
+  const initialMarginBorrowedRef = useRef<number>(parseFloat(formData.margin_borrowed) || 0)
+
+  // Auto-update margin_borrowed for M1 platform when there's a shortfall on BUY
+  // M1 automatically borrows from margin, so we should reflect the expected new total
+  useEffect(() => {
+    const isM1Platform = platform?.toLowerCase() === 'm1'
+    if (!isM1Platform) return
+    if (formData.action !== 'BUY') return
+    if (cashAvailable === undefined) return
+
+    const amount = parseFloat(formData.amount) || 0
+    const shortfall = amount - cashAvailable
+
+    if (shortfall > 0.01) {
+      // Calculate expected new margin borrowed total from the INITIAL value + shortfall
+      const expectedNewTotal = initialMarginBorrowedRef.current + shortfall
+
+      setFormData(prev => {
+        const currentValue = parseFloat(prev.margin_borrowed) || 0
+        // Only update if the value would actually change
+        if (Math.abs(currentValue - expectedNewTotal) > 0.01) {
+          return { ...prev, margin_borrowed: expectedNewTotal.toFixed(2) }
+        }
+        return prev
+      })
+    } else {
+      // No shortfall - reset to initial value if needed
+      setFormData(prev => {
+        const currentValue = parseFloat(prev.margin_borrowed) || 0
+        if (Math.abs(currentValue - initialMarginBorrowedRef.current) > 0.01) {
+          return { ...prev, margin_borrowed: initialMarginBorrowedRef.current.toFixed(2) }
+        }
+        return prev
+      })
+    }
+  }, [formData.action, formData.amount, cashAvailable, platform, setFormData])
+
   // Simplified form for cash funds - single Amount field with sign
   if (isCashFund) {
     // Parse amount to show appropriate styling
