@@ -135,9 +135,20 @@ export const parseFormulaValue = (input: string): number => {
 // Wizard indicator component - animated arrow pointing to a field
 function WizardIndicator({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-1 animate-pulse">
-      <span className="text-mint-400 animate-bounce text-lg">→</span>
-      <span className="text-mint-400 text-xs font-medium">{label}</span>
+    <div className="flex items-center gap-1">
+      <span
+        className="text-mint-400 text-lg"
+        style={{
+          animation: 'wizard-arrow 0.8s ease-in-out infinite',
+        }}
+      >→</span>
+      <span className="text-mint-400 text-xs font-medium animate-pulse">{label}</span>
+      <style>{`
+        @keyframes wizard-arrow {
+          0%, 100% { transform: translateX(0); }
+          50% { transform: translateX(4px); }
+        }
+      `}</style>
     </div>
   )
 }
@@ -152,6 +163,17 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
 
   // Track initial equity value to detect when user has changed it
   const initialEquityRef = useRef<string>(formData.value)
+
+  // Ref for auto-focusing and selecting the equity input
+  const equityInputRef = useRef<HTMLInputElement>(null)
+
+  // Auto-focus and select equity input on mount (for non-derivatives funds)
+  useEffect(() => {
+    if (fundType !== 'derivatives' && equityInputRef.current) {
+      equityInputRef.current.focus()
+      equityInputRef.current.select()
+    }
+  }, []) // Only run on mount
 
   // Move wizard to next step when equity is changed
   useEffect(() => {
@@ -378,6 +400,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 {wizardStep === 1 && <WizardIndicator label="Update first" />}
               </div>
               <input
+                ref={equityInputRef}
                 type="number"
                 value={formData.value}
                 onChange={e => {
@@ -507,6 +530,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               {wizardStep === 1 && <WizardIndicator label="Update first" />}
             </div>
             <input
+              ref={equityInputRef}
               type="number"
               name="value"
               id="value"
