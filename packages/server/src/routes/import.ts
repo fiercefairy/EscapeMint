@@ -6391,15 +6391,9 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
   // Keep the Coinbase page open for user reference (don't close it)
 
   // Fetch current cash balance from Coinbase home page
-  console.log(`[Coinbase TX] About to fetch cash balance, page exists: ${!!page}`)
-  let cashBalance: number | null = null
-  if (page) {
-    console.log(`[Coinbase TX] Calling fetchCoinbaseCashBalance...`)
-    cashBalance = await fetchCoinbaseCashBalance(page, sendEvent)
-    console.log(`[Coinbase TX] Cash balance result: ${cashBalance}`)
-  } else {
-    console.log(`[Coinbase TX] No page available, skipping cash balance fetch`)
-  }
+  console.log(`[Coinbase TX] Calling fetchCoinbaseCashBalance...`)
+  const cashBalance = await fetchCoinbaseCashBalance(page, sendEvent)
+  console.log(`[Coinbase TX] Cash balance result: ${cashBalance}`)
 
   // Update or create cash entry if we have a fund and cash balance
   let cashUpdated = false

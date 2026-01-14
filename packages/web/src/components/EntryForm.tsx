@@ -731,10 +731,8 @@ export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType)
       if (withdrawalVal > 0) {
         notes = (notes ? notes + ' | ' : '') + `Withdrawal: $${withdrawalVal}`
       }
-    } else if (formData.action === 'HOLD') {
-      entry.action = 'HOLD'
     } else {
-      // Default to HOLD if no action specified
+      // Default to HOLD if action is 'HOLD' or not specified
       entry.action = 'HOLD'
     }
   }

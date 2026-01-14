@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import { addFundEntry, previewRecommendation, type FundEntry, type FundState, type Recommendation, type FundType } from '../api/funds'
-import { EntryForm, buildEntryFromForm, createEmptyFormData, type EntryFormData } from './EntryForm'
+import { EntryForm, buildEntryFromForm, createEmptyFormData, type EntryFormData, type ActionType } from './EntryForm'
 
 export interface AddEntryModalProps {
   fundId: string
