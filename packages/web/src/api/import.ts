@@ -839,6 +839,7 @@ export interface CoinbaseScrapeCompleteEvent {
   perpRelatedCount: number
   stoppedAtDate: boolean
   entriesApplied?: number  // Number of entries applied after batch processing
+  cashBalance?: number | null  // Current cash balance from Coinbase home page
   message: string
 }
 

@@ -5437,6 +5437,62 @@ const findCoinbaseFuturesPage = async (browser: Browser): Promise<Page | null> =
 }
 
 /**
+ * Fetch cash balance from Coinbase home page
+ * Navigates to coinbase.com/home and extracts cash balance from the balance breakdown
+ */
+const fetchCoinbaseCashBalance = async (
+  page: Page,
+  sendEvent?: (event: string, data: Record<string, unknown>) => void
+): Promise<number | null> => {
+  const currentUrl = page.url()
+  console.log(`[Coinbase] Fetching cash balance, current URL: ${currentUrl}`)
+
+  // Navigate to home page if not already there
+  if (!currentUrl.includes('coinbase.com/home')) {
+    sendEvent?.('status', { message: 'Fetching cash balance from Coinbase...', phase: 'loading' })
+
+    const navResult = await page.goto('https://www.coinbase.com/home', {
+      waitUntil: 'load',
+      timeout: 30000
+    }).catch((err: Error) => err)
+
+    if (navResult instanceof Error) {
+      console.log(`[Coinbase] Failed to navigate to home: ${navResult.message}`)
+      return null
+    }
+
+    // Wait for balance to load
+    await page.waitForTimeout(2000)
+  }
+
+  // Find the cash balance cell using aria-label
+  // Format: aria-label="Your Cash balance is $528,143.20, view assets"
+  const cashButton = await page.$('[data-testid="cash-balance-cell-cell-pressable"]').catch(() => null)
+
+  if (!cashButton) {
+    console.log('[Coinbase] Cash balance cell not found')
+    return null
+  }
+
+  const ariaLabel = await cashButton.getAttribute('aria-label').catch(() => null)
+  console.log(`[Coinbase] Cash balance aria-label: ${ariaLabel}`)
+
+  if (!ariaLabel) return null
+
+  // Extract amount from "Your Cash balance is $528,143.20, view assets"
+  const match = ariaLabel.match(/Your Cash balance is \$([\d,]+\.?\d*)/)
+  if (!match || !match[1]) {
+    console.log('[Coinbase] Could not parse cash balance from aria-label')
+    return null
+  }
+
+  const cashBalance = parseFloat(match[1].replace(/,/g, ''))
+  console.log(`[Coinbase] Extracted cash balance: ${cashBalance}`)
+
+  return cashBalance
+}
+
+/**
  * Find Coinbase rewards/interest page
  */
 const findCoinbaseRewardsPage = async (browser: Browser): Promise<Page | null> => {
@@ -6339,6 +6395,12 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
 
   // Keep the Coinbase page open for user reference (don't close it)
 
+  // Fetch current cash balance from Coinbase home page
+  let cashBalance: number | null = null
+  if (page) {
+    cashBalance = await fetchCoinbaseCashBalance(page, sendEvent)
+  }
+
   if (result) {
     // Calculate summary of scraped data
     const perpTxns = archive.transactions.filter(t => t.isPerpRelated)
@@ -6356,6 +6418,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
       perpRelatedCount: perpTxns.length,
       stoppedAtDate: result.stoppedAtDate,
       entriesApplied,
+      cashBalance,
       message
     })
   }
