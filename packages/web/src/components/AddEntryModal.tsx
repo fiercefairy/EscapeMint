@@ -61,7 +61,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     // Keep date as today (already set), action empty, amount empty, notes empty
     // But carry forward: value, cash, shares, margin fields
     // Use getPriorEquity to compute expected equity AFTER last action (value is BEFORE action)
-    const expectedEquity = getPriorEquity(existingEntries) ?? lastEntry.value
+    const expectedEquity = getPriorEquity(existingEntries) ?? lastEntry.value ?? 0
     return {
       ...empty,
       value: expectedEquity.toFixed(2),
