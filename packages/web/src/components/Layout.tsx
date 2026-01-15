@@ -63,13 +63,13 @@ export function Layout() {
   const loadFundsAndPlatforms = useCallback(() => {
     fetchFunds(settings.testFundsMode).then(result => {
       if (result.data) setFunds(result.data)
-    })
+    }).catch(() => {})
     fetchPlatforms(settings.testFundsMode).then(result => {
       if (result.data) setPlatforms(result.data)
-    })
+    }).catch(() => {})
     fetchActionableFunds(settings.testFundsMode).then(result => {
       if (result.data) setActionableFundsCount(result.data.count)
-    })
+    }).catch(() => {})
   }, [settings.testFundsMode])
 
   // Fetch funds, platforms, and version on mount and when testFundsMode changes

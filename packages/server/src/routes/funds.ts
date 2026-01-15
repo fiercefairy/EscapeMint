@@ -268,8 +268,8 @@ fundsRouter.get('/actionable', async (req, res, next) => {
 
   // Parse YYYY-MM-DD date string as local time (not UTC)
   const parseLocalDate = (dateStr: string): Date => {
-    const [year, month, day] = dateStr.split('-').map(Number)
-    return new Date(year, month - 1, day)
+    const parts = dateStr.split('-').map(Number) as [number, number, number]
+    return new Date(parts[0], parts[1] - 1, parts[2])
   }
 
   const actionableFunds = funds
@@ -283,6 +283,7 @@ fundsRouter.get('/actionable', async (req, res, next) => {
       return true
     })
     .map(f => {
+      // Entries are stored in chronological order (appended to TSV files)
       const latestEntry = f.entries[f.entries.length - 1]
       const latestDate = latestEntry ? parseLocalDate(latestEntry.date) : null
 

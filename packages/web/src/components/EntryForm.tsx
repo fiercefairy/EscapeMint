@@ -21,7 +21,7 @@ export function detectDigitError(newValue: number, priorValue: number): 'extra' 
   if (ratio >= 8 && ratio <= 12) {
     // But allow natural transitions like 999 -> 1000 (small % change)
     const percentChange = Math.abs(newValue - priorValue) / priorValue
-    // If the actual dollar change is > 50% of prior value, it's suspicious
+    // If the percent change exceeds 50%, it's suspicious (not a natural transition)
     if (percentChange > 0.5) {
       return 'extra'
     }
@@ -320,7 +320,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
   }, [formData.deposit, formData.withdrawal, currentFundSize, showFundSizeAdjustment, setFormData])
 
   // Track the initial margin_borrowed value for M1 auto-borrow calculation
-  // Use a ref that captures the value on first render
+  // Captures value on first render - intentionally not updated on formData changes since
+  // we want to compare against the original value before any auto-adjustments
   const initialMarginBorrowedRef = useRef<number>(parseFloat(formData.margin_borrowed) || 0)
 
   // Track auto-adjustment amount for display purposes
