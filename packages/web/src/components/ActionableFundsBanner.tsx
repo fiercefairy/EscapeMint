@@ -7,6 +7,9 @@ import { useSettings } from '../contexts/SettingsContext'
 // Days overdue threshold for high urgency styling (red border)
 const URGENCY_THRESHOLD_DAYS = 7
 
+// Storage key for dismissed items
+const DISMISSED_STORAGE_KEY = 'actionable-funds-dismissed'
+
 // Event to notify other components when actionable funds visibility changes
 export const ACTIONABLE_DISMISSED_EVENT = 'escapemint:actionable-dismissed'
 
@@ -14,33 +17,32 @@ export function notifyActionableDismissed(visibleCount: number) {
   window.dispatchEvent(new CustomEvent(ACTIONABLE_DISMISSED_EVENT, { detail: { visibleCount } }))
 }
 
+// Get dismissed fund IDs from sessionStorage (shared helper for Layout)
+export function getDismissedFundIds(): Set<string> {
+  const saved = sessionStorage.getItem(DISMISSED_STORAGE_KEY)
+  if (!saved) return new Set()
+  try {
+    const parsed = JSON.parse(saved) as unknown
+    if (typeof parsed === 'object' && parsed !== null && 'date' in parsed && 'ids' in parsed) {
+      const { date, ids } = parsed as { date: string; ids: string[] }
+      const today = new Date().toISOString().split('T')[0]
+      if (date !== today) {
+        sessionStorage.removeItem(DISMISSED_STORAGE_KEY)
+        return new Set()
+      }
+      return Array.isArray(ids) ? new Set(ids) : new Set()
+    }
+    return new Set()
+  } catch {
+    return new Set()
+  }
+}
+
 export function ActionableFundsBanner() {
   const { settings } = useSettings()
   const [actionableFunds, setActionableFunds] = useState<ActionableFund[]>([])
   const [loading, setLoading] = useState(true)
-  const [dismissed, setDismissed] = useState<Set<string>>(() => {
-    // Load dismissed funds from session storage, but reset if date changed
-    const saved = sessionStorage.getItem('actionable-funds-dismissed')
-    if (!saved) return new Set()
-    try {
-      const parsed = JSON.parse(saved) as unknown
-      if (typeof parsed === 'object' && parsed !== null && 'date' in parsed && 'ids' in parsed) {
-        const { date, ids } = parsed as { date: string; ids: string[] }
-        const today = new Date().toISOString().split('T')[0]
-        // Reset if it's a new day
-        if (date !== today) {
-          sessionStorage.removeItem('actionable-funds-dismissed')
-          return new Set()
-        }
-        return Array.isArray(ids) ? new Set(ids) : new Set()
-      }
-      // Legacy format (just array) - clear it
-      sessionStorage.removeItem('actionable-funds-dismissed')
-      return new Set()
-    } catch {
-      return new Set()
-    }
-  })
+  const [dismissed, setDismissed] = useState<Set<string>>(() => getDismissedFundIds())
 
   const loadActionableFunds = useCallback(async () => {
     setLoading(true)
@@ -65,7 +67,7 @@ export function ActionableFundsBanner() {
     newDismissed.add(id)
     setDismissed(newDismissed)
     const today = new Date().toISOString().split('T')[0]
-    sessionStorage.setItem('actionable-funds-dismissed', JSON.stringify({ date: today, ids: [...newDismissed] }))
+    sessionStorage.setItem(DISMISSED_STORAGE_KEY, JSON.stringify({ date: today, ids: [...newDismissed] }))
     // Notify other components (like nav badge) about the change
     const newVisibleCount = actionableFunds.filter(f => !newDismissed.has(f.id)).length
     notifyActionableDismissed(newVisibleCount)
@@ -161,7 +163,7 @@ export function ActionableFundsBanner() {
         <button
           onClick={() => {
             setDismissed(new Set())
-            sessionStorage.removeItem('actionable-funds-dismissed')
+            sessionStorage.removeItem(DISMISSED_STORAGE_KEY)
             // Notify nav badge that all items are visible again
             notifyActionableDismissed(actionableFunds.length)
           }}

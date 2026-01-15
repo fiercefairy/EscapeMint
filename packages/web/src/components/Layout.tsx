@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom'
 import { fetchFunds, fetchActionableFunds, FUNDS_CHANGED_EVENT, type FundSummary } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
 import { useSettings } from '../contexts/SettingsContext'
-import { ACTIONABLE_DISMISSED_EVENT } from './ActionableFundsBanner'
+import { ACTIONABLE_DISMISSED_EVENT, getDismissedFundIds } from './ActionableFundsBanner'
 
 const SIDEBAR_COLLAPSED_KEY = 'escapemint-sidebar-collapsed'
 const EXPANDED_PLATFORMS_KEY = 'escapemint-expanded-platforms'
@@ -68,7 +68,12 @@ export function Layout() {
       if (result.data) setPlatforms(result.data)
     }).catch(() => {})
     fetchActionableFunds(settings.testFundsMode).then(result => {
-      if (result.data) setActionableFundsCount(result.data.count)
+      if (result.data) {
+        // Filter out dismissed funds from the count
+        const dismissed = getDismissedFundIds()
+        const visibleCount = result.data.actionableFunds.filter(f => !dismissed.has(f.id)).length
+        setActionableFundsCount(visibleCount)
+      }
     }).catch(() => {})
   }, [settings.testFundsMode])
 
