@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { fetchActionableFunds, type ActionableFund } from '../api/funds'
+import { fetchActionableFunds, FUNDS_CHANGED_EVENT, type ActionableFund } from '../api/funds'
 import { getFundTypeFeatures } from '@escapemint/engine'
 
 // Event to notify other components when actionable funds visibility changes
@@ -10,11 +10,7 @@ export function notifyActionableDismissed(visibleCount: number) {
   window.dispatchEvent(new CustomEvent(ACTIONABLE_DISMISSED_EVENT, { detail: { visibleCount } }))
 }
 
-interface ActionableFundsBannerProps {
-  onRefresh?: () => void
-}
-
-export function ActionableFundsBanner({ onRefresh }: ActionableFundsBannerProps) {
+export function ActionableFundsBanner() {
   const [actionableFunds, setActionableFunds] = useState<ActionableFund[]>([])
   const [loading, setLoading] = useState(true)
   const [dismissed, setDismissed] = useState<Set<string>>(() => {
@@ -23,25 +19,23 @@ export function ActionableFundsBanner({ onRefresh }: ActionableFundsBannerProps)
     return saved ? new Set(JSON.parse(saved) as string[]) : new Set()
   })
 
-  const loadActionableFunds = async () => {
+  const loadActionableFunds = useCallback(async () => {
     setLoading(true)
     const result = await fetchActionableFunds()
     if (result.data) {
       setActionableFunds(result.data.actionableFunds)
     }
     setLoading(false)
-  }
+  }, [])
 
   useEffect(() => {
     loadActionableFunds()
-  }, [])
 
-  // Refresh when parent signals (e.g., after adding an entry)
-  useEffect(() => {
-    if (onRefresh) {
-      loadActionableFunds()
-    }
-  }, [onRefresh])
+    // Refresh when funds change (e.g., after adding an entry)
+    const handleFundsChange = () => loadActionableFunds()
+    window.addEventListener(FUNDS_CHANGED_EVENT, handleFundsChange)
+    return () => window.removeEventListener(FUNDS_CHANGED_EVENT, handleFundsChange)
+  }, [loadActionableFunds])
 
   const dismissFund = (id: string) => {
     const newDismissed = new Set(dismissed)
@@ -152,26 +146,4 @@ export function ActionableFundsBanner({ onRefresh }: ActionableFundsBannerProps)
       )}
     </div>
   )
-}
-
-// Export the count hook for use in nav badge
-export function useActionableFundsCount(): number {
-  const [count, setCount] = useState(0)
-
-  useEffect(() => {
-    const load = async () => {
-      const result = await fetchActionableFunds()
-      if (result.data) {
-        setCount(result.data.count)
-      }
-    }
-    load()
-
-    // Refresh when funds change
-    const handleFundsChange = () => load()
-    window.addEventListener('escapemint:funds-changed', handleFundsChange)
-    return () => window.removeEventListener('escapemint:funds-changed', handleFundsChange)
-  }, [])
-
-  return count
 }

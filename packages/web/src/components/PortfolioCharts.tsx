@@ -1033,10 +1033,9 @@ const GainsChart = memo(function GainsChart({ data, currentRealized, currentUnre
           </button>
         </div>
         <div className="flex gap-1 xs:gap-1.5 sm:gap-3 text-[6px] xs:text-[7px] sm:text-[8px] md:text-[9px]">
-          <span className="flex items-center gap-0.5 text-emerald-400">
+          <span className="flex items-center gap-0.5 text-emerald-400" title="Realized">
             <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500" />
             <span className="hidden xs:inline text-slate-400">R:</span>
-            <span className="xs:hidden text-slate-400" title="Realized"></span>
             {formatCurrencyCompact(currentRealized)}
           </span>
           <span className="flex items-center gap-0.5 text-amber-400">

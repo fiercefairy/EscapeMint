@@ -168,12 +168,14 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
   const equityInputRef = useRef<HTMLInputElement>(null)
 
   // Auto-focus and select equity input on mount (for non-derivatives funds)
+  // fundType is stable for the component's lifetime - it's determined by the fund being edited
   useEffect(() => {
     if (fundType !== 'derivatives' && equityInputRef.current) {
       equityInputRef.current.focus()
       equityInputRef.current.select()
     }
-  }, []) // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Move wizard to next step when equity is changed
   useEffect(() => {
