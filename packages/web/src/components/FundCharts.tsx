@@ -118,8 +118,9 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
       // In accumulate mode, partial sells don't reduce invested (they're profit extraction)
       // In harvest mode, all sells reduce invested
       const isAccumulate = config.accumulate
-      // Dollar-based liquidation check - only valid in harvest mode
-      // In accumulate mode, totalSells can exceed costBasis without liquidation (it's profit extraction)
+      // Dollar-based liquidation check - placed after isAccumulate assignment because this check
+      // only applies in harvest mode. In accumulate mode, totalSells can exceed costBasis without
+      // triggering liquidation (the excess is profit extraction, not a full exit).
       const dollarLiquidated = !isAccumulate && totalSells >= costBasis
       const isFullLiquidation = sharesLiquidated || valueLiquidated || dollarLiquidated
       if (!isAccumulate || isFullLiquidation) {

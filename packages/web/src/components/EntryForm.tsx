@@ -17,23 +17,15 @@ export function detectDigitError(newValue: number, priorValue: number): 'extra' 
 
   // Check for ~10x increase (extra digit)
   // Range 8-12 allows ~20% variance around 10x to catch values like $1,200 -> $11,000 (9.17x)
-  // while avoiding false positives from legitimate large gains
+  // while avoiding false positives from more modest legitimate gains
   if (ratio >= 8 && ratio <= 12) {
-    // But allow natural transitions like 999 -> 1000 (small % change)
-    const percentChange = Math.abs(newValue - priorValue) / priorValue
-    // If the percent change exceeds 50%, it's suspicious (not a natural transition)
-    if (percentChange > 0.5) {
-      return 'extra'
-    }
+    return 'extra'
   }
 
   // Check for ~0.1x decrease (missing digit)
   // Range 0.08-0.12 is the inverse of 8-12, catching values like $12,000 -> $1,200 (0.1x)
   if (ratio >= 0.08 && ratio <= 0.12) {
-    const percentChange = Math.abs(newValue - priorValue) / priorValue
-    if (percentChange > 0.5) {
-      return 'missing'
-    }
+    return 'missing'
   }
 
   return null
