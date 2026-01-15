@@ -46,6 +46,19 @@ export interface ChartTimeSeriesPoint {
 // Alias for internal use
 type TimeSeriesPoint = ChartTimeSeriesPoint
 
+// Responsive chart margins based on container width
+const getResponsiveMargin = (containerWidth: number) => ({
+  top: 10,
+  right: 10,
+  bottom: 25,
+  // Reduce left margin on narrow screens
+  left: containerWidth < 300 ? 38 : containerWidth < 400 ? 45 : 50
+})
+
+// Responsive font size for axis labels
+const getAxisFontSize = (containerWidth: number) =>
+  containerWidth < 300 ? '8px' : containerWidth < 400 ? '9px' : '10px'
+
 // Compute time series data from entries
 function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeriesPoint[] {
   const sorted = [...entries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -270,8 +283,10 @@ export function StackedAreaChart({
     const svg = d3.select(ref.current)
     svg.selectAll('*').remove()
 
-    const margin = { top: 10, right: 10, bottom: 25, left: 50 }
-    const width = ref.current.clientWidth - margin.left - margin.right
+    const containerWidth = ref.current.clientWidth
+    const margin = getResponsiveMargin(containerWidth)
+    const axisFontSize = getAxisFontSize(containerWidth)
+    const width = containerWidth - margin.left - margin.right
     const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
@@ -327,14 +342,14 @@ export function StackedAreaChart({
       .call(d3.axisBottom(x).ticks(4).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '9px')
+      .attr('font-size', axisFontSize)
 
     // Y axis
     g.append('g')
       .call(d3.axisLeft(y).ticks(4).tickFormat(d => formatCurrencyCompact(d as number)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '9px')
+      .attr('font-size', axisFontSize)
 
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
@@ -608,8 +623,10 @@ export function AreaChart({
     const svg = d3.select(ref.current)
     svg.selectAll('*').remove()
 
-    const margin = { top: 10, right: 10, bottom: 25, left: 50 }
-    const width = ref.current.clientWidth - margin.left - margin.right
+    const containerWidth = ref.current.clientWidth
+    const margin = getResponsiveMargin(containerWidth)
+    const axisFontSize = getAxisFontSize(containerWidth)
+    const width = containerWidth - margin.left - margin.right
     const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
@@ -695,14 +712,14 @@ export function AreaChart({
       .call(d3.axisBottom(x).ticks(4).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '9px')
+      .attr('font-size', axisFontSize)
 
     // Y axis
     g.append('g')
       .call(d3.axisLeft(y).ticks(4).tickFormat(d => formatValue(d as number)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '9px')
+      .attr('font-size', axisFontSize)
 
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
@@ -860,8 +877,10 @@ export function ValueAndFundSizeChart({
     const svg = d3.select(ref.current)
     svg.selectAll('*').remove()
 
-    const margin = { top: 10, right: 10, bottom: 25, left: 50 }
-    const width = ref.current.clientWidth - margin.left - margin.right
+    const containerWidth = ref.current.clientWidth
+    const margin = getResponsiveMargin(containerWidth)
+    const axisFontSize = getAxisFontSize(containerWidth)
+    const width = containerWidth - margin.left - margin.right
     const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
@@ -954,14 +973,14 @@ export function ValueAndFundSizeChart({
       .call(d3.axisBottom(x).ticks(4).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '9px')
+      .attr('font-size', axisFontSize)
 
     // Y axis
     g.append('g')
       .call(d3.axisLeft(y).ticks(4).tickFormat(d => formatCurrencyCompact(d as number)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '9px')
+      .attr('font-size', axisFontSize)
 
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
@@ -1163,8 +1182,10 @@ export function MarginChart({
     const svg = d3.select(ref.current)
     svg.selectAll('*').remove()
 
-    const margin = { top: 10, right: 10, bottom: 25, left: 50 }
-    const width = ref.current.clientWidth - margin.left - margin.right
+    const containerWidth = ref.current.clientWidth
+    const margin = getResponsiveMargin(containerWidth)
+    const axisFontSize = getAxisFontSize(containerWidth)
+    const width = containerWidth - margin.left - margin.right
     const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
@@ -1227,14 +1248,14 @@ export function MarginChart({
       .call(d3.axisBottom(x).ticks(4).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '9px')
+      .attr('font-size', axisFontSize)
 
     // Y axis
     g.append('g')
       .call(d3.axisLeft(y).ticks(4).tickFormat(d => formatCurrencyCompact(d as number)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '9px')
+      .attr('font-size', axisFontSize)
 
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')

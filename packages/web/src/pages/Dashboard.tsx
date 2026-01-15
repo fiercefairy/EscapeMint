@@ -5,6 +5,7 @@ import { AggregatePanel } from '../components/AggregatePanel'
 import { PortfolioCharts } from '../components/PortfolioCharts'
 import { CreateFundModal } from '../components/CreateFundModal'
 import { WelcomePanel } from '../components/WelcomePanel'
+import { ActionableFundsBanner } from '../components/ActionableFundsBanner'
 import { useDashboard } from '../contexts/DashboardContext'
 import type { FundSummary, AggregateMetrics } from '../api/funds'
 
@@ -433,6 +434,9 @@ export function Dashboard() {
         />
       ) : (
         <>
+          {/* Actionable Funds Banner - shows funds due for action */}
+          <ActionableFundsBanner />
+
           {/* Aggregate Metrics Panel - shows skeleton while loading */}
           {metricsLoading ? (
             <MetricsPanelSkeleton />
