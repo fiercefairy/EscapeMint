@@ -54,6 +54,73 @@ function getDefaultHarvestConfig(): ScenarioConfig {
   }
 }
 
+// Preset configurations for each mode
+export type PresetName = 'TQQQ' | 'SPXL' | 'BTC' | 'Blend'
+
+export interface Preset {
+  name: PresetName
+  label: string
+  getConfig: (accumulate: boolean, base: ScenarioConfig) => Partial<ScenarioConfig>
+}
+
+export const PRESETS: Preset[] = [
+  {
+    name: 'TQQQ',
+    label: 'TQQQ',
+    getConfig: (accumulate, base) => ({
+      spxlPct: 0,
+      tqqqPct: 100,
+      btcPct: 0,
+      targetAPY: accumulate ? 0.20 : 0.52,
+      inputMin: 100,
+      inputMid: 100,
+      inputMax: accumulate ? 100 : 350
+    })
+  },
+  {
+    name: 'SPXL',
+    label: 'SPXL',
+    getConfig: (accumulate, base) => ({
+      spxlPct: 100,
+      tqqqPct: 0,
+      btcPct: 0,
+      targetAPY: accumulate ? 0.20 : 0.44,
+      inputMin: 100,
+      inputMid: 100,
+      inputMax: accumulate ? 100 : 200
+    })
+  },
+  {
+    name: 'BTC',
+    label: 'BTC',
+    getConfig: (accumulate, base) => ({
+      spxlPct: 0,
+      tqqqPct: 0,
+      btcPct: 100,
+      targetAPY: accumulate ? 0.30 : 0.80,
+      inputMin: 100,
+      inputMid: 100,
+      inputMax: accumulate ? 100 : 200
+    })
+  },
+  {
+    name: 'Blend',
+    label: 'Blend',
+    getConfig: (accumulate, base) => {
+      const defaults = getDefaultConfig(accumulate)
+      return {
+        spxlPct: defaults.spxlPct,
+        tqqqPct: defaults.tqqqPct,
+        btcPct: defaults.btcPct,
+        targetAPY: defaults.targetAPY,
+        inputMin: defaults.inputMin,
+        inputMid: defaults.inputMid,
+        inputMax: defaults.inputMax
+      }
+    }
+  }
+]
+
 function getDefaultConfig(accumulate: boolean): ScenarioConfig {
   return accumulate ? getDefaultAccumulateConfig() : getDefaultHarvestConfig()
 }
@@ -123,6 +190,15 @@ export function BacktestApp() {
     setConfig(defaults)
     saveConfig(defaults)
   }, [config.accumulate])
+
+  const handleApplyPreset = useCallback((presetName: PresetName) => {
+    const preset = PRESETS.find(p => p.name === presetName)
+    if (!preset) return
+    const updates = preset.getConfig(config.accumulate, config)
+    const newConfig = { ...config, ...updates }
+    setConfig(newConfig)
+    saveConfig(newConfig)
+  }, [config])
 
   useEffect(() => {
     loadHistoricalData()
@@ -206,7 +282,8 @@ export function BacktestApp() {
           historicalData={historicalData}
           dateRange={selectedRange}
           onChange={handleConfigChange}
-          onReset={handleReset}
+          onApplyPreset={handleApplyPreset}
+          presets={PRESETS}
         />
       </main>
 

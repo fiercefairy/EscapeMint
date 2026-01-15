@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import type { HistoricalData, DateRange } from '../data/types'
 import { runBacktest, type ScenarioConfig, type BacktestResult, type TimeSeriesPoint } from '../engine/backtest'
+import type { Preset, PresetName } from '../App'
 import { EntriesTable } from './EntriesTable'
 import { PieBuilder } from './PieBuilder'
 import { formatCurrency, formatPercent, formatPercentSigned, formatCurrencyCompact } from '../utils/format'
@@ -16,7 +17,8 @@ interface Props {
   historicalData: Record<string, HistoricalData>
   dateRange: DateRange
   onChange: (config: ScenarioConfig) => void
-  onReset: () => void
+  onApplyPreset: (presetName: PresetName) => void
+  presets: Preset[]
 }
 
 // Extended chart data with gain and APY breakdown
@@ -251,13 +253,32 @@ function MultiLineChart({ data, title, series, formatValue = formatCurrencyCompa
   )
 }
 
-export function BacktestView({ config, historicalData, dateRange, onChange, onReset }: Props) {
+// Check if current config matches a preset's values
+function isPresetActive(config: ScenarioConfig, preset: Preset): boolean {
+  const presetValues = preset.getConfig(config.accumulate, config)
+  return (
+    config.spxlPct === presetValues.spxlPct &&
+    config.tqqqPct === presetValues.tqqqPct &&
+    config.btcPct === presetValues.btcPct &&
+    config.targetAPY === presetValues.targetAPY &&
+    config.inputMin === presetValues.inputMin &&
+    config.inputMid === presetValues.inputMid &&
+    config.inputMax === presetValues.inputMax
+  )
+}
+
+export function BacktestView({ config, historicalData, dateRange, onChange, onApplyPreset, presets }: Props) {
   const [resize, setResize] = useState(0)
   const chartsContainerRef = useRef<HTMLDivElement>(null)
 
   const result = useMemo(() => {
     return runBacktest(config, historicalData, dateRange)
   }, [config, historicalData, dateRange])
+
+  // Determine which preset (if any) is currently active
+  const activePreset = useMemo(() => {
+    return presets.find(preset => isPresetActive(config, preset))?.name ?? null
+  }, [config, presets])
 
   // Transform to chart format
   const chartData = useMemo(() => {
@@ -440,12 +461,29 @@ export function BacktestView({ config, historicalData, dateRange, onChange, onRe
                 : 'Close entire position to cash when over target + min profit.'}
               {' '}All proceeds stay in fund cash pool.
             </p>
-            <button
-              onClick={onReset}
-              className="mt-2 w-full px-2 py-1 text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 rounded transition-colors cursor-pointer"
-            >
-              Reset to Defaults
-            </button>
+            <div className="mt-2">
+              <span className="text-[10px] text-slate-500 block mb-1">Presets</span>
+              <div className="grid grid-cols-4 gap-1">
+                {presets.map((preset) => {
+                  const isActive = activePreset === preset.name
+                  return (
+                    <button
+                      key={preset.name}
+                      onClick={() => onApplyPreset(preset.name)}
+                      className={`px-1 py-1 text-[10px] rounded transition-colors cursor-pointer ${
+                        isActive
+                          ? config.accumulate
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-orange-600 text-white'
+                          : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           </div>
         </div>
       </div>
