@@ -679,12 +679,12 @@ describe('computeDerivativesEntriesState', () => {
 
     const result = computeDerivativesEntriesState(entries)
 
-    // Margin locked = 100 * $1000 * 0.20 = $20,000
+    // Margin locked = 100 * $1000 * 0.25 = $25,000 (25% initial margin per Coinbase)
     // Current notional = 100 * 0.01 * 100000 = $100,000 (using BTC price from trade)
     // Leverage = notional / margin_locked
     const buyEntry = result[1]
-    expect(buyEntry?.marginLocked).toBe(20000)
-    expect(buyEntry?.leverage).toBe(5) // $100,000 / $20,000
+    expect(buyEntry?.marginLocked).toBe(25000)
+    expect(buyEntry?.leverage).toBe(4) // $100,000 / $25,000
   })
 })
 

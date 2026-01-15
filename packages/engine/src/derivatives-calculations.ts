@@ -18,7 +18,7 @@ import type {
 } from './derivatives-types.js'
 
 // Default margin rates per Coinbase documentation
-const DEFAULT_INITIAL_MARGIN_RATE = 0.20  // 20%
+const DEFAULT_INITIAL_MARGIN_RATE = 0.25  // 25% (Coinbase BTC perpetuals)
 const DEFAULT_MAINTENANCE_MARGIN_RATE = 0.05  // 5%
 const DEFAULT_CONTRACT_MULTIPLIER = 0.01  // BIP micro-futures
 
