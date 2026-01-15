@@ -438,3 +438,26 @@ export async function syncFromSubfunds(id: string): Promise<ApiResult<SyncFromSu
     'Failed to sync from sub-funds'
   )
 }
+
+// Actionable funds - due for action based on interval_days
+export interface ActionableFund {
+  id: string
+  platform: string
+  ticker: string
+  fundType: FundType
+  intervalDays: number
+  daysSinceLastEntry: number
+  daysOverdue: number
+  lastEntryDate: string | null
+}
+
+export interface ActionableFundsResponse {
+  actionableFunds: ActionableFund[]
+  count: number
+  asOf: string
+}
+
+export async function fetchActionableFunds(includeTest = false): Promise<ApiResult<ActionableFundsResponse>> {
+  const url = includeTest ? `${API_BASE}/funds/actionable?include_test=true` : `${API_BASE}/funds/actionable`
+  return fetchJson<ActionableFundsResponse>(url, undefined, 'Failed to fetch actionable funds')
+}

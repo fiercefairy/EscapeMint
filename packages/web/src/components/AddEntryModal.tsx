@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 import { addFundEntry, previewRecommendation, type FundEntry, type FundState, type Recommendation, type FundType } from '../api/funds'
-import { EntryForm, buildEntryFromForm, createEmptyFormData, type EntryFormData, type ActionType } from './EntryForm'
+import { EntryForm, buildEntryFromForm, createEmptyFormData, detectDigitError, type EntryFormData, type ActionType } from './EntryForm'
+import { getPriorEquity } from '../utils/format'
 
 export interface AddEntryModalProps {
   fundId: string
@@ -59,9 +60,11 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     // For trading funds: pre-fill from latest entry
     // Keep date as today (already set), action empty, amount empty, notes empty
     // But carry forward: value, cash, shares, margin fields
+    // Use getPriorEquity to compute expected equity AFTER last action (value is BEFORE action)
+    const expectedEquity = getPriorEquity(existingEntries) ?? lastEntry.value ?? 0
     return {
       ...empty,
-      value: lastEntry.value.toFixed(2),
+      value: expectedEquity.toFixed(2),
       cash: lastEntry.cash?.toFixed(2) ?? '',
       shares: lastEntry.shares?.toString() ?? '',
       margin_available: lastEntry.margin_available?.toFixed(2) ?? '',
@@ -85,6 +88,18 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'
   }
 
+  // Get prior equity for digit error detection (memoized to avoid re-sorting on every render)
+  const priorEquity = useMemo(() => getPriorEquity(existingEntries), [existingEntries])
+
+  // Detect digit errors in equity input (computed on every render for reliability)
+  const newEquityValue = parseFloat(formData.value)
+  const digitErrorType = priorEquity !== null && !isNaN(newEquityValue) && newEquityValue > 0
+    ? detectDigitError(newEquityValue, priorEquity)
+    : null
+  const digitErrorInfo = digitErrorType
+    ? { type: digitErrorType, priorValue: priorEquity, newValue: newEquityValue }
+    : null
+
   // Debounced preview fetch
   const fetchPreview = useCallback(async (equityValue: number, date: string) => {
     if (isNaN(equityValue)) return
@@ -98,25 +113,33 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     }
   }, [fundId])
 
-  // Apply recommendation to form
-  const useRecommendation = useCallback(() => {
-    const rec = preview?.recommendation
+  // Apply recommendation to form (shared logic for manual and auto-apply)
+  const applyRecommendation = useCallback((rec: Recommendation | null | undefined) => {
     if (rec) {
       setFormData(prev => ({
         ...prev,
         action: rec.action as ActionType,
         amount: rec.amount.toFixed(2)
       }))
-      toast.success(`Applied: ${rec.action} ${formatCurrency(rec.amount)}`)
     } else {
       setFormData(prev => ({
         ...prev,
         action: 'HOLD',
         amount: ''
       }))
+    }
+  }, [])
+
+  // Manual apply with toast notification
+  const useRecommendation = useCallback(() => {
+    const rec = preview?.recommendation
+    applyRecommendation(rec)
+    if (rec) {
+      toast.success(`Applied: ${rec.action} ${formatCurrency(rec.amount)}`)
+    } else {
       toast.success('Applied: HOLD')
     }
-  }, [preview])
+  }, [preview, applyRecommendation])
 
   // Fetch preview when equity value changes (skip for cash funds - no recommendations)
   useEffect(() => {
@@ -129,6 +152,13 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
       return () => clearTimeout(timeoutId)
     }
   }, [formData.value, formData.date, fetchPreview, fundType])
+
+  // Auto-apply recommendation when preview updates (no toast)
+  useEffect(() => {
+    if (fundType === 'cash') return
+    if (!preview) return
+    applyRecommendation(preview.recommendation)
+  }, [preview, fundType, applyRecommendation])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -239,6 +269,23 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
       <div role="dialog" data-testid="add-entry-modal" className="bg-slate-800 rounded-lg p-4 sm:p-6 w-full max-w-4xl border border-slate-700 max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-bold text-white mb-2">Take Action</h2>
         <p className="text-slate-400 text-sm mb-4">Record activity for {fundTicker.toUpperCase()}</p>
+
+        {/* Digit Error Warning Banner */}
+        {digitErrorInfo && (
+          <div className="rounded-lg p-3 mb-4 bg-amber-900/40 border border-amber-600">
+            <div className="flex items-center gap-2">
+              <span className="text-amber-400 text-lg">⚠️</span>
+              <div>
+                <p className="text-amber-200 font-medium text-sm">
+                  Possible {digitErrorInfo.type === 'extra' ? 'extra' : 'missing'} digit
+                </p>
+                <p className="text-amber-300/80 text-xs">
+                  Prior equity: {formatCurrency(digitErrorInfo.priorValue)} → You entered: {formatCurrency(digitErrorInfo.newValue)}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Live Recommendation Banner - not shown for cash funds */}
         {formData.value && fundType !== 'cash' && (

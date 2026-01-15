@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { fetchFunds, FUNDS_CHANGED_EVENT, type FundSummary } from '../api/funds'
+import { fetchFunds, fetchActionableFunds, FUNDS_CHANGED_EVENT, type FundSummary } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
 import { useSettings } from '../contexts/SettingsContext'
+import { ACTIONABLE_DISMISSED_EVENT, getDismissedFundIds } from './ActionableFundsBanner'
 
 const SIDEBAR_COLLAPSED_KEY = 'escapemint-sidebar-collapsed'
 const EXPANDED_PLATFORMS_KEY = 'escapemint-expanded-platforms'
@@ -34,6 +35,7 @@ export function Layout() {
   const [funds, setFunds] = useState<FundSummary[]>([])
   const [platforms, setPlatforms] = useState<Platform[]>([])
   const [version, setVersion] = useState<string>('')
+  const [actionableFundsCount, setActionableFundsCount] = useState(0)
   const [expandedPlatforms, setExpandedPlatforms] = useState<Set<string>>(() => {
     const saved = localStorage.getItem(EXPANDED_PLATFORMS_KEY)
     return saved ? new Set(JSON.parse(saved)) : new Set()
@@ -61,10 +63,18 @@ export function Layout() {
   const loadFundsAndPlatforms = useCallback(() => {
     fetchFunds(settings.testFundsMode).then(result => {
       if (result.data) setFunds(result.data)
-    })
+    }).catch(() => {})
     fetchPlatforms(settings.testFundsMode).then(result => {
       if (result.data) setPlatforms(result.data)
-    })
+    }).catch(() => {})
+    fetchActionableFunds(settings.testFundsMode).then(result => {
+      if (result.data) {
+        // Filter out dismissed funds from the count
+        const dismissed = getDismissedFundIds()
+        const visibleCount = result.data.actionableFunds.filter(f => !dismissed.has(f.id)).length
+        setActionableFundsCount(visibleCount)
+      }
+    }).catch(() => {})
   }, [settings.testFundsMode])
 
   // Fetch funds, platforms, and version on mount and when testFundsMode changes
@@ -82,6 +92,16 @@ export function Layout() {
     window.addEventListener(FUNDS_CHANGED_EVENT, handleFundsChanged)
     return () => window.removeEventListener(FUNDS_CHANGED_EVENT, handleFundsChanged)
   }, [loadFundsAndPlatforms])
+
+  // Listen for actionable funds dismissed event (to sync nav badge with banner)
+  useEffect(() => {
+    const handleDismissed = (e: Event) => {
+      const customEvent = e as CustomEvent<{ visibleCount: number }>
+      setActionableFundsCount(customEvent.detail.visibleCount)
+    }
+    window.addEventListener(ACTIONABLE_DISMISSED_EVENT, handleDismissed)
+    return () => window.removeEventListener(ACTIONABLE_DISMISSED_EVENT, handleDismissed)
+  }, [])
 
   // Group funds by platform, separating active from closed
   const { activeFunds, closedFunds } = useMemo(() => {
@@ -242,7 +262,14 @@ export function Layout() {
               }`}
               title={collapsed ? item.label : undefined}
             >
-              <span className="flex-shrink-0">{item.icon}</span>
+              <span className="flex-shrink-0 relative">
+                {item.icon}
+                {item.path === '/' && actionableFundsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] bg-amber-500 text-slate-900 text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                    {actionableFundsCount > 9 ? '9+' : actionableFundsCount}
+                  </span>
+                )}
+              </span>
               {!collapsed && <span className="whitespace-nowrap">{item.label}</span>}
             </Link>
           ))}
@@ -352,7 +379,14 @@ export function Layout() {
                   : 'text-slate-400 hover:bg-slate-700/50 hover:text-white'
               }`}
             >
-              <span>{item.icon}</span>
+              <span className="relative">
+                {item.icon}
+                {item.path === '/' && actionableFundsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] bg-amber-500 text-slate-900 text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                    {actionableFundsCount > 9 ? '9+' : actionableFundsCount}
+                  </span>
+                )}
+              </span>
               <span>{item.label}</span>
             </Link>
           ))}

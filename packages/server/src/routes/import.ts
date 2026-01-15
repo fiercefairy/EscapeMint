@@ -4888,11 +4888,11 @@ const handleAdvancedTradeModal = async (
 
   console.log('[Coinbase TX] Checking for Advanced Trade modal...')
 
-  // Wait a moment for the modal to potentially appear (it may load after page)
-  await page.waitForTimeout(1000)
+  // Wait briefly for the modal to potentially appear (it may load after page)
+  await page.waitForTimeout(500)
 
   // Try to wait for the modal with a short timeout
-  const modal = await page.waitForSelector(modalSelector, { timeout: 3000 }).catch(() => null)
+  const modal = await page.waitForSelector(modalSelector, { timeout: 1500 }).catch(() => null)
   if (!modal) {
     console.log('[Coinbase TX] No Advanced Trade modal detected')
     return false

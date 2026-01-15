@@ -28,6 +28,7 @@ import {
 } from '@escapemint/engine'
 import { notFound, badRequest } from '../middleware/error-handler.js'
 import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
+import { parseLocalDate } from '../utils/calculations.js'
 
 export const fundsRouter: ReturnType<typeof Router> = Router()
 
@@ -245,6 +246,68 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
 
   const aggregate = computeAggregateMetrics(fundMetrics)
   res.json(aggregate)
+})
+
+/**
+ * GET /funds/actionable - Get funds that are due for action
+ * Returns funds where days since last entry >= interval_days
+ * Sorted by priority (most overdue first)
+ * Query params:
+ *   - include_test: 'true' to include test platform funds (default: false)
+ */
+fundsRouter.get('/actionable', async (req, res, next) => {
+  const allFunds = await readAllFunds(FUNDS_DIR).catch(next)
+  if (!allFunds) return
+
+  const includeTest = req.query.include_test === 'true'
+  const funds = includeTest
+    ? allFunds.filter(f => isTestPlatform(f.platform))
+    : allFunds.filter(f => !isTestPlatform(f.platform))
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const actionableFunds = funds
+    .filter(f => {
+      // Skip closed funds
+      if (f.config.status === 'closed') return false
+      // Skip funds with zero fund size (legacy closed indicator)
+      if (f.config.fund_size_usd === 0) return false
+      // Must have at least one entry
+      if (f.entries.length === 0) return false
+      return true
+    })
+    .map(f => {
+      // Entries are stored in chronological order (appended to TSV files)
+      const latestEntry = f.entries[f.entries.length - 1]
+      const latestDate = latestEntry ? parseLocalDate(latestEntry.date) : null
+
+      const daysSinceLastEntry = latestDate
+        ? Math.floor((today.getTime() - latestDate.getTime()) / (1000 * 60 * 60 * 24))
+        : Infinity
+
+      const intervalDays = f.config.interval_days ?? 7
+      const daysOverdue = daysSinceLastEntry - intervalDays
+
+      return {
+        id: f.id,
+        platform: f.platform,
+        ticker: f.ticker,
+        fundType: f.config.fund_type ?? 'stock',
+        intervalDays,
+        daysSinceLastEntry,
+        daysOverdue,
+        lastEntryDate: latestEntry?.date ?? null
+      }
+    })
+    .filter(f => f.daysOverdue >= 0)  // Only include funds that are due or overdue
+    .sort((a, b) => b.daysOverdue - a.daysOverdue)  // Most overdue first
+
+  res.json({
+    actionableFunds,
+    count: actionableFunds.length,
+    asOf: today.toISOString().split('T')[0]
+  })
 })
 
 /**

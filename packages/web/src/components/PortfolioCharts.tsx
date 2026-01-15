@@ -29,6 +29,19 @@ const COLORS = [
   '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'
 ]
 
+// Responsive chart margins based on container width
+const getResponsiveMargin = (containerWidth: number) => ({
+  top: 10,
+  right: 10,
+  bottom: 20,
+  // Reduce left margin on narrow screens (mobile = ~160-180px per chart in 2-col grid)
+  left: containerWidth < 200 ? 32 : containerWidth < 300 ? 38 : 45
+})
+
+// Responsive font size for axis labels
+const getAxisFontSize = (containerWidth: number) =>
+  containerWidth < 200 ? '7px' : containerWidth < 300 ? '8px' : '9px'
+
 // Mobile-friendly allocation list (replaces pie charts on small screens)
 const AllocationList = memo(function AllocationList({ data, title, valueKey, showPlatformOnly = false }: {
   data: AllocationData[]
@@ -341,8 +354,10 @@ const AreaChart = memo(function AreaChart({ data, title, valueKey, color = '#10b
     const svg = d3.select(ref.current)
     svg.selectAll('*').remove()
 
-    const margin = { top: 10, right: 10, bottom: 20, left: 45 }
-    const width = ref.current.clientWidth - margin.left - margin.right
+    const containerWidth = ref.current.clientWidth
+    const margin = getResponsiveMargin(containerWidth)
+    const axisFontSize = getAxisFontSize(containerWidth)
+    const width = containerWidth - margin.left - margin.right
     const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
@@ -428,14 +443,14 @@ const AreaChart = memo(function AreaChart({ data, title, valueKey, color = '#10b
       .call(d3.axisBottom(x).ticks(3).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '8px')
+      .attr('font-size', axisFontSize)
 
     // Y axis
     g.append('g')
       .call(d3.axisLeft(y).ticks(3).tickFormat(d => formatValue(d as number)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '8px')
+      .attr('font-size', axisFontSize)
 
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
@@ -466,8 +481,10 @@ const StackedAreaChart = memo(function StackedAreaChart({ data, resize }: { data
     const svg = d3.select(ref.current)
     svg.selectAll('*').remove()
 
-    const margin = { top: 10, right: 10, bottom: 20, left: 45 }
-    const width = ref.current.clientWidth - margin.left - margin.right
+    const containerWidth = ref.current.clientWidth
+    const margin = getResponsiveMargin(containerWidth)
+    const axisFontSize = getAxisFontSize(containerWidth)
+    const width = containerWidth - margin.left - margin.right
     const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
@@ -551,14 +568,14 @@ const StackedAreaChart = memo(function StackedAreaChart({ data, resize }: { data
       .call(d3.axisBottom(x).ticks(3).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '8px')
+      .attr('font-size', axisFontSize)
 
     // Y axis
     g.append('g')
       .call(d3.axisLeft(y).ticks(3).tickFormat(d => `${((d as number) * 100).toFixed(0)}%`))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '8px')
+      .attr('font-size', axisFontSize)
 
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
@@ -609,8 +626,10 @@ const FundsStackedAreaChart = memo(function FundsStackedAreaChart({ data, alloca
     const svg = d3.select(ref.current)
     svg.selectAll('*').remove()
 
-    const margin = { top: 10, right: 10, bottom: 20, left: 45 }
-    const width = ref.current.clientWidth - margin.left - margin.right
+    const containerWidth = ref.current.clientWidth
+    const margin = getResponsiveMargin(containerWidth)
+    const axisFontSize = getAxisFontSize(containerWidth)
+    const width = containerWidth - margin.left - margin.right
     const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
@@ -700,14 +719,14 @@ const FundsStackedAreaChart = memo(function FundsStackedAreaChart({ data, alloca
       .call(d3.axisBottom(x).ticks(3).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '8px')
+      .attr('font-size', axisFontSize)
 
     // Y axis
     g.append('g')
       .call(d3.axisLeft(y).ticks(3).tickFormat(d => formatCurrencyCompact(d as number)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '8px')
+      .attr('font-size', axisFontSize)
 
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
@@ -793,8 +812,10 @@ const GainsChart = memo(function GainsChart({ data, currentRealized, currentUnre
     const svg = d3.select(ref.current)
     svg.selectAll('*').remove()
 
-    const margin = { top: 10, right: 10, bottom: 20, left: 45 }
-    const width = ref.current.clientWidth - margin.left - margin.right
+    const containerWidth = ref.current.clientWidth
+    const margin = getResponsiveMargin(containerWidth)
+    const axisFontSize = getAxisFontSize(containerWidth)
+    const width = containerWidth - margin.left - margin.right
     const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
@@ -979,14 +1000,14 @@ const GainsChart = memo(function GainsChart({ data, currentRealized, currentUnre
       .call(d3.axisBottom(x).ticks(3).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '8px')
+      .attr('font-size', axisFontSize)
 
     // Y axis
     g.append('g')
       .call(d3.axisLeft(y).ticks(3).tickFormat(d => formatCurrencyCompact(d as number)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '8px')
+      .attr('font-size', axisFontSize)
 
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
@@ -1011,18 +1032,21 @@ const GainsChart = memo(function GainsChart({ data, currentRealized, currentUnre
             </svg>
           </button>
         </div>
-        <div className="flex gap-1.5 xs:gap-2 sm:gap-3 text-[6px] xs:text-[7px] sm:text-[8px] md:text-[9px]">
-          <span className="flex items-center gap-0.5 text-emerald-400">
-            <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500" />
-            <span className="text-slate-400">Real:</span> {formatCurrencyCompact(currentRealized)}
+        <div className="flex gap-1 xs:gap-1.5 sm:gap-3 text-[6px] xs:text-[7px] sm:text-[8px] md:text-[9px]">
+          <span className="flex items-center gap-0.5 text-emerald-400" title="Realized" aria-label={`Realized: ${formatCurrencyCompact(currentRealized)}`}>
+            <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500" aria-hidden="true" />
+            <span className="hidden xs:inline text-slate-400">R:</span>
+            {formatCurrencyCompact(currentRealized)}
           </span>
-          <span className="flex items-center gap-0.5 text-amber-400">
-            <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-amber-500" />
-            <span className="text-slate-400">Unreal:</span> {formatCurrencyCompact(currentUnrealized)}
+          <span className="flex items-center gap-0.5 text-amber-400" title="Unrealized" aria-label={`Unrealized: ${formatCurrencyCompact(currentUnrealized)}`}>
+            <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-amber-500" aria-hidden="true" />
+            <span className="hidden xs:inline text-slate-400">U:</span>
+            {formatCurrencyCompact(currentUnrealized)}
           </span>
-          <span className="flex items-center gap-0.5 text-blue-400">
-            <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-blue-500" />
-            <span className="text-slate-400">Liquid:</span> {formatCurrencyCompact(currentLiquid)}
+          <span className="flex items-center gap-0.5 text-blue-400" title="Liquid" aria-label={`Liquid: ${formatCurrencyCompact(currentLiquid)}`}>
+            <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-blue-500" aria-hidden="true" />
+            <span className="hidden xs:inline text-slate-400">L:</span>
+            {formatCurrencyCompact(currentLiquid)}
           </span>
         </div>
       </div>
@@ -1134,8 +1158,10 @@ const APYChart = memo(function APYChart({ data, currentRealizedAPY, currentLiqui
     const svg = d3.select(ref.current)
     svg.selectAll('*').remove()
 
-    const margin = { top: 10, right: 10, bottom: 20, left: 45 }
-    const width = ref.current.clientWidth - margin.left - margin.right
+    const containerWidth = ref.current.clientWidth
+    const margin = getResponsiveMargin(containerWidth)
+    const axisFontSize = getAxisFontSize(containerWidth)
+    const width = containerWidth - margin.left - margin.right
     const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
@@ -1289,14 +1315,14 @@ const APYChart = memo(function APYChart({ data, currentRealizedAPY, currentLiqui
       .call(d3.axisBottom(x).ticks(3).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '8px')
+      .attr('font-size', axisFontSize)
 
     // Y axis
     g.append('g')
       .call(d3.axisLeft(y).ticks(3).tickFormat(d => formatPercentSimple(d as number)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '8px')
+      .attr('font-size', axisFontSize)
 
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')
@@ -1410,8 +1436,10 @@ const MarginChart = memo(function MarginChart({ data, currentAccess, currentBorr
     const svg = d3.select(ref.current)
     svg.selectAll('*').remove()
 
-    const margin = { top: 10, right: 10, bottom: 20, left: 45 }
-    const width = ref.current.clientWidth - margin.left - margin.right
+    const containerWidth = ref.current.clientWidth
+    const margin = getResponsiveMargin(containerWidth)
+    const axisFontSize = getAxisFontSize(containerWidth)
+    const width = containerWidth - margin.left - margin.right
     const height = ref.current.clientHeight - margin.top - margin.bottom
 
     const g = svg
@@ -1548,14 +1576,14 @@ const MarginChart = memo(function MarginChart({ data, currentAccess, currentBorr
       .call(d3.axisBottom(x).ticks(3).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '8px')
+      .attr('font-size', axisFontSize)
 
     // Y axis
     g.append('g')
       .call(d3.axisLeft(y).ticks(3).tickFormat(d => formatCurrencyCompact(d as number)))
       .selectAll('text')
       .attr('fill', '#64748b')
-      .attr('font-size', '8px')
+      .attr('font-size', axisFontSize)
 
     svg.selectAll('.domain').attr('stroke', '#334155')
     svg.selectAll('.tick line').attr('stroke', '#334155')

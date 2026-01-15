@@ -608,7 +608,10 @@ interface SliderFieldProps {
 }
 
 function SliderField({ label, value, min, max, step, format, onChange }: SliderFieldProps) {
-  const pct = ((value - min) / (max - min)) * 100
+  // Round value to step precision to avoid floating point display errors
+  const decimals = step < 1 ? Math.ceil(-Math.log10(step)) : 0
+  const roundedValue = Math.round(value * Math.pow(10, decimals)) / Math.pow(10, decimals)
+  const pct = ((roundedValue - min) / (max - min)) * 100
   return (
     <div className="flex items-center gap-2">
       <span className="text-[10px] text-slate-400 w-20 truncate" title={label}>{label}</span>
@@ -617,7 +620,7 @@ function SliderField({ label, value, min, max, step, format, onChange }: SliderF
         min={min}
         max={max}
         step={step}
-        value={value}
+        value={roundedValue}
         onChange={(e) => onChange(Number(e.target.value))}
         className="flex-1 cursor-pointer"
         style={{
@@ -626,7 +629,7 @@ function SliderField({ label, value, min, max, step, format, onChange }: SliderF
           borderRadius: '3px'
         }}
       />
-      <span className="text-[10px] text-slate-300 font-mono w-14 text-right">{format(value)}</span>
+      <span className="text-[10px] text-slate-300 font-mono w-14 text-right">{format(roundedValue)}</span>
     </div>
   )
 }

@@ -1,10 +1,13 @@
-import { useMemo, useEffect, useCallback } from 'react'
+import { useMemo, useEffect, useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type { FundEntry, FundType } from '../api/funds'
 import {
   isCashFund as checkIsCashFund
 } from '@escapemint/engine'
-import { formatCurrency, formatLocalDate } from '../utils/format'
+import { formatCurrency, formatLocalDate, getPriorEquity, detectDigitError } from '../utils/format'
+
+// Re-export for consumers that import from EntryForm
+export { detectDigitError }
 
 export type ActionType = '' | 'BUY' | 'SELL' | 'HOLD'
 
@@ -102,9 +105,73 @@ export const parseFormulaValue = (input: string): number => {
   return parseFloat(trimmed) || 0
 }
 
+// Wizard indicator component - animated arrow pointing to a field
+function WizardIndicator({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-mint-400 text-lg animate-wizard-arrow">→</span>
+      <span className="text-mint-400 text-xs font-medium animate-pulse">{label}</span>
+    </div>
+  )
+}
+
 export function EntryForm({ formData, setFormData, existingEntries = [], baseFundSize = 0, showFundSizeAdjustment = false, cashAvailable, marginAvailable, currentFundSize, fundType = 'stock', manageCash = true, marginEnabled = false, platform }: EntryFormProps) {
   const isCashFund = checkIsCashFund(fundType)
   const isCryptoFund = fundType === 'crypto'
+
+  // Wizard step: 1 = update equity, 2 = update margin available, 0 = done
+  // Start at step 1 for non-derivatives funds
+  const [wizardStep, setWizardStep] = useState<number>(fundType === 'derivatives' ? 0 : 1)
+
+  // Track initial equity value to detect when user has changed it
+  // Note: This component is always remounted fresh when the modal opens (not reused)
+  const initialEquityRef = useRef<string>(formData.value)
+
+  // Ref for auto-focusing and selecting the equity input
+  const equityInputRef = useRef<HTMLInputElement>(null)
+
+  // Auto-focus and select equity input on mount (for non-derivatives funds)
+  useEffect(() => {
+    if (fundType !== 'derivatives' && equityInputRef.current) {
+      equityInputRef.current.focus()
+      equityInputRef.current.select()
+    }
+  }, [fundType])
+
+  // Move wizard to next step when equity is changed
+  useEffect(() => {
+    if (wizardStep === 1 && formData.value !== initialEquityRef.current) {
+      // User changed equity, move to margin available step if margin is enabled
+      setWizardStep(marginEnabled ? 2 : 0)
+    }
+  }, [formData.value, wizardStep, marginEnabled])
+
+  // Track which values we've already warned about to avoid duplicate toasts
+  const warnedValueRef = useRef<string>('')
+
+  // Get the prior entry's equity for digit error detection
+  const priorEquity = useMemo(() => getPriorEquity(existingEntries), [existingEntries])
+
+  // Check for digit errors on blur (when user finishes typing)
+  const handleEquityBlur = useCallback(() => {
+    if (priorEquity === null) return
+    const newValue = parseFloat(formData.value)
+    if (isNaN(newValue) || newValue === 0) return
+
+    // Skip if we've already warned about this exact value
+    if (warnedValueRef.current === formData.value) return
+
+    const digitError = detectDigitError(newValue, priorEquity)
+    if (digitError) {
+      warnedValueRef.current = formData.value
+      const errorType = digitError === 'extra' ? 'extra' : 'missing'
+      toast.warning(
+        `Possible ${errorType} digit? Prior equity was ${formatCurrency(priorEquity)}, you entered ${formatCurrency(newValue)}`,
+        { duration: 8000 }
+      )
+    }
+  }, [formData.value, priorEquity])
+
   // Get cumulative shares from entries BEFORE the current date
   const getCumulativeShares = useCallback((beforeDate: string) => {
     let total = 0
@@ -199,6 +266,61 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
     }
   }, [formData.deposit, formData.withdrawal, currentFundSize, showFundSizeAdjustment, setFormData])
 
+  // Track the initial margin_borrowed value for M1 auto-borrow calculation
+  // Captures value on first render - intentionally not updated on formData changes since
+  // we want to compare against the original value before any auto-adjustments
+  // Note: This component is always remounted fresh when the modal opens (not reused)
+  const initialMarginBorrowedRef = useRef<number>(parseFloat(formData.margin_borrowed) || 0)
+
+  // Track auto-adjustment amount for display purposes
+  const [marginAutoAdjustment, setMarginAutoAdjustment] = useState<number>(0)
+
+  // Auto-update margin_borrowed for M1 platform when there's a shortfall on BUY
+  // M1 automatically borrows from margin, so we should reflect the expected new total
+  useEffect(() => {
+    const isM1Platform = platform?.toLowerCase() === 'm1'
+    if (!isM1Platform) {
+      setMarginAutoAdjustment(0)
+      return
+    }
+    if (formData.action !== 'BUY') {
+      setMarginAutoAdjustment(0)
+      return
+    }
+    if (cashAvailable === undefined) {
+      setMarginAutoAdjustment(0)
+      return
+    }
+
+    const amount = parseFloat(formData.amount) || 0
+    const shortfall = amount - cashAvailable
+
+    if (shortfall > 0.01) {
+      // Calculate expected new margin borrowed total from the INITIAL value + shortfall
+      const expectedNewTotal = initialMarginBorrowedRef.current + shortfall
+
+      setFormData(prev => {
+        const currentValue = parseFloat(prev.margin_borrowed) || 0
+        // Only update if the value would actually change
+        if (Math.abs(currentValue - expectedNewTotal) > 0.01) {
+          return { ...prev, margin_borrowed: expectedNewTotal.toFixed(2) }
+        }
+        return prev
+      })
+      setMarginAutoAdjustment(shortfall)
+    } else {
+      // No shortfall - reset to initial value if needed
+      setFormData(prev => {
+        const currentValue = parseFloat(prev.margin_borrowed) || 0
+        if (Math.abs(currentValue - initialMarginBorrowedRef.current) > 0.01) {
+          return { ...prev, margin_borrowed: initialMarginBorrowedRef.current.toFixed(2) }
+        }
+        return prev
+      })
+      setMarginAutoAdjustment(0)
+    }
+  }, [formData.action, formData.amount, cashAvailable, platform, setFormData])
+
   // Simplified form for cash funds - single Amount field with sign
   if (isCashFund) {
     // Parse amount to show appropriate styling
@@ -225,12 +347,20 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Cash Balance ($)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm text-slate-400">Cash Balance ($)</label>
+                {wizardStep === 1 && <WizardIndicator label="Update first" />}
+              </div>
               <input
+                ref={equityInputRef}
                 type="number"
                 value={formData.value}
-                onChange={e => setFormData(prev => ({ ...prev, value: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                onChange={e => {
+                  setFormData(prev => ({ ...prev, value: e.target.value }))
+                  if (wizardStep === 1) setWizardStep(0)
+                }}
+                onBlur={handleEquityBlur}
+                className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-blue-500 ${wizardStep === 1 ? 'border-mint-500 ring-2 ring-mint-500/30' : 'border-slate-600'}`}
                 placeholder="Current cash balance"
                 step="0.01"
                 required
@@ -345,16 +475,21 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
             />
           </div>
           <div>
-            <label className="block text-sm text-slate-400 mb-1">
-              {fundType === 'derivatives' ? 'Equity ($) - calculated' : 'Equity ($)'}
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm text-slate-400">
+                {fundType === 'derivatives' ? 'Equity ($) - calculated' : 'Equity ($)'}
+              </label>
+              {wizardStep === 1 && <WizardIndicator label="Update first" />}
+            </div>
             <input
+              ref={equityInputRef}
               type="number"
               name="value"
               id="value"
               value={formData.value}
               onChange={e => setFormData(prev => ({ ...prev, value: e.target.value }))}
-              className={`w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500 ${fundType === 'derivatives' ? 'opacity-60' : ''}`}
+              onBlur={handleEquityBlur}
+              className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-mint-500 ${fundType === 'derivatives' ? 'opacity-60' : ''} ${wizardStep === 1 ? 'border-mint-500 ring-2 ring-mint-500/30' : 'border-slate-600'}`}
               placeholder={fundType === 'derivatives' ? '0 (auto-calculated)' : 'Asset value'}
               step="0.01"
               min="0"
@@ -399,22 +534,17 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               min="0"
               disabled={!formData.action || formData.action === 'HOLD'}
             />
-            {/* Shortfall helper - show info when amount exceeds cash */}
-            {formData.action === 'BUY' && cashAvailable !== undefined && (() => {
+            {/* Shortfall helper - show info when amount exceeds cash (skip for M1 - shown on Margin Borrowed field) */}
+            {formData.action === 'BUY' && cashAvailable !== undefined && platform?.toLowerCase() !== 'm1' && (() => {
               const amount = parseFloat(formData.amount) || 0
               const shortfall = amount - cashAvailable
               if (shortfall > 0.01) {
-                const isM1Platform = platform?.toLowerCase() === 'm1'
-                const shortfallMessage = isM1Platform
-                  ? `Shortfall: ${formatCurrency(shortfall)} - will be automatically borrowed from margin if available`
-                  : `Shortfall: ${formatCurrency(shortfall)} - deposit to platform cash fund`
-
                 return (
                   <div className="mt-1 flex gap-2 flex-wrap items-center">
-                    <span className={`text-xs ${isM1Platform ? 'text-purple-400' : 'text-amber-400'}`}>
-                      {shortfallMessage}
+                    <span className="text-xs text-amber-400">
+                      Shortfall: {formatCurrency(shortfall)} - deposit to platform cash fund
                     </span>
-                    {!isM1Platform && (marginAvailable ?? 0) > 0 && (
+                    {(marginAvailable ?? 0) > 0 && (
                       <button
                         type="button"
                         onClick={() => {
@@ -463,12 +593,18 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
         {marginEnabled && !isCashFund && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Margin Available ($)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm text-slate-400">Margin Available ($)</label>
+                {wizardStep === 2 && <WizardIndicator label="Update next" />}
+              </div>
               <input
                 type="number"
                 value={formData.margin_available}
-                onChange={e => setFormData(prev => ({ ...prev, margin_available: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                onChange={e => {
+                  setFormData(prev => ({ ...prev, margin_available: e.target.value }))
+                  if (wizardStep === 2) setWizardStep(0)
+                }}
+                className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-purple-500 ${wizardStep === 2 ? 'border-purple-500 ring-2 ring-purple-500/30' : 'border-slate-600'}`}
                 placeholder="Current margin available"
                 step="0.01"
                 min="0"
@@ -483,14 +619,20 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 type="number"
                 value={formData.margin_borrowed}
                 onChange={e => setFormData(prev => ({ ...prev, margin_borrowed: e.target.value }))}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-purple-500 ${marginAutoAdjustment > 0 ? 'border-purple-500' : 'border-slate-600'}`}
                 placeholder="0"
                 step="0.01"
                 min="0"
               />
-              <p className="text-xs text-slate-500 mt-1">
-                Margin borrowed in this entry (may be auto-filled by some platforms, but can be adjusted)
-              </p>
+              {marginAutoAdjustment > 0 ? (
+                <p className="text-xs text-purple-400 mt-1">
+                  Auto-adjusted: +{formatCurrency(marginAutoAdjustment)} for shortfall (M1 auto-borrows from margin)
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500 mt-1">
+                  Margin borrowed in this entry (may be auto-filled by some platforms, but can be adjusted)
+                </p>
+              )}
             </div>
           </div>
         )}
