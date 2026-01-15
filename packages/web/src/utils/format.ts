@@ -48,3 +48,13 @@ export const formatLocalDate = (date: Date): string => {
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
+
+/**
+ * Get the prior equity value from a list of fund entries
+ * Used for digit error detection when entering new equity values
+ */
+export const getPriorEquity = (entries: { date: string; value?: number }[]): number | null => {
+  if (entries.length === 0) return null
+  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date))
+  return sorted[sorted.length - 1]?.value ?? null
+}

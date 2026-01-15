@@ -4,7 +4,7 @@ import type { FundEntry, FundType } from '../api/funds'
 import {
   isCashFund as checkIsCashFund
 } from '@escapemint/engine'
-import { formatCurrency, formatLocalDate } from '../utils/format'
+import { formatCurrency, formatLocalDate, getPriorEquity } from '../utils/format'
 
 // Detect if a value change looks like a digit error (missing or extra digit)
 // Returns 'extra' if user likely added a digit, 'missing' if likely removed one, null if ok
@@ -139,19 +139,8 @@ export const parseFormulaValue = (input: string): number => {
 function WizardIndicator({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-1">
-      <span
-        className="text-mint-400 text-lg"
-        style={{
-          animation: 'wizard-arrow 0.8s ease-in-out infinite',
-        }}
-      >→</span>
+      <span className="text-mint-400 text-lg animate-wizard-arrow">→</span>
       <span className="text-mint-400 text-xs font-medium animate-pulse">{label}</span>
-      <style>{`
-        @keyframes wizard-arrow {
-          0%, 100% { transform: translateX(0); }
-          50% { transform: translateX(4px); }
-        }
-      `}</style>
     </div>
   )
 }
@@ -191,11 +180,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
   const warnedValueRef = useRef<string>('')
 
   // Get the prior entry's equity for digit error detection
-  const priorEquity = useMemo(() => {
-    if (existingEntries.length === 0) return null
-    const sorted = [...existingEntries].sort((a, b) => a.date.localeCompare(b.date))
-    return sorted[sorted.length - 1]?.value ?? null
-  }, [existingEntries])
+  const priorEquity = useMemo(() => getPriorEquity(existingEntries), [existingEntries])
 
   // Check for digit errors on blur (when user finishes typing)
   const handleEquityBlur = useCallback(() => {

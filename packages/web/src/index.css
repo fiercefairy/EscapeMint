@@ -220,6 +220,16 @@ body {
   }
 }
 
+/* Wizard arrow animation for entry form */
+@keyframes wizard-arrow {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(4px); }
+}
+
+.animate-wizard-arrow {
+  animation: wizard-arrow 0.8s ease-in-out infinite;
+}
+
 /* Range slider styling for backtest page */
 input[type="range"] {
   -webkit-appearance: none;

@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 import { addFundEntry, previewRecommendation, type FundEntry, type FundState, type Recommendation, type FundType } from '../api/funds'
 import { EntryForm, buildEntryFromForm, createEmptyFormData, detectDigitError, type EntryFormData, type ActionType } from './EntryForm'
+import { getPriorEquity } from '../utils/format'
 
 export interface AddEntryModalProps {
   fundId: string
@@ -85,10 +86,8 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     return (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%'
   }
 
-  // Get prior equity for digit error detection
-  const priorEquity = existingEntries.length > 0
-    ? [...existingEntries].sort((a, b) => a.date.localeCompare(b.date))[existingEntries.length - 1]?.value ?? null
-    : null
+  // Get prior equity for digit error detection (memoized to avoid re-sorting on every render)
+  const priorEquity = useMemo(() => getPriorEquity(existingEntries), [existingEntries])
 
   // Detect digit errors in equity input (computed on every render for reliability)
   const newEquityValue = parseFloat(formData.value)

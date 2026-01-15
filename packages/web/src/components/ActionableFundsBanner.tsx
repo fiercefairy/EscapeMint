@@ -19,9 +19,13 @@ export function ActionableFundsBanner() {
     // Load dismissed funds from session storage
     const saved = sessionStorage.getItem('actionable-funds-dismissed')
     if (!saved) return new Set()
-    // Handle potentially corrupted sessionStorage data
-    const parsed = JSON.parse(saved) as unknown
-    return Array.isArray(parsed) ? new Set(parsed as string[]) : new Set()
+    // Handle potentially corrupted sessionStorage data gracefully
+    try {
+      const parsed = JSON.parse(saved) as unknown
+      return Array.isArray(parsed) ? new Set(parsed as string[]) : new Set()
+    } catch {
+      return new Set()
+    }
   })
 
   const loadActionableFunds = useCallback(async () => {
