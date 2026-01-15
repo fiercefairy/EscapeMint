@@ -16,13 +16,24 @@ export function ActionableFundsBanner() {
   const [actionableFunds, setActionableFunds] = useState<ActionableFund[]>([])
   const [loading, setLoading] = useState(true)
   const [dismissed, setDismissed] = useState<Set<string>>(() => {
-    // Load dismissed funds from session storage
+    // Load dismissed funds from session storage, but reset if date changed
     const saved = sessionStorage.getItem('actionable-funds-dismissed')
     if (!saved) return new Set()
-    // Handle potentially corrupted sessionStorage data gracefully
     try {
       const parsed = JSON.parse(saved) as unknown
-      return Array.isArray(parsed) ? new Set(parsed as string[]) : new Set()
+      if (typeof parsed === 'object' && parsed !== null && 'date' in parsed && 'ids' in parsed) {
+        const { date, ids } = parsed as { date: string; ids: string[] }
+        const today = new Date().toISOString().split('T')[0]
+        // Reset if it's a new day
+        if (date !== today) {
+          sessionStorage.removeItem('actionable-funds-dismissed')
+          return new Set()
+        }
+        return Array.isArray(ids) ? new Set(ids) : new Set()
+      }
+      // Legacy format (just array) - clear it
+      sessionStorage.removeItem('actionable-funds-dismissed')
+      return new Set()
     } catch {
       return new Set()
     }
@@ -50,7 +61,8 @@ export function ActionableFundsBanner() {
     const newDismissed = new Set(dismissed)
     newDismissed.add(id)
     setDismissed(newDismissed)
-    sessionStorage.setItem('actionable-funds-dismissed', JSON.stringify([...newDismissed]))
+    const today = new Date().toISOString().split('T')[0]
+    sessionStorage.setItem('actionable-funds-dismissed', JSON.stringify({ date: today, ids: [...newDismissed] }))
     // Notify other components (like nav badge) about the change
     const newVisibleCount = actionableFunds.filter(f => !newDismissed.has(f.id)).length
     notifyActionableDismissed(newVisibleCount)
@@ -87,14 +99,15 @@ export function ActionableFundsBanner() {
         {visibleFunds.map(fund => {
           const features = getFundTypeFeatures(fund.fundType)
           const isOverdue = fund.daysOverdue > 0
-          const urgencyClass = fund.daysOverdue >= 7 ? 'border-red-500/50 bg-red-900/20' :
-            fund.daysOverdue > 0 ? 'border-amber-500/50 bg-amber-900/20' :
-              'border-slate-600/50 bg-slate-800/50'
+          // Solid backgrounds for contrast - using slate-800 base with colored borders
+          const urgencyClass = fund.daysOverdue >= 7 ? 'border-red-400 bg-slate-800' :
+            fund.daysOverdue > 0 ? 'border-amber-400 bg-slate-800' :
+              'border-yellow-400 bg-slate-800'
 
           return (
             <div
               key={fund.id}
-              className={`flex-shrink-0 rounded-lg border p-2 sm:p-3 ${urgencyClass} min-w-[140px] sm:min-w-[180px]`}
+              className={`flex-shrink-0 rounded-lg border-2 p-2 sm:p-3 ${urgencyClass} min-w-[140px] sm:min-w-[180px]`}
             >
               <div className="flex items-start justify-between gap-1">
                 <Link
@@ -105,19 +118,19 @@ export function ActionableFundsBanner() {
                     <span className={`text-xs sm:text-sm font-bold uppercase ${features.textColorClass}`}>
                       {fund.ticker}
                     </span>
-                    <span className="text-slate-500 text-[10px] sm:text-xs capitalize">
+                    <span className="text-slate-300 text-[10px] sm:text-xs capitalize">
                       {fund.platform}
                     </span>
                   </div>
-                  <div className="text-[10px] sm:text-xs text-slate-400">
+                  <div className="text-[10px] sm:text-xs">
                     {isOverdue ? (
-                      <span className="text-amber-400">
+                      <span className="text-amber-300 font-medium">
                         {fund.daysOverdue}d overdue
                       </span>
                     ) : (
-                      <span className="text-slate-400">Due today</span>
+                      <span className="text-yellow-300 font-medium">Due today</span>
                     )}
-                    <span className="text-slate-500 ml-1">
+                    <span className="text-slate-400 ml-1">
                       ({fund.intervalDays}d interval)
                     </span>
                   </div>
