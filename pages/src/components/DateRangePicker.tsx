@@ -85,7 +85,7 @@ export function DateRangePicker({ availableRange, selectedRange, onChange }: Dat
             <button
               key={preset}
               onClick={() => handlePreset(preset)}
-              className="px-1.5 py-0.5 text-[10px] bg-slate-700 hover:bg-slate-600 rounded transition-colors uppercase"
+              className="px-1.5 py-0.5 text-[10px] bg-slate-700 hover:bg-slate-600 rounded transition-colors uppercase cursor-pointer"
             >
               {preset}
             </button>
