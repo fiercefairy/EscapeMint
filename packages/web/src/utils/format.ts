@@ -50,11 +50,43 @@ export const formatLocalDate = (date: Date): string => {
 }
 
 /**
- * Get the prior equity value from a list of fund entries
+ * Get the expected current equity from a list of fund entries
  * Used for digit error detection when entering new equity values
+ * Calculates equity AFTER the last action (since value is BEFORE action)
  */
-export const getPriorEquity = (entries: { date: string; value?: number }[]): number | null => {
+export const getPriorEquity = (entries: {
+  date: string
+  value?: number
+  action?: string
+  amount?: number
+  dividend?: number
+  cash_interest?: number
+}[]): number | null => {
   if (entries.length === 0) return null
   const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date))
-  return sorted[sorted.length - 1]?.value ?? null
+  const lastEntry = sorted[sorted.length - 1]
+  if (!lastEntry || lastEntry.value === undefined) return null
+
+  let equity = lastEntry.value
+  const amount = lastEntry.amount ?? 0
+
+  // Calculate expected equity AFTER the last action
+  // value is the equity BEFORE the action was taken
+  switch (lastEntry.action) {
+    case 'BUY':
+    case 'DEPOSIT':
+      equity += amount
+      break
+    case 'SELL':
+    case 'WITHDRAW':
+      equity -= amount
+      break
+    // HOLD, MARGIN, derivatives actions: no simple amount-based change
+  }
+
+  // Add dividend and interest income (these are always additions)
+  equity += lastEntry.dividend ?? 0
+  equity += lastEntry.cash_interest ?? 0
+
+  return equity
 }
