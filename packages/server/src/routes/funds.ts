@@ -269,7 +269,7 @@ fundsRouter.get('/actionable', async (req, res, next) => {
   // Parse YYYY-MM-DD date string as local time (not UTC)
   const parseLocalDate = (dateStr: string): Date => {
     const [year, month, day] = dateStr.split('-').map(Number)
-    return new Date(year as number, (month as number) - 1, day)
+    return new Date(year, month - 1, day)
   }
 
   const actionableFunds = funds

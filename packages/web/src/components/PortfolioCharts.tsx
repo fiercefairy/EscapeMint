@@ -1038,12 +1038,12 @@ const GainsChart = memo(function GainsChart({ data, currentRealized, currentUnre
             <span className="hidden xs:inline text-slate-400">R:</span>
             {formatCurrencyCompact(currentRealized)}
           </span>
-          <span className="flex items-center gap-0.5 text-amber-400">
+          <span className="flex items-center gap-0.5 text-amber-400" title="Unrealized">
             <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-amber-500" />
             <span className="hidden xs:inline text-slate-400">U:</span>
             {formatCurrencyCompact(currentUnrealized)}
           </span>
-          <span className="flex items-center gap-0.5 text-blue-400">
+          <span className="flex items-center gap-0.5 text-blue-400" title="Liquid">
             <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-blue-500" />
             <span className="hidden xs:inline text-slate-400">L:</span>
             {formatCurrencyCompact(currentLiquid)}

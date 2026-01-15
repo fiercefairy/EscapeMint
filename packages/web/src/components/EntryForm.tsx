@@ -16,6 +16,8 @@ export function detectDigitError(newValue: number, priorValue: number): 'extra' 
   const ratio = newValue / priorValue
 
   // Check for ~10x increase (extra digit)
+  // Range 8-12 allows ~20% variance around 10x to catch values like $1,200 -> $11,000 (9.17x)
+  // while avoiding false positives from legitimate large gains
   if (ratio >= 8 && ratio <= 12) {
     // But allow natural transitions like 999 -> 1000 (small % change)
     const percentChange = Math.abs(newValue - priorValue) / priorValue
@@ -26,6 +28,7 @@ export function detectDigitError(newValue: number, priorValue: number): 'extra' 
   }
 
   // Check for ~0.1x decrease (missing digit)
+  // Range 0.08-0.12 is the inverse of 8-12, catching values like $12,000 -> $1,200 (0.1x)
   if (ratio >= 0.08 && ratio <= 0.12) {
     const percentChange = Math.abs(newValue - priorValue) / priorValue
     if (percentChange > 0.5) {
@@ -168,14 +171,12 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
   const equityInputRef = useRef<HTMLInputElement>(null)
 
   // Auto-focus and select equity input on mount (for non-derivatives funds)
-  // fundType is stable for the component's lifetime - it's determined by the fund being edited
   useEffect(() => {
     if (fundType !== 'derivatives' && equityInputRef.current) {
       equityInputRef.current.focus()
       equityInputRef.current.select()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [fundType])
 
   // Move wizard to next step when equity is changed
   useEffect(() => {

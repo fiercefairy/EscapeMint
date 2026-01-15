@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchActionableFunds, FUNDS_CHANGED_EVENT, type ActionableFund } from '../api/funds'
 import { getFundTypeFeatures } from '@escapemint/engine'
+import { useSettings } from '../contexts/SettingsContext'
 
 // Event to notify other components when actionable funds visibility changes
 export const ACTIONABLE_DISMISSED_EVENT = 'escapemint:actionable-dismissed'
@@ -11,6 +12,7 @@ export function notifyActionableDismissed(visibleCount: number) {
 }
 
 export function ActionableFundsBanner() {
+  const { settings } = useSettings()
   const [actionableFunds, setActionableFunds] = useState<ActionableFund[]>([])
   const [loading, setLoading] = useState(true)
   const [dismissed, setDismissed] = useState<Set<string>>(() => {
@@ -21,12 +23,12 @@ export function ActionableFundsBanner() {
 
   const loadActionableFunds = useCallback(async () => {
     setLoading(true)
-    const result = await fetchActionableFunds()
+    const result = await fetchActionableFunds(settings.testFundsMode)
     if (result.data) {
       setActionableFunds(result.data.actionableFunds)
     }
     setLoading(false)
-  }, [])
+  }, [settings.testFundsMode])
 
   useEffect(() => {
     loadActionableFunds()
