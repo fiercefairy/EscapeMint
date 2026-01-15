@@ -112,25 +112,33 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     }
   }, [fundId])
 
-  // Apply recommendation to form
-  const useRecommendation = useCallback(() => {
-    const rec = preview?.recommendation
+  // Apply recommendation to form (shared logic for manual and auto-apply)
+  const applyRecommendation = useCallback((rec: Recommendation | null | undefined) => {
     if (rec) {
       setFormData(prev => ({
         ...prev,
         action: rec.action as ActionType,
         amount: rec.amount.toFixed(2)
       }))
-      toast.success(`Applied: ${rec.action} ${formatCurrency(rec.amount)}`)
     } else {
       setFormData(prev => ({
         ...prev,
         action: 'HOLD',
         amount: ''
       }))
+    }
+  }, [])
+
+  // Manual apply with toast notification
+  const useRecommendation = useCallback(() => {
+    const rec = preview?.recommendation
+    applyRecommendation(rec)
+    if (rec) {
+      toast.success(`Applied: ${rec.action} ${formatCurrency(rec.amount)}`)
+    } else {
       toast.success('Applied: HOLD')
     }
-  }, [preview])
+  }, [preview, applyRecommendation])
 
   // Fetch preview when equity value changes (skip for cash funds - no recommendations)
   useEffect(() => {
@@ -144,26 +152,12 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     }
   }, [formData.value, formData.date, fetchPreview, fundType])
 
-  // Auto-apply recommendation when preview updates
+  // Auto-apply recommendation when preview updates (no toast)
   useEffect(() => {
     if (fundType === 'cash') return
     if (!preview) return
-
-    const rec = preview.recommendation
-    if (rec) {
-      setFormData(prev => ({
-        ...prev,
-        action: rec.action as ActionType,
-        amount: rec.amount.toFixed(2)
-      }))
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        action: 'HOLD',
-        amount: ''
-      }))
-    }
-  }, [preview, fundType])
+    applyRecommendation(preview.recommendation)
+  }, [preview, fundType, applyRecommendation])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

@@ -267,6 +267,7 @@ fundsRouter.get('/actionable', async (req, res, next) => {
   today.setHours(0, 0, 0, 0)
 
   // Parse YYYY-MM-DD date string as local time (not UTC)
+  // Local to this endpoint - not extracted to shared utils as it's only used here
   const parseLocalDate = (dateStr: string): Date => {
     const parts = dateStr.split('-').map(Number) as [number, number, number]
     return new Date(parts[0], parts[1] - 1, parts[2])

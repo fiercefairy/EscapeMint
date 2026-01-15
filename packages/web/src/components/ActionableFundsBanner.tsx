@@ -18,7 +18,10 @@ export function ActionableFundsBanner() {
   const [dismissed, setDismissed] = useState<Set<string>>(() => {
     // Load dismissed funds from session storage
     const saved = sessionStorage.getItem('actionable-funds-dismissed')
-    return saved ? new Set(JSON.parse(saved) as string[]) : new Set()
+    if (!saved) return new Set()
+    // Handle potentially corrupted sessionStorage data
+    const parsed = JSON.parse(saved) as unknown
+    return Array.isArray(parsed) ? new Set(parsed as string[]) : new Set()
   })
 
   const loadActionableFunds = useCallback(async () => {

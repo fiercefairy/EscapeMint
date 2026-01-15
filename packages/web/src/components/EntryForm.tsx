@@ -165,6 +165,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
   const [wizardStep, setWizardStep] = useState<number>(fundType === 'derivatives' ? 0 : 1)
 
   // Track initial equity value to detect when user has changed it
+  // Note: This component is always remounted fresh when the modal opens (not reused)
   const initialEquityRef = useRef<string>(formData.value)
 
   // Ref for auto-focusing and selecting the equity input
@@ -208,20 +209,11 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
     const digitError = detectDigitError(newValue, priorEquity)
     if (digitError) {
       warnedValueRef.current = formData.value
-      const priorFormatted = formatCurrency(priorEquity)
-      const newFormatted = formatCurrency(newValue)
-
-      if (digitError === 'extra') {
-        toast.warning(
-          `Possible extra digit? Prior equity was ${priorFormatted}, you entered ${newFormatted}`,
-          { duration: 8000 }
-        )
-      } else {
-        toast.warning(
-          `Possible missing digit? Prior equity was ${priorFormatted}, you entered ${newFormatted}`,
-          { duration: 8000 }
-        )
-      }
+      const errorType = digitError === 'extra' ? 'extra' : 'missing'
+      toast.warning(
+        `Possible ${errorType} digit? Prior equity was ${formatCurrency(priorEquity)}, you entered ${formatCurrency(newValue)}`,
+        { duration: 8000 }
+      )
     }
   }, [formData.value, priorEquity])
 
@@ -322,6 +314,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
   // Track the initial margin_borrowed value for M1 auto-borrow calculation
   // Captures value on first render - intentionally not updated on formData changes since
   // we want to compare against the original value before any auto-adjustments
+  // Note: This component is always remounted fresh when the modal opens (not reused)
   const initialMarginBorrowedRef = useRef<number>(parseFloat(formData.margin_borrowed) || 0)
 
   // Track auto-adjustment amount for display purposes

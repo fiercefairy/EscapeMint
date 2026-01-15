@@ -1035,17 +1035,17 @@ const GainsChart = memo(function GainsChart({ data, currentRealized, currentUnre
         <div className="flex gap-1 xs:gap-1.5 sm:gap-3 text-[6px] xs:text-[7px] sm:text-[8px] md:text-[9px]">
           <span className="flex items-center gap-0.5 text-emerald-400" title="Realized" aria-label={`Realized: ${formatCurrencyCompact(currentRealized)}`}>
             <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500" aria-hidden="true" />
-            <span className="hidden xs:inline text-slate-400" aria-hidden="true">R:</span>
+            <span className="hidden xs:inline text-slate-400">R:</span>
             {formatCurrencyCompact(currentRealized)}
           </span>
           <span className="flex items-center gap-0.5 text-amber-400" title="Unrealized" aria-label={`Unrealized: ${formatCurrencyCompact(currentUnrealized)}`}>
             <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-amber-500" aria-hidden="true" />
-            <span className="hidden xs:inline text-slate-400" aria-hidden="true">U:</span>
+            <span className="hidden xs:inline text-slate-400">U:</span>
             {formatCurrencyCompact(currentUnrealized)}
           </span>
           <span className="flex items-center gap-0.5 text-blue-400" title="Liquid" aria-label={`Liquid: ${formatCurrencyCompact(currentLiquid)}`}>
             <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-blue-500" aria-hidden="true" />
-            <span className="hidden xs:inline text-slate-400" aria-hidden="true">L:</span>
+            <span className="hidden xs:inline text-slate-400">L:</span>
             {formatCurrencyCompact(currentLiquid)}
           </span>
         </div>
