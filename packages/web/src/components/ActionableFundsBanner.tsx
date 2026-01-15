@@ -4,6 +4,9 @@ import { fetchActionableFunds, FUNDS_CHANGED_EVENT, type ActionableFund } from '
 import { getFundTypeFeatures } from '@escapemint/engine'
 import { useSettings } from '../contexts/SettingsContext'
 
+// Days overdue threshold for high urgency styling (red border)
+const URGENCY_THRESHOLD_DAYS = 7
+
 // Event to notify other components when actionable funds visibility changes
 export const ACTIONABLE_DISMISSED_EVENT = 'escapemint:actionable-dismissed'
 
@@ -100,7 +103,7 @@ export function ActionableFundsBanner() {
           const features = getFundTypeFeatures(fund.fundType)
           const isOverdue = fund.daysOverdue > 0
           // Solid backgrounds for contrast - using slate-800 base with colored borders
-          const urgencyClass = fund.daysOverdue >= 7 ? 'border-red-400 bg-slate-800' :
+          const urgencyClass = fund.daysOverdue >= URGENCY_THRESHOLD_DAYS ? 'border-red-400 bg-slate-800' :
             fund.daysOverdue > 0 ? 'border-amber-400 bg-slate-800' :
               'border-yellow-400 bg-slate-800'
 

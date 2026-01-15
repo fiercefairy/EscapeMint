@@ -269,8 +269,16 @@ fundsRouter.get('/actionable', async (req, res, next) => {
   // Parse YYYY-MM-DD date string as local time (not UTC)
   // Local to this endpoint - not extracted to shared utils as it's only used here
   const parseLocalDate = (dateStr: string): Date => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      throw new Error(`Invalid date format (expected YYYY-MM-DD): ${dateStr}`)
+    }
     const parts = dateStr.split('-').map(Number) as [number, number, number]
-    return new Date(parts[0], parts[1] - 1, parts[2])
+    const date = new Date(parts[0], parts[1] - 1, parts[2])
+    // Verify the date components match (catches invalid dates like 2024-02-31)
+    if (date.getFullYear() !== parts[0] || date.getMonth() !== parts[1] - 1 || date.getDate() !== parts[2]) {
+      throw new Error(`Invalid calendar date: ${dateStr}`)
+    }
+    return date
   }
 
   const actionableFunds = funds
