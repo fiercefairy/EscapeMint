@@ -102,11 +102,12 @@ export const getPriorEquity = (entries: {
   switch (lastEntry.action) {
     case 'BUY':
     case 'DEPOSIT':
-      equity += amount
+      equity += Math.abs(amount)
       break
     case 'SELL':
     case 'WITHDRAW':
-      equity -= amount
+      // Use Math.abs because cash fund WITHDRAW amounts may be stored as negative
+      equity -= Math.abs(amount)
       break
     // HOLD, MARGIN, derivatives actions: no simple amount-based change
   }

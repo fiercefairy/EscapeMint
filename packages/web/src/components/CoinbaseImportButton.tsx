@@ -265,7 +265,7 @@ export function CoinbaseImportButton({
 
       {/* Progress Display - positioned to extend left to avoid overflow on right edge */}
       {showProgress && (
-        <div className="absolute top-full right-0 mt-1 bg-slate-800 rounded-lg p-3 text-sm space-y-2 border border-slate-700 shadow-xl z-50 min-w-[300px]">
+        <div className="absolute top-full right-0 left-auto mt-1 bg-slate-800 rounded-lg p-3 text-sm space-y-2 border border-slate-700 shadow-xl z-50 w-max max-w-[90vw]">
           {/* Status */}
           <div className="flex items-center gap-2">
             {(progress.phase === 'scraping' || progress.phase === 'applying' || progress.phase === 'connecting' || progress.phase === 'navigating' || progress.phase === 'loading') && (
