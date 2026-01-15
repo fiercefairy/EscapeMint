@@ -793,6 +793,12 @@ export const computeDerivativesEntriesState = (
           const notionalSize = position * contractMultiplier
           currentAssetPrice = entryValue / notionalSize
         }
+        // If cash field is provided, sync marginBalance to actual account cash
+        // This allows cash balance scrapes to correct drift in calculated margin
+        const entryCash = (entry as { cash?: number }).cash
+        if (entryCash !== undefined && entryCash > 0) {
+          marginBalance = entryCash
+        }
         break
       }
     }
