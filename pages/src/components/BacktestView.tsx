@@ -258,7 +258,7 @@ function isPresetActive(config: ScenarioConfig, preset: Preset): boolean {
   const presetValues = preset.getConfig(config.accumulate, config)
   return (
     config.spxlPct === presetValues.spxlPct &&
-    config.spyPct === presetValues.spyPct &&
+    config.brgnxPct === presetValues.brgnxPct &&
     config.tqqqPct === presetValues.tqqqPct &&
     config.btcPct === presetValues.btcPct &&
     config.targetAPY === presetValues.targetAPY &&
@@ -337,11 +337,11 @@ export function BacktestView({ config, historicalData, dateRange, onChange, onAp
             <h3 className="text-xs font-medium text-slate-400 mb-2">Allocation</h3>
             <PieBuilder
               spxlPct={config.spxlPct}
-              spyPct={config.spyPct}
+              brgnxPct={config.brgnxPct}
               tqqqPct={config.tqqqPct}
               btcPct={config.btcPct}
-              onChange={(spxlPct, spyPct, tqqqPct, btcPct) =>
-                updateConfig({ spxlPct, spyPct, tqqqPct, btcPct })
+              onChange={(spxlPct, brgnxPct, tqqqPct, btcPct) =>
+                updateConfig({ spxlPct, brgnxPct, tqqqPct, btcPct })
               }
             />
           </div>

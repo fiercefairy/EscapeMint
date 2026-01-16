@@ -16,7 +16,7 @@ function getDefaultAccumulateConfig(): ScenarioConfig {
     id: 'backtest',
     name: 'DCA Backtest',
     spxlPct: 50,
-    spyPct: 0,
+    brgnxPct: 0,
     tqqqPct: 25,
     btcPct: 25,
     initialCash: 10000,
@@ -39,7 +39,7 @@ function getDefaultHarvestConfig(): ScenarioConfig {
     id: 'backtest',
     name: 'DCA Backtest',
     spxlPct: 25,
-    spyPct: 0,
+    brgnxPct: 0,
     tqqqPct: 25,
     btcPct: 50,
     initialCash: 10000,
@@ -58,7 +58,7 @@ function getDefaultHarvestConfig(): ScenarioConfig {
 }
 
 // Preset configurations for each mode
-export type PresetName = 'TQQQ' | 'SPXL' | 'SPY' | 'BTC' | 'Blend'
+export type PresetName = 'TQQQ' | 'SPXL' | 'BRGNX' | 'BTC' | 'Blend'
 
 export interface Preset {
   name: PresetName
@@ -72,7 +72,7 @@ export const PRESETS: Preset[] = [
     label: 'TQQQ',
     getConfig: (accumulate, _base) => ({
       spxlPct: 0,
-      spyPct: 0,
+      brgnxPct: 0,
       tqqqPct: 100,
       btcPct: 0,
       targetAPY: accumulate ? 0.20 : 0.52,
@@ -86,7 +86,7 @@ export const PRESETS: Preset[] = [
     label: 'SPXL',
     getConfig: (accumulate, _base) => ({
       spxlPct: 100,
-      spyPct: 0,
+      brgnxPct: 0,
       tqqqPct: 0,
       btcPct: 0,
       targetAPY: 0.10,
@@ -96,11 +96,11 @@ export const PRESETS: Preset[] = [
     })
   },
   {
-    name: 'SPY',
-    label: 'SPY',
+    name: 'BRGNX',
+    label: 'BRGNX',
     getConfig: (accumulate, _base) => ({
       spxlPct: 0,
-      spyPct: 100,
+      brgnxPct: 100,
       tqqqPct: 0,
       btcPct: 0,
       targetAPY: accumulate ? 0.10 : 0.15,
@@ -114,7 +114,7 @@ export const PRESETS: Preset[] = [
     label: 'BTC',
     getConfig: (accumulate, _base) => ({
       spxlPct: 0,
-      spyPct: 0,
+      brgnxPct: 0,
       tqqqPct: 0,
       btcPct: 100,
       targetAPY: accumulate ? 0.30 : 0.80,
@@ -130,7 +130,7 @@ export const PRESETS: Preset[] = [
       const defaults = getDefaultConfig(accumulate)
       return {
         spxlPct: defaults.spxlPct,
-        spyPct: defaults.spyPct,
+        brgnxPct: defaults.brgnxPct,
         tqqqPct: defaults.tqqqPct,
         btcPct: defaults.btcPct,
         targetAPY: defaults.targetAPY,
@@ -318,7 +318,7 @@ export function BacktestApp() {
       {/* Footer */}
       <footer className="border-t border-slate-800 mt-12">
         <div className="container mx-auto px-4 sm:px-6 py-6 text-center text-sm text-slate-500">
-          <p>Historical data: SPXL (3x S&P 500), SPY (S&P 500), TQQQ (3x NASDAQ), BTC (Bitcoin)</p>
+          <p>Historical data: SPXL (3x Russell 1000), BRGNX (Russell 1000), TQQQ (3x NASDAQ), BTC (Bitcoin)</p>
           <p className="mt-1">All calculations run in-browser using EscapeMint engine</p>
         </div>
       </footer>
