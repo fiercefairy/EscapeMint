@@ -99,15 +99,47 @@ describe('computeRecommendation', () => {
     expect(result?.amount).toBe(100)
   })
 
-  it('recommends SELL when above target by min_profit', () => {
+  it('recommends SELL when above target by min_profit and in profit', () => {
     const state = makeState({
       expected_target_usd: 1000,
       actual_value_usd: 1200,
-      target_diff_usd: 200
+      target_diff_usd: 200,
+      gain_usd: 200,
+      gain_pct: 0.2
     })
     const result = computeRecommendation(baseConfig, state)
     expect(result?.action).toBe('SELL')
     expect(result?.amount).toBe(1200) // Full liquidation (accumulate=false)
+  })
+
+  it('does NOT recommend SELL when above target but at a loss', () => {
+    // Scenario: Bought at $1700, now worth $1200 (loss of $500), but target curve
+    // has declined even more due to market conditions, so we're "above target"
+    const state = makeState({
+      start_input_usd: 1700,
+      expected_target_usd: 1000,
+      actual_value_usd: 1200,
+      target_diff_usd: 200,
+      gain_usd: -500,  // At a loss overall: 1200 - 1700 = -500
+      gain_pct: -0.294  // -500 / 1700
+    })
+    const result = computeRecommendation(baseConfig, state)
+    expect(result?.action).toBe('BUY') // Should DCA, not sell at a loss
+  })
+
+  it('does NOT recommend SELL when above target at break-even', () => {
+    // Scenario: Above target but exactly at break-even (gain_usd = 0)
+    // Should not sell at break-even even when above expected target
+    const state = makeState({
+      start_input_usd: 1000,
+      expected_target_usd: 800,
+      actual_value_usd: 1000,
+      target_diff_usd: 200,  // Above target by $200
+      gain_usd: 0,  // Exactly at break-even
+      gain_pct: 0
+    })
+    const result = computeRecommendation(baseConfig, state)
+    expect(result?.action).toBe('BUY') // Should DCA, not sell at break-even
   })
 
   it('sells only limit amount in accumulate mode', () => {
@@ -115,7 +147,9 @@ describe('computeRecommendation', () => {
     const state = makeState({
       expected_target_usd: 1000,
       actual_value_usd: 1200,
-      target_diff_usd: 200
+      target_diff_usd: 200,
+      gain_usd: 200,
+      gain_pct: 0.2
     })
     const result = computeRecommendation(accumulateConfig, state)
     expect(result?.action).toBe('SELL')

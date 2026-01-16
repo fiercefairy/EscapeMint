@@ -92,8 +92,9 @@ export function computeRecommendation(
     }
   }
 
-  // Above target by more than min_profit: SELL
-  if (target_diff_usd > min_profit_usd) {
+  // Above target by more than min_profit AND actually in profit: SELL
+  // Never sell at a loss just because we're "ahead" of a declining target curve
+  if (target_diff_usd > min_profit_usd && gain_usd > 0) {
     // Determine sell amount based on accumulate mode
     const sellAmount = accumulate ? limit : actual_value_usd
 

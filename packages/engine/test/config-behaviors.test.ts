@@ -36,12 +36,14 @@ function makeState(overrides: Partial<FundState> = {}): FundState {
 
 describe('accumulate mode behavior', () => {
   describe('accumulate: false (default)', () => {
-    it('liquidates entire position when above target by min_profit', () => {
+    it('liquidates entire position when above target by min_profit and in profit', () => {
       const config = { ...baseConfig, accumulate: false }
       const state = makeState({
         expected_target_usd: 1000,
         actual_value_usd: 1200,
-        target_diff_usd: 200 // Above min_profit_usd of 100
+        target_diff_usd: 200, // Above min_profit_usd of 100
+        gain_usd: 200,
+        gain_pct: 0.2
       })
       const result = computeRecommendation(config, state)
       expect(result?.action).toBe('SELL')
@@ -53,7 +55,9 @@ describe('accumulate mode behavior', () => {
       const state = makeState({
         expected_target_usd: 1000,
         actual_value_usd: 1500,
-        target_diff_usd: 500
+        target_diff_usd: 500,
+        gain_usd: 500,
+        gain_pct: 0.5
       })
       const result = computeRecommendation(config, state)
       expect(result?.explanation.reasoning).toContain('Liquidating entire position')
@@ -75,12 +79,14 @@ describe('accumulate mode behavior', () => {
   })
 
   describe('accumulate: true', () => {
-    it('sells only limit amount when above target by min_profit', () => {
+    it('sells only limit amount when above target by min_profit and in profit', () => {
       const config = { ...baseConfig, accumulate: true }
       const state = makeState({
         expected_target_usd: 1000,
         actual_value_usd: 1200,
-        target_diff_usd: 200
+        target_diff_usd: 200,
+        gain_usd: 200,
+        gain_pct: 0.2
       })
       const result = computeRecommendation(config, state)
       expect(result?.action).toBe('SELL')
@@ -92,7 +98,9 @@ describe('accumulate mode behavior', () => {
       const state = makeState({
         expected_target_usd: 1000,
         actual_value_usd: 1500,
-        target_diff_usd: 500
+        target_diff_usd: 500,
+        gain_usd: 500,
+        gain_pct: 0.5
       })
       const result = computeRecommendation(config, state)
       expect(result?.explanation.reasoning).toContain('Accumulate mode')
@@ -234,23 +242,27 @@ describe('min_profit_usd threshold edge cases', () => {
     expect(result?.action).toBe('BUY')
   })
 
-  it('triggers SELL when profit just above min_profit_usd', () => {
+  it('triggers SELL when profit just above min_profit_usd and in profit', () => {
     const config = { ...baseConfig, min_profit_usd: 100 }
     const state = makeState({
       expected_target_usd: 1000,
       actual_value_usd: 1101,
-      target_diff_usd: 101
+      target_diff_usd: 101,
+      gain_usd: 101,
+      gain_pct: 0.101
     })
     const result = computeRecommendation(config, state)
     expect(result?.action).toBe('SELL')
   })
 
-  it('handles min_profit_usd of 0', () => {
+  it('handles min_profit_usd of 0 when in profit', () => {
     const config = { ...baseConfig, min_profit_usd: 0 }
     const state = makeState({
       expected_target_usd: 1000,
       actual_value_usd: 1001,
-      target_diff_usd: 1
+      target_diff_usd: 1,
+      gain_usd: 1,
+      gain_pct: 0.001
     })
     const result = computeRecommendation(config, state)
     expect(result?.action).toBe('SELL')
@@ -298,7 +310,9 @@ describe('cash constraints', () => {
       cash_available_usd: 0,
       expected_target_usd: 1000,
       actual_value_usd: 1500,
-      target_diff_usd: 500
+      target_diff_usd: 500,
+      gain_usd: 500,
+      gain_pct: 0.5
     })
     const result = computeRecommendation(baseConfig, state)
     expect(result?.action).toBe('SELL')
