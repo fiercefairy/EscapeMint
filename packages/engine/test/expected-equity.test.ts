@@ -300,6 +300,79 @@ describe('computeExpectedTarget - SELL handling', () => {
   })
 })
 
+describe('computeExpectedTarget - accumulate mode', () => {
+  const accumulateConfig = { ...baseConfig, accumulate: true }
+
+  it('partial sells do not reduce expected target in accumulate mode', () => {
+    // In accumulate mode, partial sells are profit extraction only
+    // The expected target (what invested capital should grow to) remains unchanged
+    const trades: Trade[] = [
+      { date: '2024-01-01', amount_usd: 1000, type: 'buy' },
+      { date: '2024-07-01', amount_usd: 200, type: 'sell' }
+    ]
+    const resultWithSell = computeExpectedTarget(accumulateConfig, trades, '2025-01-01')
+
+    // Compare with no sell - should be the same
+    const tradesNoSell: Trade[] = [
+      { date: '2024-01-01', amount_usd: 1000, type: 'buy' }
+    ]
+    const resultNoSell = computeExpectedTarget(accumulateConfig, tradesNoSell, '2025-01-01')
+
+    // In accumulate mode, partial sells don't affect expected target
+    expect(resultWithSell).toBeCloseTo(resultNoSell, 0)
+  })
+
+  it('multiple partial sells do not incorrectly trigger liquidation detection', () => {
+    // Multiple partial sells that together exceed the buy amount
+    // should NOT be treated as a liquidation in accumulate mode
+    const trades: Trade[] = [
+      { date: '2024-01-01', amount_usd: 1000, type: 'buy' },
+      { date: '2024-04-01', amount_usd: 400, type: 'sell' },
+      { date: '2024-07-01', amount_usd: 400, type: 'sell' },
+      { date: '2024-10-01', amount_usd: 400, type: 'sell' }  // Total sells = 1200 > 1000 buys
+    ]
+    const result = computeExpectedTarget(accumulateConfig, trades, '2025-01-01')
+
+    // In accumulate mode, these are profit extractions, not liquidations
+    // Expected target should still be based on original $1000 investment
+    const tradesNoSell: Trade[] = [
+      { date: '2024-01-01', amount_usd: 1000, type: 'buy' }
+    ]
+    const resultNoSell = computeExpectedTarget(accumulateConfig, tradesNoSell, '2025-01-01')
+
+    expect(result).toBeCloseTo(resultNoSell, 0)
+  })
+
+  it('expected target remains stable after multiple profit extractions', () => {
+    // Simulate DCA buying with periodic profit taking in accumulate mode
+    const trades: Trade[] = [
+      { date: '2024-01-01', amount_usd: 500, type: 'buy' },
+      { date: '2024-03-01', amount_usd: 100, type: 'sell' },  // Profit extraction
+      { date: '2024-04-01', amount_usd: 500, type: 'buy' },
+      { date: '2024-06-01', amount_usd: 150, type: 'sell' },  // Profit extraction
+      { date: '2024-07-01', amount_usd: 500, type: 'buy' }
+    ]
+    const result = computeExpectedTarget(accumulateConfig, trades, '2025-01-01')
+
+    // The sells should not affect expected target in accumulate mode
+    // Expected target should be based on $1500 total invested (500 + 500 + 500)
+    expect(computeStartInput(trades, '2025-01-01', accumulateConfig)).toBe(1500)
+    expect(result).toBeGreaterThan(1500)  // Should have compounding gains
+  })
+
+  it('full liquidation still resets in accumulate mode', () => {
+    // Even in accumulate mode, a full liquidation (selling 100%) should reset
+    const trades: Trade[] = [
+      { date: '2024-01-01', amount_usd: 1000, type: 'buy', shares: 10 },
+      { date: '2024-07-01', amount_usd: 1200, type: 'sell', shares: 10, value: 1200 }  // Full liquidation
+    ]
+    const result = computeExpectedTarget(accumulateConfig, trades, '2025-01-01')
+
+    // Full liquidation should zero out expected target
+    expect(result).toBe(0)
+  })
+})
+
 describe('computeExpectedTarget - edge cases', () => {
   it('handles leap year (366 days)', () => {
     const trades: Trade[] = [
