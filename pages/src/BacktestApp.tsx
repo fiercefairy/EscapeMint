@@ -103,7 +103,7 @@ export const PRESETS: Preset[] = [
       brgnxPct: 100,
       tqqqPct: 0,
       btcPct: 0,
-      targetAPY: accumulate ? 0.10 : 0.15,
+      targetAPY: 0.10,
       inputMin: 100,
       inputMid: 100,
       inputMax: accumulate ? 100 : 150

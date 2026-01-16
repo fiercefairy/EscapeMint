@@ -654,7 +654,7 @@ function SliderField({ label, value, min, max, step, format, onChange }: SliderF
   const pct = ((roundedValue - min) / (max - min)) * 100
   return (
     <div className="flex items-center gap-2">
-      <span className="text-[10px] text-slate-400 w-20 truncate" title={label}>{label}</span>
+      <span className="text-[10px] text-slate-400 w-[85px] flex-shrink-0" title={label}>{label}</span>
       <input
         type="range"
         min={min}
