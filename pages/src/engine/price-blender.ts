@@ -2,7 +2,7 @@ import type { HistoricalData, PricePoint, DateRange, DividendPayment } from '../
 
 export interface Allocation {
   SPXL: number
-  SPY: number
+  BRGNX: number
   TQQQ: number
   BTC: number
 }
@@ -11,13 +11,13 @@ export interface BlendedPriceResult {
   prices: PricePoint[]
   startingPrices: {
     SPXL: number
-    SPY: number
+    BRGNX: number
     TQQQ: number
     BTC: number
   }
   dividends: {
     SPXL: DividendPayment[]
-    SPY: DividendPayment[]
+    BRGNX: DividendPayment[]
     TQQQ: DividendPayment[]
   }
 }
@@ -36,7 +36,7 @@ export function blendPricesWithDividends(
   dateRange: DateRange
 ): BlendedPriceResult {
   const spxl = historicalData.SPXL.prices
-  const spy = historicalData.SPY.prices
+  const spy = historicalData.BRGNX.prices
   const tqqq = historicalData.TQQQ.prices
   const btc = historicalData.BTC.prices
 
@@ -54,8 +54,8 @@ export function blendPricesWithDividends(
   if (dates.length === 0) {
     return {
       prices: [],
-      startingPrices: { SPXL: 1, SPY: 1, TQQQ: 1, BTC: 1 },
-      dividends: { SPXL: [], SPY: [], TQQQ: [] }
+      startingPrices: { SPXL: 1, BRGNX: 1, TQQQ: 1, BTC: 1 },
+      dividends: { SPXL: [], BRGNX: [], TQQQ: [] }
     }
   }
 
@@ -68,7 +68,7 @@ export function blendPricesWithDividends(
 
   // Filter dividends to date range
   const spxlDividendsRaw = historicalData.SPXL.dividends || []
-  const spyDividendsRaw = historicalData.SPY.dividends || []
+  const spyDividendsRaw = historicalData.BRGNX.dividends || []
   const tqqqDividendsRaw = historicalData.TQQQ.dividends || []
 
   const spxlDividends = spxlDividendsRaw
@@ -100,7 +100,7 @@ export function blendPricesWithDividends(
     // Calculate weighted blend
     const blendedValue =
       (spxlNorm * allocation.SPXL) +
-      (spyNorm * allocation.SPY) +
+      (spyNorm * allocation.BRGNX) +
       (tqqqNorm * allocation.TQQQ) +
       (btcNorm * allocation.BTC)
 
@@ -114,13 +114,13 @@ export function blendPricesWithDividends(
     prices,
     startingPrices: {
       SPXL: spxlStart,
-      SPY: spyStart,
+      BRGNX: spyStart,
       TQQQ: tqqqStart,
       BTC: btcStart
     },
     dividends: {
       SPXL: spxlDividends,
-      SPY: spyDividends,
+      BRGNX: spyDividends,
       TQQQ: tqqqDividends
     }
   }

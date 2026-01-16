@@ -258,7 +258,7 @@ function isPresetActive(config: ScenarioConfig, preset: Preset): boolean {
   const presetValues = preset.getConfig(config.accumulate, config)
   return (
     config.spxlPct === presetValues.spxlPct &&
-    config.spyPct === presetValues.spyPct &&
+    config.brgnxPct === presetValues.brgnxPct &&
     config.tqqqPct === presetValues.tqqqPct &&
     config.btcPct === presetValues.btcPct &&
     config.targetAPY === presetValues.targetAPY &&
@@ -331,17 +331,17 @@ export function BacktestView({ config, historicalData, dateRange, onChange, onAp
     <div className="space-y-4">
       {/* Configuration Panel - Compact */}
       <div className="bg-slate-800 rounded-lg border border-slate-700 p-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {/* Allocation */}
           <div>
             <h3 className="text-xs font-medium text-slate-400 mb-2">Allocation</h3>
             <PieBuilder
               spxlPct={config.spxlPct}
-              spyPct={config.spyPct}
+              brgnxPct={config.brgnxPct}
               tqqqPct={config.tqqqPct}
               btcPct={config.btcPct}
-              onChange={(spxlPct, spyPct, tqqqPct, btcPct) =>
-                updateConfig({ spxlPct, spyPct, tqqqPct, btcPct })
+              onChange={(spxlPct, brgnxPct, tqqqPct, btcPct) =>
+                updateConfig({ spxlPct, brgnxPct, tqqqPct, btcPct })
               }
             />
           </div>
@@ -654,7 +654,7 @@ function SliderField({ label, value, min, max, step, format, onChange }: SliderF
   const pct = ((roundedValue - min) / (max - min)) * 100
   return (
     <div className="flex items-center gap-2">
-      <span className="text-[10px] text-slate-400 w-20 truncate" title={label}>{label}</span>
+      <span className="text-[10px] text-slate-400 w-[85px] flex-shrink-0" title={label}>{label}</span>
       <input
         type="range"
         min={min}

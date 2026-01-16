@@ -5,14 +5,17 @@ import type { HistoricalData } from '../../../data/types'
 
 interface ChartPoint {
   date: Date
-  spy: number
+  brgnx: number
   spxl: number
 }
+
+type ViewMode = 'price' | 'dca'
 
 export function LeverageComparison() {
   const svgRef = useRef<SVGSVGElement>(null)
   const [historicalData, setHistoricalData] = useState<Record<string, HistoricalData> | null>(null)
   const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState<ViewMode>('price')
 
   useEffect(() => {
     loadHistoricalData()
@@ -26,34 +29,56 @@ export function LeverageComparison() {
       })
   }, [])
 
-  // Transform data for chart - normalize both to start at 100
-  const chartData = useMemo(() => {
-    if (!historicalData?.SPY || !historicalData?.SPXL) return []
+  // Calculate both price-normalized and DCA data
+  const { priceData, dcaData } = useMemo(() => {
+    if (!historicalData?.BRGNX || !historicalData?.SPXL) {
+      return { priceData: [], dcaData: [] }
+    }
 
-    const spyPrices = historicalData.SPY.prices
+    const brgnxPrices = historicalData.BRGNX.prices
     const spxlPrices = historicalData.SPXL.prices
 
     // Find starting values for normalization
-    const spyStart = spyPrices[0]?.value || 1
+    const brgnxStart = brgnxPrices[0]?.value || 1
     const spxlStart = spxlPrices[0]?.value || 1
 
     // Build aligned data points
-    const data: ChartPoint[] = []
+    const priceData: ChartPoint[] = []
+    const dcaData: ChartPoint[] = []
     const spxlByDate = new Map(spxlPrices.map(p => [p.date, p.value]))
 
-    for (const spyPoint of spyPrices) {
-      const spxlValue = spxlByDate.get(spyPoint.date)
+    // DCA tracking
+    let brgnxShares = 0
+    let spxlShares = 0
+    const weeklyInvestment = 100
+
+    for (const brgnxPoint of brgnxPrices) {
+      const spxlValue = spxlByDate.get(brgnxPoint.date)
       if (spxlValue !== undefined) {
-        data.push({
-          date: new Date(spyPoint.date),
-          spy: (spyPoint.value / spyStart) * 100,
+        // Price normalized data
+        priceData.push({
+          date: new Date(brgnxPoint.date),
+          brgnx: (brgnxPoint.value / brgnxStart) * 100,
           spxl: (spxlValue / spxlStart) * 100
+        })
+
+        // DCA simulation: buy $100 worth each week
+        brgnxShares += weeklyInvestment / brgnxPoint.value
+        spxlShares += weeklyInvestment / spxlValue
+
+        // Calculate current equity value
+        dcaData.push({
+          date: new Date(brgnxPoint.date),
+          brgnx: brgnxShares * brgnxPoint.value,
+          spxl: spxlShares * spxlValue
         })
       }
     }
 
-    return data
+    return { priceData, dcaData }
   }, [historicalData])
+
+  const chartData = viewMode === 'price' ? priceData : dcaData
 
   useEffect(() => {
     if (!svgRef.current || chartData.length < 2) return
@@ -63,7 +88,7 @@ export function LeverageComparison() {
 
     const width = 600
     const height = 300
-    const margin = { top: 30, right: 30, bottom: 40, left: 50 }
+    const margin = { top: 30, right: 45, bottom: 40, left: 55 }
     const innerWidth = width - margin.left - margin.right
     const innerHeight = height - margin.top - margin.bottom
 
@@ -77,9 +102,10 @@ export function LeverageComparison() {
       .domain(d3.extent(chartData, d => d.date) as [Date, Date])
       .range([0, innerWidth])
 
-    const allValues = [...chartData.map(d => d.spy), ...chartData.map(d => d.spxl)]
+    const allValues = [...chartData.map(d => d.brgnx), ...chartData.map(d => d.spxl)]
+    const yMin = viewMode === 'price' ? 0 : d3.min(allValues)! * 0.9
     const y = d3.scaleLinear()
-      .domain([0, d3.max(allValues)! * 1.1])
+      .domain([yMin, d3.max(allValues)! * 1.1])
       .nice()
       .range([innerHeight, 0])
 
@@ -91,9 +117,13 @@ export function LeverageComparison() {
       .attr('fill', '#64748b')
       .attr('font-size', '10px')
 
-    // Y axis
+    // Y axis - format based on mode
+    const yAxisFormat = viewMode === 'dca'
+      ? (d: d3.NumberValue) => `$${(Number(d) / 1000).toFixed(0)}K`
+      : (d: d3.NumberValue) => `${Math.round(Number(d))}`
+
     g.append('g')
-      .call(d3.axisLeft(y).ticks(5).tickFormat(d => `${Math.round(Number(d))}`))
+      .call(d3.axisLeft(y).ticks(5).tickFormat(yAxisFormat))
       .selectAll('text')
       .attr('fill', '#64748b')
       .attr('font-size', '10px')
@@ -102,20 +132,22 @@ export function LeverageComparison() {
     g.selectAll('.domain').attr('stroke', '#475569')
     g.selectAll('.tick line').attr('stroke', '#475569')
 
-    // Baseline at 100
-    g.append('line')
-      .attr('x1', 0)
-      .attr('x2', innerWidth)
-      .attr('y1', y(100))
-      .attr('y2', y(100))
-      .attr('stroke', '#475569')
-      .attr('stroke-dasharray', '4,4')
-      .attr('opacity', 0.5)
+    // Baseline at 100 (only for price mode)
+    if (viewMode === 'price') {
+      g.append('line')
+        .attr('x1', 0)
+        .attr('x2', innerWidth)
+        .attr('y1', y(100))
+        .attr('y2', y(100))
+        .attr('stroke', '#475569')
+        .attr('stroke-dasharray', '4,4')
+        .attr('opacity', 0.5)
+    }
 
     // Line generator
-    const spyLine = d3.line<ChartPoint>()
+    const brgnxLine = d3.line<ChartPoint>()
       .x(d => x(d.date))
-      .y(d => y(d.spy))
+      .y(d => y(d.brgnx))
       .curve(d3.curveMonotoneX)
 
     const spxlLine = d3.line<ChartPoint>()
@@ -123,19 +155,19 @@ export function LeverageComparison() {
       .y(d => y(d.spxl))
       .curve(d3.curveMonotoneX)
 
-    // Draw SPY line - blue
-    const spyPath = g.append('path')
+    // Draw BRGNX line - blue (Russell 1000 baseline)
+    const brgnxPath = g.append('path')
       .datum(chartData)
       .attr('fill', 'none')
       .attr('stroke', '#3b82f6')
       .attr('stroke-width', 2)
-      .attr('d', spyLine)
+      .attr('d', brgnxLine)
 
-    // Animate SPY line
-    const spyLength = spyPath.node()?.getTotalLength() || 0
-    spyPath
-      .attr('stroke-dasharray', `${spyLength} ${spyLength}`)
-      .attr('stroke-dashoffset', spyLength)
+    // Animate BRGNX line
+    const brgnxLength = brgnxPath.node()?.getTotalLength() || 0
+    brgnxPath
+      .attr('stroke-dasharray', `${brgnxLength} ${brgnxLength}`)
+      .attr('stroke-dashoffset', brgnxLength)
       .transition()
       .duration(2000)
       .ease(d3.easeLinear)
@@ -162,14 +194,18 @@ export function LeverageComparison() {
     // End values
     const lastPoint = chartData[chartData.length - 1]
 
-    // SPY end label
+    // Format end labels based on mode
+    const formatEndLabel = (val: number) =>
+      viewMode === 'dca' ? `$${(val / 1000).toFixed(0)}K` : `${val.toFixed(0)}`
+
+    // BRGNX end label
     g.append('text')
       .attr('x', innerWidth + 5)
-      .attr('y', y(lastPoint.spy))
+      .attr('y', y(lastPoint.brgnx))
       .attr('fill', '#3b82f6')
       .attr('font-size', '11px')
       .attr('dominant-baseline', 'middle')
-      .text(`${lastPoint.spy.toFixed(0)}`)
+      .text(formatEndLabel(lastPoint.brgnx))
       .attr('opacity', 0)
       .transition()
       .delay(2000)
@@ -183,7 +219,7 @@ export function LeverageComparison() {
       .attr('fill', '#22c55e')
       .attr('font-size', '11px')
       .attr('dominant-baseline', 'middle')
-      .text(`${lastPoint.spxl.toFixed(0)}`)
+      .text(formatEndLabel(lastPoint.spxl))
       .attr('opacity', 0)
       .transition()
       .delay(2000)
@@ -204,7 +240,7 @@ export function LeverageComparison() {
       .attr('x', 30).attr('y', 4)
       .attr('fill', '#94a3b8')
       .attr('font-size', '11px')
-      .text('SPY (S&P 500)')
+      .text('BRGNX (Russell 1000)')
 
     legend.append('line')
       .attr('x1', 0).attr('x2', 25)
@@ -219,15 +255,19 @@ export function LeverageComparison() {
       .text('SPXL (3x leveraged)')
 
     // Title
+    const title = viewMode === 'price'
+      ? 'Price: Normalized to 100 at start'
+      : 'DCA: $100/week invested'
+
     g.append('text')
       .attr('x', innerWidth / 2)
       .attr('y', -10)
       .attr('text-anchor', 'middle')
       .attr('fill', '#94a3b8')
       .attr('font-size', '14px')
-      .text('SPY vs SPXL: Normalized to 100 at start')
+      .text(title)
 
-  }, [chartData])
+  }, [chartData, viewMode])
 
   if (loading) {
     return (
@@ -237,7 +277,7 @@ export function LeverageComparison() {
     )
   }
 
-  if (chartData.length === 0) {
+  if (priceData.length === 0) {
     return (
       <div className="w-full flex justify-center items-center h-[300px]">
         <div className="text-slate-400 text-sm">Unable to load historical data</div>
@@ -246,8 +286,38 @@ export function LeverageComparison() {
   }
 
   return (
-    <div className="w-full flex justify-center">
+    <div className="w-full flex flex-col items-center gap-2">
+      {/* Mode toggle */}
+      <div className="flex gap-1 bg-slate-800 rounded-lg p-1">
+        <button
+          onClick={() => setViewMode('price')}
+          className={`px-3 py-1 text-xs rounded transition-colors cursor-pointer ${
+            viewMode === 'price'
+              ? 'bg-blue-600 text-white'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Price
+        </button>
+        <button
+          onClick={() => setViewMode('dca')}
+          className={`px-3 py-1 text-xs rounded transition-colors cursor-pointer ${
+            viewMode === 'dca'
+              ? 'bg-blue-600 text-white'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          $100/wk DCA
+        </button>
+      </div>
+
       <svg ref={svgRef} className="w-full max-w-[600px] h-auto" />
+
+      {viewMode === 'dca' && (
+        <p className="text-xs text-slate-500 text-center max-w-md">
+          Simulates investing $100/week in each fund. Total invested: ${(priceData.length * 100).toLocaleString()}
+        </p>
+      )}
     </div>
   )
 }

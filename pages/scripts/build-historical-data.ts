@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { SPXL_DIVIDENDS, TQQQ_DIVIDENDS, SPY_DIVIDENDS, type DividendPayment } from '../../packages/server/src/data/dividends.js'
+import { SPXL_DIVIDENDS, TQQQ_DIVIDENDS, SPY_DIVIDENDS, BRGNX_DIVIDENDS, type DividendPayment } from '../../packages/server/src/data/dividends.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -120,6 +120,29 @@ async function buildHistoricalData() {
     JSON.stringify(tqqqData, null, 2)
   )
   console.log(`✓ TQQQ: ${tqqqData.dataPoints} points (${tqqqData.startDate} to ${tqqqData.endDate})`)
+
+  // Process BRGNX (Russell 1000 - SPXL comparison baseline)
+  console.log('Processing BRGNX data from server weekly data...')
+  const brgnxPrices = await loadOHLCVData(resolve(serverDataDir, 'brgnx-weekly.json'))
+  if (brgnxPrices.length === 0) {
+    throw new Error('No valid BRGNX data found')
+  }
+
+  const brgnxData: HistoricalData = {
+    ticker: 'BRGNX',
+    name: 'BlackRock Russell 1000 Index Fund',
+    type: 'stock',
+    startDate: brgnxPrices[0].date,
+    endDate: brgnxPrices[brgnxPrices.length - 1].date,
+    dataPoints: brgnxPrices.length,
+    prices: brgnxPrices,
+    dividends: BRGNX_DIVIDENDS
+  }
+  await writeFile(
+    resolve(outputDir, 'brgnx-weekly.json'),
+    JSON.stringify(brgnxData, null, 2)
+  )
+  console.log(`✓ BRGNX: ${brgnxData.dataPoints} points (${brgnxData.startDate} to ${brgnxData.endDate})`)
 
   // Process BTC
   console.log('Processing BTC data from server weekly data...')

@@ -18,13 +18,17 @@ export async function loadHistoricalData(): Promise<Record<string, HistoricalDat
     const base = import.meta.env.BASE_URL
     // Add cache-busting timestamp to ensure fresh data
     const cacheBust = `?t=${Date.now()}`
-    const [spxl, spy, tqqq, btc] = await Promise.all([
+    const [spxl, spy, brgnx, tqqq, btc] = await Promise.all([
       fetch(`${base}data/spxl-weekly.json${cacheBust}`).then(r => {
         if (!r.ok) throw new Error(`Failed to load SPXL data: ${r.statusText}`)
         return r.json()
       }),
       fetch(`${base}data/spy-weekly.json${cacheBust}`).then(r => {
         if (!r.ok) throw new Error(`Failed to load SPY data: ${r.statusText}`)
+        return r.json()
+      }),
+      fetch(`${base}data/brgnx-weekly.json${cacheBust}`).then(r => {
+        if (!r.ok) throw new Error(`Failed to load BRGNX data: ${r.statusText}`)
         return r.json()
       }),
       fetch(`${base}data/tqqq-weekly.json${cacheBust}`).then(r => {
@@ -46,6 +50,7 @@ export async function loadHistoricalData(): Promise<Record<string, HistoricalDat
     cachedData = {
       SPXL: spxl as HistoricalData,
       SPY: spy as HistoricalData,
+      BRGNX: brgnx as HistoricalData,
       TQQQ: tqqq as HistoricalData,
       BTC: btc as HistoricalData
     }

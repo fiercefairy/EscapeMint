@@ -16,8 +16,7 @@ export const INTRO_STEPS: IntroStep[] = [
       '"The stock market is a device for transferring money from the impatient to the patient... nobody wants to get rich slowly." — Warren Buffett',
       'Getting rich is easy, as long as you\'re willing to do it slowly.',
       'You don\'t need to watch the news, analyze earnings reports, or pick individual stocks.',
-      'If you believe one thing:',
-      'The whole stock market goes up over time.'
+      'Remove emotion, track your position and follow the rules.'
     ],
     chartType: 'none',
     showDisclaimer: true
@@ -100,9 +99,8 @@ export const INTRO_STEPS: IntroStep[] = [
     title: 'Leveraged ETFs = More Volatility',
     content: [
       'Example assets used by the creator (not financial advice):',
-      'BTC is Bitcoin--the only truly scarce asset globally recognized as a store of value.',
-      'TQQQ is a 3x leveraged long on the Nasdaq-100.',
-      'SPXL is a 3x leveraged long on the S&P 500 (SPY).',
+      <><span className="font-semibold">TQQQ</span> is a 3x leveraged long on the Nasdaq-100.<br /><span className="text-xs text-slate-500">TQQQ seeks daily investment results, before fees and expenses, that correspond to three times (3x) the daily performance of the Nasdaq-100 Index.</span> <a href="https://portfolioslab.com/tools/stock-comparison/%5ENDX/TQQQ" target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300">Compare TQQQ vs Nasdaq-100 →</a></>,
+      <><span className="font-semibold">SPXL</span> is a 3x leveraged long on the Russell 1000 Large Cap Index.<br /><span className="text-xs text-slate-500">SPXL seeks daily investment results, before fees and expenses, of 300% of the price performance of the Russell 1000 Index. There is no guarantee the fund will meet its stated investment objective.</span> <a href="https://portfolioslab.com/tools/stock-comparison/BRGNX/SPXL" target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300">Compare SPXL vs BRGNX →</a></>,
       'More volatility = more opportunities to buy low and sell high.',
       'Your choice of assets depends on your risk tolerance and research.'
     ],
