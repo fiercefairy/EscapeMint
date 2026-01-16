@@ -31,8 +31,8 @@ test-results/
 #packages/web/public/playwright-report/
 #packages/web/public/code-coverage/
 
-# Legacy test directory (defunct - using e2e/ now)
-test/
+# Legacy test directory at repo root (defunct - using e2e/ now)
+/test/
 
 # Temp files
 *.tmp

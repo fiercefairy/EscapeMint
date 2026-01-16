@@ -19,14 +19,15 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   silent: 4
 }
 
-const getLogLevel = (): LogLevel => {
-  const level = process.env['LOG_LEVEL']?.toLowerCase() as LogLevel
-  return LOG_LEVELS[level] !== undefined ? level : 'info'
-}
+// Cache log level at module load time (won't change during runtime)
+const ENV_LOG_LEVEL = process.env['LOG_LEVEL']?.toLowerCase() as LogLevel | undefined
+const CURRENT_LOG_LEVEL: LogLevel =
+  ENV_LOG_LEVEL !== undefined && LOG_LEVELS[ENV_LOG_LEVEL] !== undefined
+    ? ENV_LOG_LEVEL
+    : 'info'
 
 const shouldLog = (level: LogLevel): boolean => {
-  const currentLevel = getLogLevel()
-  return LOG_LEVELS[level] >= LOG_LEVELS[currentLevel]
+  return LOG_LEVELS[level] >= LOG_LEVELS[CURRENT_LOG_LEVEL]
 }
 
 const formatTimestamp = (): string => {

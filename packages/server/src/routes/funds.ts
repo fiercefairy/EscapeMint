@@ -1475,6 +1475,7 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
 
   // For cash funds, auto-calculate value and cash from signed amount
   // Amount is signed: positive = deposit, negative = withdraw
+  // DEPOSIT/WITHDRAW actions are normalized to signed amounts with HOLD action
   if (isCashFund) {
     const sortedEntries = [...fund.entries].sort((a, b) =>
       new Date(a.date).getTime() - new Date(b.date).getTime()
@@ -1483,6 +1484,15 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     const prevEntry = entriesBefore[entriesBefore.length - 1]
     // Previous balance is from cash field, or value, or 0 if first entry
     const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? 0
+
+    // Normalize DEPOSIT/WITHDRAW actions to signed amounts
+    if (entry.action === 'DEPOSIT' && entry.amount) {
+      entry.amount = Math.abs(entry.amount)  // Ensure positive
+      entry.action = 'HOLD'
+    } else if (entry.action === 'WITHDRAW' && entry.amount) {
+      entry.amount = -Math.abs(entry.amount)  // Ensure negative
+      entry.action = 'HOLD'
+    }
 
     // Calculate new balance from signed amount
     let newBalance = prevBalance
