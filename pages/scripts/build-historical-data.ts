@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { SPXL_DIVIDENDS, TQQQ_DIVIDENDS, SPY_DIVIDENDS, type DividendPayment } from '../../packages/server/src/data/dividends.js'
+import { SPXL_DIVIDENDS, TQQQ_DIVIDENDS, SPY_DIVIDENDS, BRGNX_DIVIDENDS, type DividendPayment } from '../../packages/server/src/data/dividends.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -135,7 +135,8 @@ async function buildHistoricalData() {
     startDate: brgnxPrices[0].date,
     endDate: brgnxPrices[brgnxPrices.length - 1].date,
     dataPoints: brgnxPrices.length,
-    prices: brgnxPrices
+    prices: brgnxPrices,
+    dividends: BRGNX_DIVIDENDS
   }
   await writeFile(
     resolve(outputDir, 'brgnx-weekly.json'),

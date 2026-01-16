@@ -46,6 +46,32 @@ export const TQQQ_DIVIDENDS: DividendPayment[] = [
   { exDate: '2025-12-24', amount: 0.08554 }
 ]
 
+// Historical dividend data for BRGNX (ex-dividend dates and amounts per share)
+// BlackRock Russell 1000 Index Fund - pays quarterly
+export const BRGNX_DIVIDENDS: DividendPayment[] = [
+  { exDate: '2021-03-31', amount: 0.10457 },
+  { exDate: '2021-06-30', amount: 0.10515 },
+  { exDate: '2021-09-30', amount: 0.087 },
+  { exDate: '2021-12-09', amount: 0.29623 },
+  { exDate: '2022-03-31', amount: 0.09113 },
+  { exDate: '2022-06-30', amount: 0.09178 },
+  { exDate: '2022-07-14', amount: 0.07837 },
+  { exDate: '2022-09-30', amount: 0.10217 },
+  { exDate: '2022-12-13', amount: 0.07215 },
+  { exDate: '2023-03-31', amount: 0.12932 },
+  { exDate: '2023-06-30', amount: 0.10222 },
+  { exDate: '2023-09-29', amount: 0.09436 },
+  { exDate: '2023-12-14', amount: 0.11526 },
+  { exDate: '2024-03-28', amount: 0.10276 },
+  { exDate: '2024-06-28', amount: 0.09654 },
+  { exDate: '2024-09-30', amount: 0.11136 },
+  { exDate: '2024-12-12', amount: 0.18761 },
+  { exDate: '2025-03-31', amount: 0.10647 },
+  { exDate: '2025-06-30', amount: 0.37149 },
+  { exDate: '2025-09-30', amount: 0.11782 },
+  { exDate: '2025-12-16', amount: 0.56537 }
+]
+
 // Historical dividend data for SPY (ex-dividend dates and amounts per share)
 export const SPY_DIVIDENDS: DividendPayment[] = [
   { exDate: '2021-03-19', amount: 1.27779 },
