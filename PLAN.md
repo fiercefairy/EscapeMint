@@ -19,6 +19,28 @@ See the [docs/](./docs/) folder for detailed documentation:
 
 ---
 
+## Recently Completed
+
+### Onboarding Wizard (v0.22)
+Interactive 12-step introduction wizard explaining the fund strategy with animated D3 chart visualizations.
+
+**Features:**
+- [x] Auto-shows for first-time visitors, skippable
+- [x] "Learn How It Works" button in backtest header for returning visitors
+- [x] 12 educational steps covering DCA strategy, volatility benefits, accumulate/harvest modes
+- [x] Animated D3 charts: market growth, volatility comparison, buy/sell zones, leverage comparison, mode comparison
+- [x] Prominent disclaimer ("Not investment advice, do your own research")
+- [x] Shareable step URLs via HashRouter (`/intro/5`)
+- [x] LocalStorage persistence for completion state
+
+**Files Added:**
+- `pages/src/components/intro/` - IntroWizard, IntroStep, StepNavigation, ProgressIndicator, Disclaimer
+- `pages/src/components/intro/charts/` - 5 D3 animated chart components
+- `pages/src/data/intro-content.ts` - Step content data
+- `pages/src/BacktestApp.tsx` - Extracted from App.tsx
+
+---
+
 ## Next Up
 
 ### Configurable Entry Form Fields (High Value)

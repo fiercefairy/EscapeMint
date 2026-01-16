@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import type { HistoricalData, DateRange } from '../data/types'
 import { runBacktest, type ScenarioConfig, type BacktestResult, type TimeSeriesPoint } from '../engine/backtest'
-import type { Preset, PresetName } from '../App'
+import type { Preset, PresetName } from '../BacktestApp'
 import { EntriesTable } from './EntriesTable'
 import { PieBuilder } from './PieBuilder'
 import { formatCurrency, formatPercent, formatPercentSigned, formatCurrencyCompact } from '../utils/format'
@@ -258,6 +258,7 @@ function isPresetActive(config: ScenarioConfig, preset: Preset): boolean {
   const presetValues = preset.getConfig(config.accumulate, config)
   return (
     config.spxlPct === presetValues.spxlPct &&
+    config.spyPct === presetValues.spyPct &&
     config.tqqqPct === presetValues.tqqqPct &&
     config.btcPct === presetValues.btcPct &&
     config.targetAPY === presetValues.targetAPY &&
@@ -336,10 +337,11 @@ export function BacktestView({ config, historicalData, dateRange, onChange, onAp
             <h3 className="text-xs font-medium text-slate-400 mb-2">Allocation</h3>
             <PieBuilder
               spxlPct={config.spxlPct}
+              spyPct={config.spyPct}
               tqqqPct={config.tqqqPct}
               btcPct={config.btcPct}
-              onChange={(spxlPct, tqqqPct, btcPct) =>
-                updateConfig({ spxlPct, tqqqPct, btcPct })
+              onChange={(spxlPct, spyPct, tqqqPct, btcPct) =>
+                updateConfig({ spxlPct, spyPct, tqqqPct, btcPct })
               }
             />
           </div>
@@ -463,7 +465,7 @@ export function BacktestView({ config, historicalData, dateRange, onChange, onAp
             </p>
             <div className="mt-2">
               <span className="text-[10px] text-slate-500 block mb-1">Presets</span>
-              <div className="grid grid-cols-4 gap-1">
+              <div className="grid grid-cols-5 gap-1">
                 {presets.map((preset) => {
                   const isActive = activePreset === preset.name
                   return (

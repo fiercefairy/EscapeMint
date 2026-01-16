@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { SPXL_DIVIDENDS, TQQQ_DIVIDENDS, type DividendPayment } from '../../packages/server/src/data/dividends.js'
+import { SPXL_DIVIDENDS, TQQQ_DIVIDENDS, SPY_DIVIDENDS, type DividendPayment } from '../../packages/server/src/data/dividends.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -74,6 +74,29 @@ async function buildHistoricalData() {
     JSON.stringify(spxlData, null, 2)
   )
   console.log(`✓ SPXL: ${spxlData.dataPoints} points (${spxlData.startDate} to ${spxlData.endDate})`)
+
+  // Process SPY (S&P 500)
+  console.log('Processing SPY data from server weekly data...')
+  const spyPrices = await loadOHLCVData(resolve(serverDataDir, 'spy-weekly.json'))
+  if (spyPrices.length === 0) {
+    throw new Error('No valid SPY data found')
+  }
+
+  const spyData: HistoricalData = {
+    ticker: 'SPY',
+    name: 'SPDR S&P 500 ETF Trust',
+    type: 'stock',
+    startDate: spyPrices[0].date,
+    endDate: spyPrices[spyPrices.length - 1].date,
+    dataPoints: spyPrices.length,
+    prices: spyPrices,
+    dividends: SPY_DIVIDENDS
+  }
+  await writeFile(
+    resolve(outputDir, 'spy-weekly.json'),
+    JSON.stringify(spyData, null, 2)
+  )
+  console.log(`✓ SPY: ${spyData.dataPoints} points (${spyData.startDate} to ${spyData.endDate})`)
 
   // Process TQQQ (3x NASDAQ)
   console.log('Processing TQQQ data from server weekly data...')

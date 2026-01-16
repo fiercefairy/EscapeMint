@@ -13,7 +13,7 @@ export function Backtest() {
   }
 
   return (
-    <div className="bg-slate-950 min-h-screen -m-6 -mt-4">
+    <div className="bg-slate-950 min-h-screen -mt-4 sm:-m-6 sm:-mt-4">
       <iframe
         src={devUrl}
         className="w-full h-screen border-0"

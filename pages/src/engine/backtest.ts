@@ -8,6 +8,7 @@ export interface ScenarioConfig {
 
   // Pie allocation (must sum to 100)
   spxlPct: number
+  spyPct: number
   tqqqPct: number
   btcPct: number
 
@@ -103,6 +104,7 @@ export function runBacktest(
   // 1. Blend price histories based on allocation
   const allocation: Allocation = {
     SPXL: scenario.spxlPct / 100,
+    SPY: scenario.spyPct / 100,
     TQQQ: scenario.tqqqPct / 100,
     BTC: scenario.btcPct / 100
   }
@@ -113,6 +115,7 @@ export function runBacktest(
   // Debug: Log dividend data
   console.log('=== BACKTEST DIVIDENDS ===')
   console.log('SPXL divs in range:', blendResult.dividends.SPXL.length, blendResult.dividends.SPXL)
+  console.log('SPY divs in range:', blendResult.dividends.SPY.length, blendResult.dividends.SPY)
   console.log('TQQQ divs in range:', blendResult.dividends.TQQQ.length, blendResult.dividends.TQQQ)
   console.log('Date range:', dateRange)
 
@@ -152,8 +155,10 @@ export function runBacktest(
   // Track equivalent shares of underlying assets (for dividend calculation)
   // When we buy $X of the blended fund, we're buying:
   //   $X * SPXL_pct / SPXL_starting_price worth of SPXL shares
+  //   $X * SPY_pct / SPY_starting_price worth of SPY shares
   //   $X * TQQQ_pct / TQQQ_starting_price worth of TQQQ shares
   let spxlEquivShares = 0
+  let spyEquivShares = 0
   let tqqqEquivShares = 0
   const { startingPrices, dividends: allDividends } = blendResult
 
@@ -197,21 +202,28 @@ export function runBacktest(
 
     // Calculate dividends for this period (based on equivalent shares held)
     let weeklyDividend = 0
-    if (i > 0 && (spxlEquivShares > 0 || tqqqEquivShares > 0)) {
+    if (i > 0 && (spxlEquivShares > 0 || spyEquivShares > 0 || tqqqEquivShares > 0)) {
       // Get dividends that occurred between last entry and this entry
       const spxlDivs = getDividendsInRange(allDividends.SPXL, previousDate, point.date)
+      const spyDivs = getDividendsInRange(allDividends.SPY, previousDate, point.date)
       const tqqqDivs = getDividendsInRange(allDividends.TQQQ, previousDate, point.date)
 
       // Debug: Log when dividends are found
-      if (spxlDivs.length > 0 || tqqqDivs.length > 0) {
+      if (spxlDivs.length > 0 || spyDivs.length > 0 || tqqqDivs.length > 0) {
         const spxlDivAmt = spxlDivs.reduce((sum, d) => sum + spxlEquivShares * d.amount, 0)
+        const spyDivAmt = spyDivs.reduce((sum, d) => sum + spyEquivShares * d.amount, 0)
         const tqqqDivAmt = tqqqDivs.reduce((sum, d) => sum + tqqqEquivShares * d.amount, 0)
-        console.log(`Dividend on ${point.date}: SPXL $${spxlDivAmt.toFixed(2)}, TQQQ $${tqqqDivAmt.toFixed(2)}`)
+        console.log(`Dividend on ${point.date}: SPXL $${spxlDivAmt.toFixed(2)}, SPY $${spyDivAmt.toFixed(2)}, TQQQ $${tqqqDivAmt.toFixed(2)}`)
       }
 
       // Calculate dividend income from SPXL
       for (const div of spxlDivs) {
         weeklyDividend += spxlEquivShares * div.amount
+      }
+
+      // Calculate dividend income from SPY
+      for (const div of spyDivs) {
+        weeklyDividend += spyEquivShares * div.amount
       }
 
       // Calculate dividend income from TQQQ
@@ -265,6 +277,7 @@ export function runBacktest(
         // Update equivalent shares of underlying assets
         // amount * allocation_pct / starting_price = equivalent shares
         spxlEquivShares += (amount * allocation.SPXL) / startingPrices.SPXL
+        spyEquivShares += (amount * allocation.SPY) / startingPrices.SPY
         tqqqEquivShares += (amount * allocation.TQQQ) / startingPrices.TQQQ
 
         // Debug: Log first BUY
@@ -272,6 +285,7 @@ export function runBacktest(
           console.log('=== FIRST BUY ===')
           console.log('Date:', point.date, 'Amount:', amount)
           console.log('SPXL equiv shares:', spxlEquivShares.toFixed(4))
+          console.log('SPY equiv shares:', spyEquivShares.toFixed(4))
           console.log('TQQQ equiv shares:', tqqqEquivShares.toFixed(4))
         }
 
@@ -302,6 +316,7 @@ export function runBacktest(
 
         // Reduce equivalent shares proportionally
         spxlEquivShares *= (1 - sellProportion)
+        spyEquivShares *= (1 - sellProportion)
         tqqqEquivShares *= (1 - sellProportion)
 
         // Check for full liquidation using multiple detection methods (matches engine)
@@ -317,6 +332,7 @@ export function runBacktest(
           costBasis = 0
           shares = 0
           spxlEquivShares = 0
+          spyEquivShares = 0
           tqqqEquivShares = 0
         } else {
           // Partial sell - reduce cost basis proportionally

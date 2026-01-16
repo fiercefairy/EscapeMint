@@ -460,12 +460,12 @@ export function StackedAreaChart({
 
   return (
     <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 flex flex-col h-[200px]">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2 mb-2">
         <h3 className="text-sm font-medium text-white">{title}</h3>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-x-2 gap-y-1 sm:gap-3">
           {series.map(s => (
-            <span key={s.key} className="text-[10px] text-slate-400 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: s.color }} />
+            <span key={s.key} className="text-[9px] sm:text-[10px] text-slate-400 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: s.color }} />
               {s.label}{latestData && <span className="text-white ml-1">{formatCurrencyCompact(latestData[s.key] as number)}</span>}
             </span>
           ))}
@@ -1135,26 +1135,26 @@ export function ValueAndFundSizeChart({
 
   return (
     <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 flex flex-col h-[200px]">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2 mb-2">
         <h3 className="text-sm font-medium text-white">{title}</h3>
-        <div className="flex gap-3">
-          <span className="text-[10px] text-slate-400 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#f59e0b' }} />
+        <div className="flex flex-wrap gap-x-2 gap-y-1 sm:gap-3">
+          <span className="text-[9px] sm:text-[10px] text-slate-400 flex items-center gap-1">
+            <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: '#f59e0b' }} />
             Value{latestData && <span className="text-white ml-1">{formatCurrencyCompact(latestData.value)}</span>}
           </span>
-          <span className="text-[10px] text-slate-400 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#8b5cf6' }} />
+          <span className="text-[9px] sm:text-[10px] text-slate-400 flex items-center gap-1">
+            <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: '#8b5cf6' }} />
             Invested{latestData && <span className="text-white ml-1">{formatCurrencyCompact(latestData.startInput)}</span>}
           </span>
           {manageCash && (
-            <span className="text-[10px] text-slate-400 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#22c55e' }} />
+            <span className="text-[9px] sm:text-[10px] text-slate-400 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: '#22c55e' }} />
               Cash
             </span>
           )}
           {hasTarget && (
-            <span className="text-[10px] text-slate-400 flex items-center gap-1">
-              <span className="w-2 h-0.5 rounded-sm" style={{ backgroundColor: '#06b6d4', borderTop: '1px dashed #06b6d4' }} />
+            <span className="text-[9px] sm:text-[10px] text-slate-400 flex items-center gap-1">
+              <span className="w-2 h-0.5 rounded-sm flex-shrink-0" style={{ backgroundColor: '#06b6d4', borderTop: '1px dashed #06b6d4' }} />
               Target{latestData && <span className="text-white ml-1">{formatCurrencyCompact(latestData.expectedTarget)}</span>}
             </span>
           )}
