@@ -40,11 +40,12 @@ export function ScenarioConfiguration({ config, onChange }: Props) {
           <section>
             <PieBuilder
               spxlPct={config.spxlPct}
+              vtiPct={config.vtiPct}
               brgnxPct={config.brgnxPct}
               tqqqPct={config.tqqqPct}
               btcPct={config.btcPct}
-              onChange={(spxlPct, brgnxPct, tqqqPct, btcPct) =>
-                updateConfig({ spxlPct, brgnxPct, tqqqPct, btcPct })
+              onChange={(spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct) =>
+                updateConfig({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct })
               }
             />
           </section>

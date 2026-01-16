@@ -337,11 +337,12 @@ export function BacktestView({ config, historicalData, dateRange, onChange, onAp
             <h3 className="text-xs font-medium text-slate-400 mb-2">Allocation</h3>
             <PieBuilder
               spxlPct={config.spxlPct}
+              vtiPct={config.vtiPct}
               brgnxPct={config.brgnxPct}
               tqqqPct={config.tqqqPct}
               btcPct={config.btcPct}
-              onChange={(spxlPct, brgnxPct, tqqqPct, btcPct) =>
-                updateConfig({ spxlPct, brgnxPct, tqqqPct, btcPct })
+              onChange={(spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct) =>
+                updateConfig({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct })
               }
             />
           </div>

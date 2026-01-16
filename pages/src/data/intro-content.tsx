@@ -150,7 +150,8 @@ export const INTRO_STEPS: IntroStep[] = [
     title: 'Get Started',
     content: [
       'Ready to simulate your first fund?',
-      'Try the backtest tool to see how this strategy would have performed with different assets and configurations.'
+      'Try the backtest tool to see how this strategy would have performed with different assets and configurations.',
+      <>For reference (not financial advice), the creator has a public M1 Finance Pie at <a href="https://m1.finance/ahf9WyY0IIek" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">m1.finance/ahf9WyY0IIek</a></>
     ],
     chartType: 'none',
     showDisclaimer: true
