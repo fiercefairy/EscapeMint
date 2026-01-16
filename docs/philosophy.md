@@ -137,6 +137,33 @@ For volatile leveraged ETFs like TQQQ (3x Nasdaq) or SPXL (3x S&P 500), EscapeMi
 
 Leveraged ETFs can spike dramatically during bull runs. The liquidation strategy captures these gains completely, then restarts the accumulation cycle when prices normalize.
 
+### Important Disclaimer: Leveraged ETF Risks
+
+**Historical results are not guaranteed.** The strong performance of leveraged ETFs like TQQQ and SPXL over the past decade reflects an exceptionally favorable environment:
+
+- **Historically low interest rates** - Near-zero rates reduced borrowing costs embedded in leverage
+- **Tech monopoly dominance** - FAANG/mega-cap tech drove sustained Nasdaq growth
+- **Low volatility regimes** - Extended bull markets with shallow, brief corrections
+- **Quantitative easing** - Central bank support provided a consistent tailwind
+
+**Regime change risks are real.** Future conditions may differ significantly:
+
+| Condition | Past Decade | Potential Future |
+|-----------|-------------|------------------|
+| Interest rates | Near-zero to low | Higher for longer |
+| Market regime | Bull with brief corrections | Stagflation, sideways chop |
+| Volatility | Low VIX, quick recoveries | Elevated, prolonged drawdowns |
+| Tech growth | Explosive, monopolistic | Regulatory pressure, competition |
+
+**Why this matters for leveraged ETFs:**
+
+- **Volatility decay** - Sideways choppy markets erode leveraged ETF value even if the underlying index is flat
+- **Higher borrowing costs** - Leveraged ETFs borrow to achieve 3x exposure; higher rates increase this drag
+- **Deeper drawdowns** - A 33% index drop means ~99% leveraged ETF loss; recovery requires 100x gain
+- **Time decay** - Daily rebalancing means long-term returns can diverge significantly from 3x index returns
+
+**Bottom line:** The past decade was an almost ideal environment for leveraged long strategies. If we enter a period of elevated interest rates, sustained volatility, or economic stagnation, these products may significantly underperform—or even suffer permanent capital impairment. Size positions accordingly and understand these are high-risk instruments regardless of historical performance.
+
 ## The M1 Finance Strategy: Borrow to Retire
 
 An advanced strategy using M1 Finance's margin feature:
