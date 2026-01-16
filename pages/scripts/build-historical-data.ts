@@ -121,6 +121,28 @@ async function buildHistoricalData() {
   )
   console.log(`✓ TQQQ: ${tqqqData.dataPoints} points (${tqqqData.startDate} to ${tqqqData.endDate})`)
 
+  // Process BRGNX (Russell 1000 - SPXL comparison baseline)
+  console.log('Processing BRGNX data from server weekly data...')
+  const brgnxPrices = await loadOHLCVData(resolve(serverDataDir, 'brgnx-weekly.json'))
+  if (brgnxPrices.length === 0) {
+    throw new Error('No valid BRGNX data found')
+  }
+
+  const brgnxData: HistoricalData = {
+    ticker: 'BRGNX',
+    name: 'BlackRock Russell 1000 Index Fund',
+    type: 'stock',
+    startDate: brgnxPrices[0].date,
+    endDate: brgnxPrices[brgnxPrices.length - 1].date,
+    dataPoints: brgnxPrices.length,
+    prices: brgnxPrices
+  }
+  await writeFile(
+    resolve(outputDir, 'brgnx-weekly.json'),
+    JSON.stringify(brgnxData, null, 2)
+  )
+  console.log(`✓ BRGNX: ${brgnxData.dataPoints} points (${brgnxData.startDate} to ${brgnxData.endDate})`)
+
   // Process BTC
   console.log('Processing BTC data from server weekly data...')
   const btcPrices = await loadOHLCVData(resolve(serverDataDir, 'btcusd-weekly.json'))

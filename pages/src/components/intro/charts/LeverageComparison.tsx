@@ -5,7 +5,7 @@ import type { HistoricalData } from '../../../data/types'
 
 interface ChartPoint {
   date: Date
-  spy: number
+  brgnx: number
   spxl: number
 }
 
@@ -28,25 +28,25 @@ export function LeverageComparison() {
 
   // Transform data for chart - normalize both to start at 100
   const chartData = useMemo(() => {
-    if (!historicalData?.SPY || !historicalData?.SPXL) return []
+    if (!historicalData?.BRGNX || !historicalData?.SPXL) return []
 
-    const spyPrices = historicalData.SPY.prices
+    const brgnxPrices = historicalData.BRGNX.prices
     const spxlPrices = historicalData.SPXL.prices
 
     // Find starting values for normalization
-    const spyStart = spyPrices[0]?.value || 1
+    const brgnxStart = brgnxPrices[0]?.value || 1
     const spxlStart = spxlPrices[0]?.value || 1
 
     // Build aligned data points
     const data: ChartPoint[] = []
     const spxlByDate = new Map(spxlPrices.map(p => [p.date, p.value]))
 
-    for (const spyPoint of spyPrices) {
-      const spxlValue = spxlByDate.get(spyPoint.date)
+    for (const brgnxPoint of brgnxPrices) {
+      const spxlValue = spxlByDate.get(brgnxPoint.date)
       if (spxlValue !== undefined) {
         data.push({
-          date: new Date(spyPoint.date),
-          spy: (spyPoint.value / spyStart) * 100,
+          date: new Date(brgnxPoint.date),
+          brgnx: (brgnxPoint.value / brgnxStart) * 100,
           spxl: (spxlValue / spxlStart) * 100
         })
       }
@@ -77,7 +77,7 @@ export function LeverageComparison() {
       .domain(d3.extent(chartData, d => d.date) as [Date, Date])
       .range([0, innerWidth])
 
-    const allValues = [...chartData.map(d => d.spy), ...chartData.map(d => d.spxl)]
+    const allValues = [...chartData.map(d => d.brgnx), ...chartData.map(d => d.spxl)]
     const y = d3.scaleLinear()
       .domain([0, d3.max(allValues)! * 1.1])
       .nice()
@@ -113,9 +113,9 @@ export function LeverageComparison() {
       .attr('opacity', 0.5)
 
     // Line generator
-    const spyLine = d3.line<ChartPoint>()
+    const brgnxLine = d3.line<ChartPoint>()
       .x(d => x(d.date))
-      .y(d => y(d.spy))
+      .y(d => y(d.brgnx))
       .curve(d3.curveMonotoneX)
 
     const spxlLine = d3.line<ChartPoint>()
@@ -123,19 +123,19 @@ export function LeverageComparison() {
       .y(d => y(d.spxl))
       .curve(d3.curveMonotoneX)
 
-    // Draw SPY line - blue
-    const spyPath = g.append('path')
+    // Draw BRGNX line - blue (Russell 1000 baseline)
+    const brgnxPath = g.append('path')
       .datum(chartData)
       .attr('fill', 'none')
       .attr('stroke', '#3b82f6')
       .attr('stroke-width', 2)
-      .attr('d', spyLine)
+      .attr('d', brgnxLine)
 
-    // Animate SPY line
-    const spyLength = spyPath.node()?.getTotalLength() || 0
-    spyPath
-      .attr('stroke-dasharray', `${spyLength} ${spyLength}`)
-      .attr('stroke-dashoffset', spyLength)
+    // Animate BRGNX line
+    const brgnxLength = brgnxPath.node()?.getTotalLength() || 0
+    brgnxPath
+      .attr('stroke-dasharray', `${brgnxLength} ${brgnxLength}`)
+      .attr('stroke-dashoffset', brgnxLength)
       .transition()
       .duration(2000)
       .ease(d3.easeLinear)
@@ -162,14 +162,14 @@ export function LeverageComparison() {
     // End values
     const lastPoint = chartData[chartData.length - 1]
 
-    // SPY end label
+    // BRGNX end label
     g.append('text')
       .attr('x', innerWidth + 5)
-      .attr('y', y(lastPoint.spy))
+      .attr('y', y(lastPoint.brgnx))
       .attr('fill', '#3b82f6')
       .attr('font-size', '11px')
       .attr('dominant-baseline', 'middle')
-      .text(`${lastPoint.spy.toFixed(0)}`)
+      .text(`${lastPoint.brgnx.toFixed(0)}`)
       .attr('opacity', 0)
       .transition()
       .delay(2000)
@@ -204,7 +204,7 @@ export function LeverageComparison() {
       .attr('x', 30).attr('y', 4)
       .attr('fill', '#94a3b8')
       .attr('font-size', '11px')
-      .text('SPY (S&P 500)')
+      .text('BRGNX (Russell 1000)')
 
     legend.append('line')
       .attr('x1', 0).attr('x2', 25)
@@ -225,7 +225,7 @@ export function LeverageComparison() {
       .attr('text-anchor', 'middle')
       .attr('fill', '#94a3b8')
       .attr('font-size', '14px')
-      .text('SPY vs SPXL: Normalized to 100 at start')
+      .text('BRGNX vs SPXL: Normalized to 100 at start')
 
   }, [chartData])
 
