@@ -583,8 +583,8 @@ describe('computeRealizedGains', () => {
 })
 
 describe('computeFundState', () => {
-  it('returns zeroed state for closed fund (fund_size=0)', () => {
-    const closedConfig = { ...baseConfig, fund_size_usd: 0 }
+  it('returns zeroed state for closed fund (status: closed)', () => {
+    const closedConfig = { ...baseConfig, status: 'closed' as const }
     const result = computeFundState(closedConfig, [], [], [], [], 100, '2024-06-01')
     expect(result.cash_available_usd).toBe(0)
     expect(result.expected_target_usd).toBe(0)

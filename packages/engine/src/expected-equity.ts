@@ -398,9 +398,8 @@ export function computeFundState(
     }
   }
 
-  // Closed fund - return zeroed state (only if explicitly closed or legacy undefined status with zero fund size)
-  const isClosed = config.status === 'closed' || (config.status === undefined && config.fund_size_usd === 0)
-  if (isClosed) {
+  // Closed fund - return zeroed state
+  if (config.status === 'closed') {
     return {
       cash_available_usd: 0,
       expected_target_usd: 0,

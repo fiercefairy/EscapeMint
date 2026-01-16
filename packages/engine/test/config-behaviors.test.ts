@@ -331,16 +331,16 @@ describe('cash constraints', () => {
   })
 })
 
-describe('closed fund behavior (fund_size_usd = 0)', () => {
+describe('closed fund behavior (status: closed)', () => {
   it('returns null recommendation for closed fund', () => {
-    const closedConfig = { ...baseConfig, fund_size_usd: 0 }
+    const closedConfig = { ...baseConfig, status: 'closed' as const }
     const state = makeState()
     const result = computeRecommendation(closedConfig, state)
     expect(result).toBeNull()
   })
 
   it('works with any state values for closed fund', () => {
-    const closedConfig = { ...baseConfig, fund_size_usd: 0 }
+    const closedConfig = { ...baseConfig, status: 'closed' as const }
     const state = makeState({
       actual_value_usd: 50000,
       target_diff_usd: 40000

@@ -1,6 +1,6 @@
 import { readFile, writeFile, rename, mkdir, readdir, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { dirname, join, basename } from 'node:path'
+import { dirname, join } from 'node:path'
 import { v4 as uuidv4 } from 'uuid'
 import type { SubFundConfig, Trade, CashFlow, Dividend, Expense } from '@escapemint/engine'
 
@@ -38,8 +38,6 @@ export interface FundEntry {
   entry_price?: number         // Average entry price at snapshot
   liquidation_price?: number   // Calculated liquidation price
   unrealized_pnl?: number      // Unrealized P&L at snapshot
-  funding_profit?: number      // Funding rate profit (positive) - DEPRECATED, use FUNDING action
-  funding_loss?: number        // Funding loss + fees (negative) - DEPRECATED, use FUNDING action
   margin_locked?: number       // Total margin locked in positions
   fee?: number                 // Trading fee associated with BUY/SELL action
   margin?: number              // Actual margin locked for BUY/SELL trades
@@ -57,7 +55,7 @@ export interface FundData {
   entries: FundEntry[]
 }
 
-const ENTRY_HEADERS = ['date', 'value', 'cash', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'margin_expense', 'notes', 'contracts', 'entry_price', 'liquidation_price', 'unrealized_pnl', 'funding_profit', 'funding_loss', 'margin_locked', 'fee', 'margin']
+const ENTRY_HEADERS = ['date', 'value', 'cash', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'margin_expense', 'notes', 'contracts', 'entry_price', 'liquidation_price', 'unrealized_pnl', 'margin_locked', 'fee', 'margin']
 
 /**
  * Get the JSON config file path for a TSV file.
@@ -168,12 +166,6 @@ function parseEntry(line: string, headers: string[]): FundEntry {
       case 'unrealized_pnl':
         if (val) entry.unrealized_pnl = parseFloat(val)
         break
-      case 'funding_profit':
-        if (val) entry.funding_profit = parseFloat(val)
-        break
-      case 'funding_loss':
-        if (val) entry.funding_loss = parseFloat(val)
-        break
       case 'margin_locked':
         if (val) entry.margin_locked = parseFloat(val)
         break
@@ -214,29 +206,11 @@ function serializeEntry(entry: FundEntry): string {
     entry.entry_price?.toString() ?? '',
     entry.liquidation_price?.toString() ?? '',
     entry.unrealized_pnl?.toString() ?? '',
-    entry.funding_profit?.toString() ?? '',
-    entry.funding_loss?.toString() ?? '',
     entry.margin_locked?.toString() ?? '',
     entry.fee?.toString() ?? '',
     entry.margin?.toString() ?? ''
   ]
   return values.join('\t')
-}
-
-/**
- * Extract platform and ticker from filename.
- * Format: platform-ticker.tsv -> { platform: 'platform', ticker: 'ticker' }
- */
-function parseFilename(filename: string): { platform: string; ticker: string } {
-  const name = basename(filename, '.tsv')
-  const dashIndex = name.indexOf('-')
-  if (dashIndex === -1) {
-    return { platform: name, ticker: '' }
-  }
-  return {
-    platform: name.slice(0, dashIndex),
-    ticker: name.slice(dashIndex + 1)
-  }
 }
 
 /**
@@ -256,29 +230,21 @@ export async function readFund(filePath: string): Promise<FundData | null> {
     return null
   }
 
-  // Extract platform/ticker from config, fallback to filename parsing for legacy files
-  let platform: string
-  let ticker: string
-  let cleanConfig: SubFundConfig
-
+  // Extract platform/ticker from config metadata
   type ConfigWithMetadata = SubFundConfig & { __platform?: string; __ticker?: string }
   const configWithMeta = configData as ConfigWithMetadata
 
-  if ('__platform' in configData && '__ticker' in configData && configWithMeta.__platform && configWithMeta.__ticker) {
-    platform = configWithMeta.__platform
-    ticker = configWithMeta.__ticker
-    // Remove metadata from config by filtering out all keys starting with "__"
-    const cleanConfigEntries = Object.entries(configWithMeta).filter(
-      ([key]) => !key.startsWith('__')
-    )
-    cleanConfig = Object.fromEntries(cleanConfigEntries) as SubFundConfig
-  } else {
-    // Legacy: parse from filename (this has issues with multi-hyphen names)
-    const parsed = parseFilename(filePath)
-    platform = parsed.platform
-    ticker = parsed.ticker
-    cleanConfig = configData
+  if (!configWithMeta.__platform || !configWithMeta.__ticker) {
+    throw new Error(`Config file missing __platform or __ticker metadata: ${configPath}`)
   }
+
+  const platform = configWithMeta.__platform
+  const ticker = configWithMeta.__ticker
+  // Remove metadata from config by filtering out all keys starting with "__"
+  const cleanConfigEntries = Object.entries(configWithMeta).filter(
+    ([key]) => !key.startsWith('__')
+  )
+  const cleanConfig = Object.fromEntries(cleanConfigEntries) as SubFundConfig
 
   // Read entries from TSV file
   const content = await readFile(filePath, 'utf-8')

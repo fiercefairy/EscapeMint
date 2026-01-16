@@ -565,15 +565,6 @@ export interface DerivativesEntryState {
   equity: number             // Position value at entry price (cost basis)
   // Margin tracking
   notionalValue: number      // Position value at avgEntry price
-  /**
-   * @deprecated since 0.6.0. Use marginLocked instead.
-   *
-   * This field is still computed and populated for backward compatibility with
-   * existing downstream consumers that rely on it. New code should depend on
-   * marginLocked and treat initialMargin as legacy-only. Removal is planned
-   * for v1.0, at which point this field and its calculation will be removed.
-   */
-  initialMargin: number
   marginLocked: number       // Sum of actual margin in open positions (from FIFO queue)
   maintenanceMargin: number  // Minimum margin required (typically 5% of notional)
   availableFunds: number     // marginBalance - marginLocked
@@ -814,10 +805,8 @@ export const computeDerivativesEntriesState = (
     const marginLocked = costBasisQueue.reduce((sum, lot) => sum + lot.margin, 0)
 
     // Margin calculations (futures don't spend cash, they lock margin)
-    // initialMargin: DEPRECATED - kept for backward compatibility, use marginLocked instead
     // marginLocked: Sum of actual margin from cost basis queue
     // Maintenance margin: typically 5% of notional value (exchange enforced)
-    const initialMargin = notionalValue * DEFAULT_INITIAL_MARGIN_RATE  // Deprecated
     const maintenanceMargin = notionalValue * DEFAULT_MAINTENANCE_MARGIN_RATE
     const availableFunds = marginBalance - marginLocked  // Use actual margin locked
 
@@ -894,7 +883,6 @@ export const computeDerivativesEntriesState = (
       cumFees,
       equity,
       notionalValue,
-      initialMargin,
       marginLocked,
       maintenanceMargin,
       availableFunds,

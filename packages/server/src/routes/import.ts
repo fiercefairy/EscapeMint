@@ -7,6 +7,9 @@ import { chromium, type Browser, type Page, type ElementHandle } from 'playwrigh
 import { readAllFunds, appendEntry, readFund, writeFund, type FundEntry, type FundData } from '@escapemint/storage'
 import { badRequest, validationError } from '../middleware/error-handler.js'
 import { PDFParse } from 'pdf-parse'
+import { createLogger } from '../utils/logger.js'
+
+const log = createLogger('import')
 
 export const importRouter: ReturnType<typeof Router> = Router()
 
@@ -1109,12 +1112,12 @@ const connectToBrowser = async (cdpUrl: string = DEFAULT_CDP_URL): Promise<Brows
  */
 const findRobinhoodPage = async (browser: Browser): Promise<Page | null> => {
   const contexts = browser.contexts()
-  console.log(`[Import] Found ${contexts.length} browser contexts`)
+  log.debug(`[Import] Found ${contexts.length} browser contexts`)
 
   for (let i = 0; i < contexts.length; i++) {
     const context = contexts[i]!
     const pages = context.pages()
-    console.log(`[Import] Context ${i}: ${pages.length} pages`)
+    log.debug(`[Import] Context ${i}: ${pages.length} pages`)
     for (const page of pages) {
       const pageUrl = page.url()
       // Must start with robinhood.com domain (not just contain it in a fragment/param)
@@ -1125,7 +1128,7 @@ const findRobinhoodPage = async (browser: Browser): Promise<Page | null> => {
       ) && !pageUrl.includes('/login')
 
       if (isRobinhoodPage) {
-        console.log(`[Import] Found existing Robinhood page: ${pageUrl}`)
+        log.debug(`[Import] Found existing Robinhood page: ${pageUrl}`)
         return page
       }
     }
@@ -1139,7 +1142,7 @@ const findRobinhoodPage = async (browser: Browser): Promise<Page | null> => {
  * This is a fallback when direct URL navigation doesn't work.
  */
 const navigateRobinhoodViaUI = async (page: Page): Promise<boolean> => {
-  console.log('[Robinhood] Attempting UI navigation to history page')
+  log.debug('[Robinhood] Attempting UI navigation to history page')
 
   // Try multiple strategies to find and click the Account link
   const accountSelectors = [
@@ -1156,7 +1159,7 @@ const navigateRobinhoodViaUI = async (page: Page): Promise<boolean> => {
   for (const selector of accountSelectors) {
     const accountLink = await page.$(selector).catch(() => null)
     if (accountLink) {
-      console.log(`[Robinhood] Found account link with selector: ${selector}`)
+      log.debug(`[Robinhood] Found account link with selector: ${selector}`)
       await accountLink.click().catch(() => null)
       accountClicked = true
       await page.waitForTimeout(2000)
@@ -1165,7 +1168,7 @@ const navigateRobinhoodViaUI = async (page: Page): Promise<boolean> => {
   }
 
   if (!accountClicked) {
-    console.log('[Robinhood] Could not find Account link, trying direct profile icon click')
+    log.debug('[Robinhood] Could not find Account link, trying direct profile icon click')
     // Try clicking on profile/account icon (usually in top right)
     const profileIcon = await page.$('[data-testid="ProfileIcon"], [aria-label="Profile"], svg[class*="profile"], .account-icon').catch(() => null)
     if (profileIcon) {
@@ -1176,7 +1179,7 @@ const navigateRobinhoodViaUI = async (page: Page): Promise<boolean> => {
 
   // Check if we're on an account page now
   let currentUrl = page.url()
-  console.log(`[Robinhood] After account click, URL is: ${currentUrl}`)
+  log.debug(`[Robinhood] After account click, URL is: ${currentUrl}`)
 
   // If we're on an account page but not history, click History
   if (currentUrl.includes('/account') && !currentUrl.includes('history')) {
@@ -1191,7 +1194,7 @@ const navigateRobinhoodViaUI = async (page: Page): Promise<boolean> => {
     for (const selector of historySelectors) {
       const historyLink = await page.$(selector).catch(() => null)
       if (historyLink) {
-        console.log(`[Robinhood] Found history link with selector: ${selector}`)
+        log.debug(`[Robinhood] Found history link with selector: ${selector}`)
         await historyLink.click().catch(() => null)
         await page.waitForTimeout(2000)
         break
@@ -1201,17 +1204,17 @@ const navigateRobinhoodViaUI = async (page: Page): Promise<boolean> => {
 
   // Final check
   currentUrl = page.url()
-  console.log(`[Robinhood] Final URL after UI navigation: ${currentUrl}`)
+  log.debug(`[Robinhood] Final URL after UI navigation: ${currentUrl}`)
 
   if (currentUrl.includes('history') || currentUrl.includes('/account/')) {
-    console.log('[Robinhood] UI navigation successful')
+    log.debug('[Robinhood] UI navigation successful')
     return true
   }
 
   // Last resort: try clicking any visible "History" text on the page
   const historyText = await page.$('text=History').catch(() => null)
   if (historyText) {
-    console.log('[Robinhood] Clicking History text as last resort')
+    log.debug('[Robinhood] Clicking History text as last resort')
     await historyText.click().catch(() => null)
     await page.waitForTimeout(2000)
 
@@ -1221,7 +1224,7 @@ const navigateRobinhoodViaUI = async (page: Page): Promise<boolean> => {
     }
   }
 
-  console.log('[Robinhood] UI navigation failed')
+  log.debug('[Robinhood] UI navigation failed')
   return false
 }
 
@@ -1238,21 +1241,21 @@ const createNewPage = async (browser: Browser): Promise<Page> => {
     for (const existingPage of pages) {
       const pageUrl = existingPage.url()
       if (!pageUrl.startsWith('chrome-extension://') && !pageUrl.startsWith('blob:') && pageUrl !== 'about:blank') {
-        console.log(`[Import] Creating new page in context ${i}`)
+        log.debug(`[Import] Creating new page in context ${i}`)
         // Add timeout to prevent hanging
         const newPagePromise = context.newPage()
         const timeoutPromise = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Timeout creating new page')), 10000)
         )
         const newPage = await Promise.race([newPagePromise, timeoutPromise])
-        console.log(`[Import] New page created successfully, URL: ${newPage.url()}`)
+        log.debug(`[Import] New page created successfully, URL: ${newPage.url()}`)
         return newPage
       }
     }
   }
 
   // Fallback to first context
-  console.log('[Import] Using fallback context')
+  log.debug('[Import] Using fallback context')
   const context = contexts[0]
   if (!context) {
     throw new Error('No browser context found')
@@ -1262,7 +1265,7 @@ const createNewPage = async (browser: Browser): Promise<Page> => {
     setTimeout(() => reject(new Error('Timeout creating new page in fallback context')), 10000)
   )
   const newPage = await Promise.race([newPagePromise, timeoutPromise])
-  console.log('[Import] New page created in fallback context')
+  log.debug('[Import] New page created in fallback context')
   return newPage
 }
 
@@ -1392,7 +1395,7 @@ const scrapeActivityItem = async (
   if (shouldLog && Object.keys(timings).length > 0) {
     const total = Object.values(timings).reduce((a, b) => a + b, 0)
     const breakdown = Object.entries(timings).map(([k, v]) => `${k}=${v}ms`).join(', ')
-    console.log(`[Robinhood] Item #${index + 1} timing (total=${total}ms): ${breakdown}`)
+    log.debug(`[Robinhood] Item #${index + 1} timing (total=${total}ms): ${breakdown}`)
   }
 
   return result
@@ -1472,7 +1475,7 @@ const scrapeRobinhoodHistoryWithProgress = async (
         } else {
           consecutiveExisting++
           if (!fullSync && consecutiveExisting >= MAX_CONSECUTIVE_EXISTING) {
-            console.log(`[Robinhood] Early exit: ${consecutiveExisting} consecutive existing transactions, stopping scrape`)
+            log.debug(`[Robinhood] Early exit: ${consecutiveExisting} consecutive existing transactions, stopping scrape`)
             shouldBreak = true
             break
           }
@@ -1488,7 +1491,7 @@ const scrapeRobinhoodHistoryWithProgress = async (
           const avg = itemTimes.reduce((a, b) => a + b, 0) / itemTimes.length
           const max = Math.max(...itemTimes)
           const elapsed = Date.now() - lastLogTime
-          console.log(`[Robinhood] Items ${totalScraped - 99}-${totalScraped}: avg=${avg.toFixed(0)}ms, max=${max}ms, total=${elapsed}ms, new=${newCount}`)
+          log.debug(`[Robinhood] Items ${totalScraped - 99}-${totalScraped}: avg=${avg.toFixed(0)}ms, max=${max}ms, total=${elapsed}ms, new=${newCount}`)
           itemTimes = []
           lastLogTime = Date.now()
         }
@@ -1506,7 +1509,7 @@ const scrapeRobinhoodHistoryWithProgress = async (
     // Remove processed items from DOM in bulk to reset browser state
     // This is faster than page refresh and doesn't require scrolling to reload
     if (needsRefresh) {
-      console.log(`[Robinhood] Removing ${previousItemCount} processed items from DOM to reset browser state...`)
+      log.debug(`[Robinhood] Removing ${previousItemCount} processed items from DOM to reset browser state...`)
       await saveArchive(archive)
 
       // Remove first N items (the ones we just processed) in a single bulk operation
@@ -1527,7 +1530,7 @@ const scrapeRobinhoodHistoryWithProgress = async (
         [previousItemCount, itemSelector] as [number, string]
       )
 
-      console.log(`[Robinhood] Removed ${removed} items, DOM now has ${await page.evaluate((sel) => document.querySelectorAll(sel).length, itemSelector)} items`)
+      log.debug(`[Robinhood] Removed ${removed} items, DOM now has ${await page.evaluate((sel) => document.querySelectorAll(sel).length, itemSelector)} items`)
 
       // Wait a moment for React to stabilize after bulk removal
       await page.waitForTimeout(500)
@@ -1556,7 +1559,7 @@ const scrapeRobinhoodHistoryWithProgress = async (
     if (!gotNewItems) {
       noNewItemsCount++
       if (noNewItemsCount >= 2) {
-        console.log(`[Robinhood] No more items after ${noNewItemsCount} scroll attempts`)
+        log.debug(`[Robinhood] No more items after ${noNewItemsCount} scroll attempts`)
         break
       }
     } else {
@@ -2039,11 +2042,11 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
   let pageCreated = false
 
   if (page) {
-    console.log(`[Import] Using existing Robinhood page: ${page.url()}`)
+    log.debug(`[Import] Using existing Robinhood page: ${page.url()}`)
     sendEvent('status', { message: 'Found logged-in Robinhood page', phase: 'navigating' })
   } else {
     // No Robinhood page found - try to find ANY page we can use
-    console.log('[Import] No Robinhood page found, looking for any usable page...')
+    log.debug('[Import] No Robinhood page found, looking for any usable page...')
     sendEvent('status', { message: 'Looking for browser page...', phase: 'navigating' })
 
     // Find any existing page to reuse (avoid creating new pages which can hang)
@@ -2054,7 +2057,7 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
         const pageUrl = existingPage.url()
         // Use any non-extension page
         if (!pageUrl.startsWith('chrome-extension://') && !pageUrl.startsWith('blob:')) {
-          console.log(`[Import] Found usable page: ${pageUrl}`)
+          log.debug(`[Import] Found usable page: ${pageUrl}`)
           page = existingPage
           break
         }
@@ -2064,11 +2067,11 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
 
     if (!page) {
       // Last resort: try to create a new page
-      console.log('[Import] No usable page found, attempting to create new one...')
+      log.debug('[Import] No usable page found, attempting to create new one...')
       sendEvent('status', { message: 'Creating new browser tab...', phase: 'navigating' })
 
       page = await createNewPage(browser).catch((err: Error) => {
-        console.log(`[Import] Failed to create new page: ${err.message}`)
+        log.debug(`[Import] Failed to create new page: ${err.message}`)
         sendEvent('error', { message: `Failed to create browser tab: ${err.message}. Please open a tab manually and try again.` })
         return null
       }) as Page | null
@@ -2080,24 +2083,24 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
       pageCreated = true
     }
 
-    console.log(`[Robinhood] Using page: ${page.url()}`)
+    log.debug(`[Robinhood] Using page: ${page.url()}`)
   }
 
   // Bring page to front
-  console.log('[Robinhood] Bringing page to front...')
+  log.debug('[Robinhood] Bringing page to front...')
   await page.bringToFront()
-  console.log('[Robinhood] Page brought to front')
+  log.debug('[Robinhood] Page brought to front')
 
   // Navigate to history page
   const currentUrl = page.url()
-  console.log(`[Robinhood] Current page URL: ${currentUrl}`)
-  console.log(`[Robinhood] Target URL: ${url}`)
+  log.debug(`[Robinhood] Current page URL: ${currentUrl}`)
+  log.debug(`[Robinhood] Target URL: ${url}`)
 
   // Always navigate to the target URL if not already there
   if (!currentUrl.includes('history')) {
     sendEvent('status', { message: `Navigating to history page...`, phase: 'navigating' })
 
-    console.log(`[Robinhood] Navigating to: ${url}`)
+    log.debug(`[Robinhood] Navigating to: ${url}`)
 
     // Navigate directly to history URL - use domcontentloaded for speed
     const navResult = await page.goto(url, {
@@ -2106,7 +2109,7 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
     }).catch((err: Error) => err)
 
     if (navResult instanceof Error) {
-      console.log(`[Robinhood] Navigation error: ${navResult.message}`)
+      log.debug(`[Robinhood] Navigation error: ${navResult.message}`)
       sendEvent('error', { message: `Navigation failed: ${navResult.message}` })
       if (pageCreated) await page.close().catch(() => {})
       res.end()
@@ -2118,11 +2121,11 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
 
     // Check URL immediately
     let newUrl = page.url()
-    console.log(`[Robinhood] After navigation, URL is: ${newUrl}`)
+    log.debug(`[Robinhood] After navigation, URL is: ${newUrl}`)
 
     // Check if redirected to login
     if (newUrl.includes('/login')) {
-      console.log('[Robinhood] Redirected to login - user needs to log in manually')
+      log.debug('[Robinhood] Redirected to login - user needs to log in manually')
       sendEvent('error', {
         message: 'Please log in to Robinhood in your browser first, then navigate to the history page and try again.'
       })
@@ -2132,7 +2135,7 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
 
     // If we got redirected away from history, try UI navigation
     if (!newUrl.includes('history') && !newUrl.includes('/account/')) {
-      console.log(`[Robinhood] Redirected to: ${newUrl}, trying UI navigation`)
+      log.debug(`[Robinhood] Redirected to: ${newUrl}, trying UI navigation`)
       sendEvent('status', { message: `Navigating via UI...`, phase: 'navigating' })
 
       // Try clicking through the UI instead
@@ -2146,11 +2149,11 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
         return
       }
       newUrl = page.url()
-      console.log(`[Robinhood] After UI navigation, URL is: ${newUrl}`)
+      log.debug(`[Robinhood] After UI navigation, URL is: ${newUrl}`)
     }
 
     // Now wait for history items to load
-    console.log('[Robinhood] Waiting for history items to load...')
+    log.debug('[Robinhood] Waiting for history items to load...')
     sendEvent('status', { message: `Loading history...`, phase: 'loading' })
     await page.waitForSelector('[data-testid="activity-item"], [data-testid="UnifiedTransferActivityItem"]', {
       timeout: 15000
@@ -2160,7 +2163,7 @@ importRouter.get('/robinhood/scrape-stream', async (req, res) => {
   // Verify we're on the history page and logged in
   const loginForm = await page.$('input[name="username"], input[type="email"], [data-testid="login"]')
   if (loginForm || page.url().includes('/login')) {
-    console.log(`[Import] Login form detected. Current URL: ${page.url()}`)
+    log.debug(`[Import] Login form detected. Current URL: ${page.url()}`)
     sendEvent('error', {
       message: 'Please log in to Robinhood in the browser tab that just opened, then try again.'
     })
@@ -3239,16 +3242,16 @@ const parseM1Amount = (amountText: string): number => {
  */
 const findM1SavingsPage = async (browser: Browser): Promise<Page | null> => {
   const contexts = browser.contexts()
-  console.log(`[M1 Import] Found ${contexts.length} browser contexts`)
+  log.debug(`[M1 Import] Found ${contexts.length} browser contexts`)
 
   for (let i = 0; i < contexts.length; i++) {
     const context = contexts[i]!
     const pages = context.pages()
-    console.log(`[M1 Import] Context ${i}: ${pages.length} pages`)
+    log.debug(`[M1 Import] Context ${i}: ${pages.length} pages`)
     for (const page of pages) {
       const pageUrl = page.url()
       if (pageUrl.includes('m1.com') && !pageUrl.includes('/login')) {
-        console.log(`[M1 Import] Found existing M1 page: ${pageUrl}`)
+        log.debug(`[M1 Import] Found existing M1 page: ${pageUrl}`)
         return page
       }
     }
@@ -3368,7 +3371,7 @@ const scrapeM1CashHistoryWithProgress = async (
         consecutiveExisting++
         // Early exit: if we've seen many consecutive existing transactions, we're caught up
         if (consecutiveExisting >= MAX_CONSECUTIVE_EXISTING) {
-          console.log(`[M1 Import] Early exit: ${consecutiveExisting} consecutive existing transactions, stopping scrape`)
+          log.debug(`[M1 Import] Early exit: ${consecutiveExisting} consecutive existing transactions, stopping scrape`)
           shouldBreak = true
           break
         }
@@ -3383,7 +3386,7 @@ const scrapeM1CashHistoryWithProgress = async (
     // Check for Next button and click it
     const nextButton = await page.$('button:has-text("Next"):not([disabled])')
     if (!nextButton) {
-      console.log('[M1 Import] No more pages (Next button disabled or not found)')
+      log.debug('[M1 Import] No more pages (Next button disabled or not found)')
       break
     }
 
@@ -3443,11 +3446,11 @@ importRouter.get('/m1-cash/scrape-stream', async (req, res) => {
   let pageCreated = false
 
   if (page) {
-    console.log(`[M1 Import] Using existing M1 page: ${page.url()}`)
+    log.debug(`[M1 Import] Using existing M1 page: ${page.url()}`)
     sendEvent('status', { message: 'Found logged-in M1 page', phase: 'navigating' })
   } else {
     // No existing page - create new one
-    console.log('[M1 Import] No M1 page found, creating new one')
+    log.debug('[M1 Import] No M1 page found, creating new one')
     sendEvent('status', { message: 'Opening M1 Finance...', phase: 'navigating' })
 
     page = await createNewPage(browser).catch((err: Error) => {
@@ -3475,7 +3478,7 @@ importRouter.get('/m1-cash/scrape-stream', async (req, res) => {
 
     // Check if redirected to login
     if (page.url().includes('/login') || page.url().includes('/signin')) {
-      console.log('[M1 Import] Redirected to login - user needs to log in manually')
+      log.debug('[M1 Import] Redirected to login - user needs to log in manually')
       sendEvent('error', {
         message: 'Please log in to M1 Finance in your browser first, then navigate to the savings transactions page and try again.'
       })
@@ -3500,7 +3503,7 @@ importRouter.get('/m1-cash/scrape-stream', async (req, res) => {
   // Check for login
   const loginForm = await page.$('input[type="email"], input[type="password"], [data-testid="login"]')
   if (loginForm || page.url().includes('/login') || page.url().includes('/signin')) {
-    console.log(`[M1 Import] Login form detected. Current URL: ${page.url()}`)
+    log.debug(`[M1 Import] Login form detected. Current URL: ${page.url()}`)
     sendEvent('error', {
       message: 'Please log in to M1 Finance in the browser tab that just opened, then try again.'
     })
@@ -3896,9 +3899,9 @@ importRouter.get('/m1-statements/list', async (_req, res, next) => {
  * Download M1 statement PDFs with SSE progress.
  */
 importRouter.get('/m1-statements/download-stream', async (req, res) => {
-  console.log('[M1 Statements] Download stream started')
+  log.debug('[M1 Statements] Download stream started')
   const { all, year, accountType } = req.query as { all?: string; year?: string; accountType?: string }
-  console.log(`[M1 Statements] Params: all=${all}, year=${year}, accountType=${accountType}`)
+  log.debug(`[M1 Statements] Params: all=${all}, year=${year}, accountType=${accountType}`)
 
   // Set up SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
@@ -3907,54 +3910,54 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
   res.flushHeaders()
 
   const sendEvent = (event: string, data: unknown) => {
-    console.log(`[M1 Statements] Event: ${event}`, JSON.stringify(data))
+    log.debug(`[M1 Statements] Event: ${event}`, JSON.stringify(data))
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
   }
 
-  console.log('[M1 Statements] Connecting to browser...')
+  log.debug('[M1 Statements] Connecting to browser...')
   const browser = await connectToBrowser().catch((err: Error) => {
-    console.log(`[M1 Statements] Browser connection failed: ${err.message}`)
+    log.debug(`[M1 Statements] Browser connection failed: ${err.message}`)
     sendEvent('error', { message: `Failed to connect to browser: ${err.message}` })
     res.end()
     return null
   })
   if (!browser) return
-  console.log('[M1 Statements] Browser connected')
+  log.debug('[M1 Statements] Browser connected')
 
-  console.log('[M1 Statements] Finding M1 page...')
+  log.debug('[M1 Statements] Finding M1 page...')
   const page = await findM1StatementsPage(browser)
   if (!page) {
-    console.log('[M1 Statements] No M1 page found')
+    log.debug('[M1 Statements] No M1 page found')
     sendEvent('error', { message: 'No M1 Finance page found. Please log in first.' })
     res.end()
     return
   }
-  console.log(`[M1 Statements] Found M1 page: ${page.url()}`)
+  log.debug(`[M1 Statements] Found M1 page: ${page.url()}`)
 
   sendEvent('status', { message: 'Navigating to statements page...', phase: 'navigating' })
 
   // Navigate to statements page
   const statementsUrl = 'https://dashboard.m1.com/d/settings/documents/statements'
-  console.log(`[M1 Statements] Current URL: ${page.url()}`)
+  log.debug(`[M1 Statements] Current URL: ${page.url()}`)
 
   if (!page.url().includes('documents/statements')) {
-    console.log(`[M1 Statements] Navigating to ${statementsUrl}`)
+    log.debug(`[M1 Statements] Navigating to ${statementsUrl}`)
     // Use 'load' instead of 'networkidle' to avoid timeout issues
     const navResult = await page.goto(statementsUrl, { waitUntil: 'load', timeout: 30000 }).catch((err: Error) => err)
     if (navResult instanceof Error) {
-      console.log(`[M1 Statements] Navigation failed: ${navResult.message}`)
+      log.debug(`[M1 Statements] Navigation failed: ${navResult.message}`)
       sendEvent('error', { message: `Failed to navigate: ${navResult.message}` })
       res.end()
       return
     }
-    console.log(`[M1 Statements] Navigation successful`)
+    log.debug(`[M1 Statements] Navigation successful`)
   } else {
-    console.log(`[M1 Statements] Already on statements page`)
+    log.debug(`[M1 Statements] Already on statements page`)
   }
 
   // Wait for page content to load
   await page.waitForTimeout(3000)
-  console.log(`[M1 Statements] Page loaded, current URL: ${page.url()}`)
+  log.debug(`[M1 Statements] Page loaded, current URL: ${page.url()}`)
 
   // Get list of existing downloaded files
   await mkdir(M1_STATEMENTS_DIR, { recursive: true })
@@ -3966,7 +3969,7 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
 
   // Helper to select a year using React Select dropdown
   const selectYear = async (targetYear: string): Promise<boolean> => {
-    console.log(`[M1 Statements] Attempting to select year ${targetYear}`)
+    log.debug(`[M1 Statements] Attempting to select year ${targetYear}`)
 
     // React Select dropdown - click on the control area to open
     // The control div has classes like "css-*-control"
@@ -3984,7 +3987,7 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
         await element.click()
         await page.waitForTimeout(800)
         dropdownOpened = true
-        console.log(`[M1 Statements] Clicked dropdown using selector: ${selector}`)
+        log.debug(`[M1 Statements] Clicked dropdown using selector: ${selector}`)
         break
       }
     }
@@ -3996,7 +3999,7 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
         await currentYearSpan.click()
         await page.waitForTimeout(800)
         dropdownOpened = true
-        console.log(`[M1 Statements] Clicked year span`)
+        log.debug(`[M1 Statements] Clicked year span`)
       }
     }
 
@@ -4016,14 +4019,14 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
       if (option) {
         await option.click()
         await page.waitForTimeout(1500) // Wait for table to update
-        console.log(`[M1 Statements] Selected year ${targetYear} using selector: ${selector}`)
+        log.debug(`[M1 Statements] Selected year ${targetYear} using selector: ${selector}`)
         return true
       }
     }
 
     // Fallback: Use keyboard navigation
     // Clear any existing input first, then type the year to filter options
-    console.log(`[M1 Statements] Trying keyboard input for year ${targetYear}`)
+    log.debug(`[M1 Statements] Trying keyboard input for year ${targetYear}`)
     // Select all and clear any existing text (Meta for macOS, Control for others)
     await page.keyboard.press('Meta+a')
     await page.waitForTimeout(100)
@@ -4040,13 +4043,13 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
       return yearSpan?.textContent?.trim() ?? ''
     })
 
-    console.log(`[M1 Statements] Displayed year after selection: ${displayedYear}`)
+    log.debug(`[M1 Statements] Displayed year after selection: ${displayedYear}`)
     return displayedYear === targetYear
   }
 
   // Get available years from dropdown
   const getAvailableYears = async (): Promise<string[]> => {
-    console.log(`[M1 Statements] Getting available years from dropdown`)
+    log.debug(`[M1 Statements] Getting available years from dropdown`)
 
     // Click to open dropdown
     const dropdownSelectors = [
@@ -4060,7 +4063,7 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
       if (element) {
         await element.click()
         await page.waitForTimeout(800)
-        console.log(`[M1 Statements] Opened dropdown using: ${selector}`)
+        log.debug(`[M1 Statements] Opened dropdown using: ${selector}`)
         break
       }
     }
@@ -4082,7 +4085,7 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
       return yearList
     })
 
-    console.log(`[M1 Statements] Found years in dropdown: ${years.join(', ')}`)
+    log.debug(`[M1 Statements] Found years in dropdown: ${years.join(', ')}`)
 
     // Close dropdown by pressing Escape
     await page.keyboard.press('Escape')
@@ -4136,13 +4139,13 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
       if (!loadMoreBtn) {
         break
       }
-      console.log(`[M1 Statements] Clicking "Load more" button (click ${loadMoreClicks + 1})`)
+      log.debug(`[M1 Statements] Clicking "Load more" button (click ${loadMoreClicks + 1})`)
       await loadMoreBtn.click()
       await page.waitForTimeout(1500) // Wait for more statements to load
       loadMoreClicks++
     }
     if (loadMoreClicks > 0) {
-      console.log(`[M1 Statements] Clicked "Load more" ${loadMoreClicks} times for year ${currentYear}`)
+      log.debug(`[M1 Statements] Clicked "Load more" ${loadMoreClicks} times for year ${currentYear}`)
       sendEvent('status', { message: `Loaded all statements for ${currentYear} (${loadMoreClicks} pages)`, phase: 'downloading', year: currentYear })
     }
 
@@ -4155,7 +4158,7 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
 
     // Find all table rows with statements
     const tableRows = await page.$$('tbody tr').catch(() => [])
-    console.log(`[M1 Statements] Found ${tableRows.length} table rows for ${currentYear}`)
+    log.debug(`[M1 Statements] Found ${tableRows.length} table rows for ${currentYear}`)
 
     // Collect all PDF URLs first by intercepting requests
     const pdfUrls: Array<{ url: string; filename: string; rowText: string }> = []
@@ -4163,11 +4166,11 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
     for (let i = 0; i < tableRows.length; i++) {
       const row = tableRows[i]!
       const rowText = await row.textContent().catch(() => '') ?? ''
-      console.log(`[M1 Statements] Row ${i + 1} text: "${rowText.substring(0, 100)}"`)
+      log.debug(`[M1 Statements] Row ${i + 1} text: "${rowText.substring(0, 100)}"`)
 
       // Skip rows that say "No documents"
       if (rowText.includes('No documents')) {
-        console.log(`[M1 Statements] Skipping row ${i + 1} - No documents`)
+        log.debug(`[M1 Statements] Skipping row ${i + 1} - No documents`)
         continue
       }
 
@@ -4179,7 +4182,7 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
           (accountType === 'invest' && (rowLower.includes('invest') || rowLower.includes('individual') || rowLower.includes('brokerage'))) ||
           (accountType === 'crypto' && rowLower.includes('crypto'))
         if (!typeMatches) {
-          console.log(`[M1 Statements] Skipping row ${i + 1} - doesn't match accountType ${accountType}`)
+          log.debug(`[M1 Statements] Skipping row ${i + 1} - doesn't match accountType ${accountType}`)
           totalSkipped++
           continue
         }
@@ -4199,7 +4202,7 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
 
       // Check if already downloaded
       if (all !== 'true' && existingFiles.some(f => f.toLowerCase().includes(filename.toLowerCase().replace('.pdf', '')))) {
-        console.log(`[M1 Statements] Skipping row ${i + 1} - already downloaded: ${filename}`)
+        log.debug(`[M1 Statements] Skipping row ${i + 1} - already downloaded: ${filename}`)
         totalSkipped++
         totalProcessed++
         sendEvent('progress', {
@@ -4217,27 +4220,27 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
       // Try to find button or link in this row
       const clickable = await row.$('button, a').catch(() => null)
       if (!clickable) {
-        console.log(`[M1 Statements] No clickable element in row ${i + 1}`)
+        log.debug(`[M1 Statements] No clickable element in row ${i + 1}`)
         continue
       }
 
       // Get href if it's a link
       const href = await clickable.getAttribute('href').catch(() => null)
-      console.log(`[M1 Statements] Row ${i + 1} href: ${href}`)
+      log.debug(`[M1 Statements] Row ${i + 1} href: ${href}`)
 
       // Accept any valid URL - M1 uses external document providers like apexclearing.com
       if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
         // Direct link - we can fetch it
         pdfUrls.push({ url: href, filename, rowText })
-        console.log(`[M1 Statements] Found direct URL: ${href.substring(0, 80)}...`)
+        log.debug(`[M1 Statements] Found direct URL: ${href.substring(0, 80)}...`)
       } else if (href && href.startsWith('/')) {
         // Relative URL
         const fullUrl = `https://dashboard.m1.com${href}`
         pdfUrls.push({ url: fullUrl, filename, rowText })
-        console.log(`[M1 Statements] Found relative URL: ${fullUrl}`)
+        log.debug(`[M1 Statements] Found relative URL: ${fullUrl}`)
       } else {
         // Need to click and intercept the new tab/request
-        console.log(`[M1 Statements] Clicking row ${i + 1} to get PDF URL...`)
+        log.debug(`[M1 Statements] Clicking row ${i + 1} to get PDF URL...`)
 
         // Set up request interception to capture PDF URL
         let capturedPdfUrl: string | null = null
@@ -4245,7 +4248,7 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
           const url = request.url()
           if (url.includes('.pdf') || url.includes('/documents/') || url.includes('/statement')) {
             capturedPdfUrl = url
-            console.log(`[M1 Statements] Captured PDF request: ${url}`)
+            log.debug(`[M1 Statements] Captured PDF request: ${url}`)
           }
         }
         page.on('request', requestHandler)
@@ -4261,12 +4264,12 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
         const popup = await popupPromise
         if (popup) {
           const popupUrl = popup.url()
-          console.log(`[M1 Statements] Popup opened: ${popupUrl}`)
+          log.debug(`[M1 Statements] Popup opened: ${popupUrl}`)
 
           // Wait for it to load
           await popup.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {})
           const finalUrl = popup.url()
-          console.log(`[M1 Statements] Popup final URL: ${finalUrl}`)
+          log.debug(`[M1 Statements] Popup final URL: ${finalUrl}`)
 
           if (finalUrl && finalUrl !== 'about:blank') {
             pdfUrls.push({ url: finalUrl, filename, rowText })
@@ -4282,12 +4285,12 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
       }
     }
 
-    console.log(`[M1 Statements] Collected ${pdfUrls.length} PDF URLs for ${currentYear}`)
+    log.debug(`[M1 Statements] Collected ${pdfUrls.length} PDF URLs for ${currentYear}`)
     sendEvent('status', { message: `Found ${pdfUrls.length} statements for ${currentYear}`, phase: 'downloading' })
 
     // Now download all the PDFs
     for (const { url, filename } of pdfUrls) {
-      console.log(`[M1 Statements] Downloading: ${url} -> ${filename}`)
+      log.debug(`[M1 Statements] Downloading: ${url} -> ${filename}`)
 
       const filePath = join(M1_STATEMENTS_DIR, filename)
 
@@ -4301,14 +4304,14 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
           'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
         },
       }).catch(err => {
-        console.log(`[M1 Statements] Fetch error: ${err}`)
+        log.debug(`[M1 Statements] Fetch error: ${err}`)
         return null
       })
 
       if (response && response.ok) {
         const buffer = Buffer.from(await response.arrayBuffer())
         await writeFile(filePath, buffer)
-        console.log(`[M1 Statements] Saved: ${filePath} (${buffer.length} bytes)`)
+        log.debug(`[M1 Statements] Saved: ${filePath} (${buffer.length} bytes)`)
         totalDownloaded++
         existingFiles.push(filename)
         sendEvent('progress', {
@@ -4321,7 +4324,7 @@ importRouter.get('/m1-statements/download-stream', async (req, res) => {
           year: currentYear
         })
       } else {
-        console.log(`[M1 Statements] Failed to download: ${url} - ${response?.status}`)
+        log.debug(`[M1 Statements] Failed to download: ${url} - ${response?.status}`)
         totalSkipped++
       }
 
@@ -4749,7 +4752,7 @@ const parseCoinbaseDateToISO = (dateText: string): string => {
   // Match "Jan 6, 2026" or "January 6, 2026"
   const match = dateText.match(/([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/)
   if (!match || !match[1] || !match[2] || !match[3]) {
-    console.warn(`[Coinbase] Unable to parse date: ${dateText}`)
+    log.warn(`[Coinbase] Unable to parse date: ${dateText}`)
     return new Date().toISOString().split('T')[0] ?? new Date().toISOString().substring(0, 10)
   }
 
@@ -4845,21 +4848,21 @@ const addToCoinbaseTransactionsArchive = (
  */
 const findCoinbaseTransactionsPage = async (browser: Browser): Promise<Page | null> => {
   const contexts = browser.contexts()
-  console.log(`[Coinbase TX] Found ${contexts.length} browser contexts`)
+  log.debug(`[Coinbase TX] Found ${contexts.length} browser contexts`)
 
   for (let i = 0; i < contexts.length; i++) {
     const context = contexts[i]!
     const pages = context.pages()
-    console.log(`[Coinbase TX] Context ${i} has ${pages.length} pages`)
+    log.debug(`[Coinbase TX] Context ${i} has ${pages.length} pages`)
 
     for (const page of pages) {
       const pageUrl = page.url()
-      console.log(`[Coinbase TX]   Page URL: ${pageUrl}`)
+      log.debug(`[Coinbase TX]   Page URL: ${pageUrl}`)
 
       // Match any Coinbase page (not just /transactions) so we can handle modals
       if (pageUrl.includes('coinbase.com') &&
           !pageUrl.includes('/signin') && !pageUrl.includes('/login')) {
-        console.log(`[Coinbase TX] Found Coinbase page: ${pageUrl}`)
+        log.debug(`[Coinbase TX] Found Coinbase page: ${pageUrl}`)
         return page
       }
     }
@@ -4886,7 +4889,7 @@ const handleAdvancedTradeModal = async (
   const modalSelector = '[data-testid="simple-mode-feature-nux-modal"]'
   const confirmButtonSelector = '[data-testid="simple-nux-confirm-button"]'
 
-  console.log('[Coinbase TX] Checking for Advanced Trade modal...')
+  log.debug('[Coinbase TX] Checking for Advanced Trade modal...')
 
   // Wait briefly for the modal to potentially appear (it may load after page)
   await page.waitForTimeout(500)
@@ -4894,11 +4897,11 @@ const handleAdvancedTradeModal = async (
   // Try to wait for the modal with a short timeout
   const modal = await page.waitForSelector(modalSelector, { timeout: 1500 }).catch(() => null)
   if (!modal) {
-    console.log('[Coinbase TX] No Advanced Trade modal detected')
+    log.debug('[Coinbase TX] No Advanced Trade modal detected')
     return false
   }
 
-  console.log('[Coinbase TX] Advanced Trade modal detected, turning off Advanced mode...')
+  log.debug('[Coinbase TX] Advanced Trade modal detected, turning off Advanced mode...')
   sendEvent?.('status', { message: 'Turning off Advanced Trade mode...', phase: 'navigating' })
 
   // Wait for the confirm button to be visible and clickable
@@ -4910,7 +4913,7 @@ const handleAdvancedTradeModal = async (
   if (confirmButton) {
     // Use page.click for more reliable clicking
     await page.click(confirmButtonSelector)
-    console.log('[Coinbase TX] Clicked "Turn off Advanced" button')
+    log.debug('[Coinbase TX] Clicked "Turn off Advanced" button')
 
     // Wait for navigation/reload after clicking
     await page.waitForTimeout(2000)
@@ -4918,12 +4921,12 @@ const handleAdvancedTradeModal = async (
     // Wait for the transactions page to be ready
     await page.waitForLoadState('networkidle').catch(() => null)
 
-    console.log('[Coinbase TX] Advanced Trade mode disabled')
+    log.debug('[Coinbase TX] Advanced Trade mode disabled')
     sendEvent?.('status', { message: 'Advanced Trade mode disabled', phase: 'navigating' })
     return true
   }
 
-  console.log('[Coinbase TX] Could not find confirm button in modal')
+  log.debug('[Coinbase TX] Could not find confirm button in modal')
   return false
 }
 
@@ -4937,7 +4940,7 @@ const closeDetailDialog = async (page: Page): Promise<void> => {
   const dialog = await page.$(dialogSelector)
   if (!dialog) return
 
-  console.log('[Coinbase TX] Closing open dialog...')
+  log.debug('[Coinbase TX] Closing open dialog...')
 
   // Try close button first
   const closeButton = await page.$('[data-testid="close-cta"]')
@@ -4949,7 +4952,7 @@ const closeDetailDialog = async (page: Page): Promise<void> => {
 
   // Wait for dialog to close
   await page.waitForSelector(dialogSelector, { state: 'hidden', timeout: 3000 }).catch(() => {
-    console.warn('[Coinbase TX] Dialog did not close via button/Escape')
+    log.warn('[Coinbase TX] Dialog did not close via button/Escape')
   })
 
   // Double-check and try clicking outside if still open
@@ -4958,7 +4961,7 @@ const closeDetailDialog = async (page: Page): Promise<void> => {
     await page.click('body', { position: { x: 10, y: 10 } }).catch(() => null)
     await page.waitForTimeout(500)
     await page.waitForSelector(dialogSelector, { state: 'hidden', timeout: 2000 }).catch(() => {
-      console.error('[Coinbase TX] Dialog STILL open after all close attempts!')
+      log.error('[Coinbase TX] Dialog STILL open after all close attempts!')
     })
   }
 
@@ -4989,30 +4992,30 @@ const extractFeeFromDetailDialog = async (
   // This avoids stale element handles that might point to wrong content after DOM changes
   const freshRow = await page.$(`${rowSelector}[id="${rowId}"]`)
   if (!freshRow) {
-    console.log(`[Coinbase TX] Row with ID "${rowId.substring(0, 30)}..." no longer exists, skipping fee extraction`)
+    log.debug(`[Coinbase TX] Row with ID "${rowId.substring(0, 30)}..." no longer exists, skipping fee extraction`)
     return undefined
   }
 
   // Verify the row title is still a BUY/SELL
   const rowTitle = await freshRow.$('p[class*="headline"]').then(el => el?.textContent()).catch(() => null)
   if (!rowTitle) {
-    console.log('[Coinbase TX] Row headline not found, skipping fee extraction')
+    log.debug('[Coinbase TX] Row headline not found, skipping fee extraction')
     return undefined
   }
 
   const titleUpper = rowTitle.toUpperCase()
   if (!titleUpper.includes('BOUGHT') && !titleUpper.includes('SOLD')) {
-    console.warn(`[Coinbase TX] Row title "${rowTitle}" is not a BUY/SELL, skipping click (expected: "${expectedTitle}")`)
+    log.warn(`[Coinbase TX] Row title "${rowTitle}" is not a BUY/SELL, skipping click (expected: "${expectedTitle}")`)
     return undefined
   }
 
   // Extra safety: verify title matches what we expected
   if (rowTitle.trim() !== expectedTitle.trim()) {
-    console.warn(`[Coinbase TX] Row title mismatch! Found "${rowTitle}" but expected "${expectedTitle}", skipping click`)
+    log.warn(`[Coinbase TX] Row title mismatch! Found "${rowTitle}" but expected "${expectedTitle}", skipping click`)
     return undefined
   }
 
-  console.log(`[Coinbase TX] Clicking on row: "${rowTitle}" (ID: ${rowId.substring(0, 20)}...)`)
+  log.debug(`[Coinbase TX] Clicking on row: "${rowTitle}" (ID: ${rowId.substring(0, 20)}...)`)
 
   // Click on the freshly queried row
   await freshRow.click()
@@ -5023,7 +5026,7 @@ const extractFeeFromDetailDialog = async (
   }).catch(() => null)
 
   if (!dialog) {
-    console.log('[Coinbase TX] Could not open detail dialog for fee extraction')
+    log.debug('[Coinbase TX] Could not open detail dialog for fee extraction')
     return undefined
   }
 
@@ -5047,11 +5050,11 @@ const extractFeeFromDetailDialog = async (
   if (dialogTitle) {
     const dialogTitleUpper = dialogTitle.toUpperCase()
     if (!dialogTitleUpper.includes('BOUGHT') && !dialogTitleUpper.includes('SOLD')) {
-      console.error(`[Coinbase TX] WRONG DIALOG OPENED! Dialog title: "${dialogTitle}", expected BUY/SELL. Closing immediately.`)
+      log.error(`[Coinbase TX] WRONG DIALOG OPENED! Dialog title: "${dialogTitle}", expected BUY/SELL. Closing immediately.`)
       await closeDetailDialog(page)
       return undefined
     }
-    console.log(`[Coinbase TX] Dialog title verified: "${dialogTitle}"`)
+    log.debug(`[Coinbase TX] Dialog title verified: "${dialogTitle}"`)
   }
 
   let totalFee = 0
@@ -5229,7 +5232,7 @@ const scrapeCoinbaseTransactionsWithProgress = async (
 
         // Check if we've reached the stop date
         if (stopDate && tx.date < stopDate) {
-          console.log(`[Coinbase TX] Reached stop date ${stopDate}, stopping at ${tx.date}`)
+          log.debug(`[Coinbase TX] Reached stop date ${stopDate}, stopping at ${tx.date}`)
           stoppedAtDate = true
           await saveCoinbaseTransactionsArchive(archive)
           return { newCount, totalScraped, stoppedAtDate }
@@ -5245,18 +5248,18 @@ const scrapeCoinbaseTransactionsWithProgress = async (
 
         let didExtractFee = false
         if (!existsInArchive && (tx.type === 'BUY' || tx.type === 'SELL') && isBuySellTitle) {
-          console.log(`[Coinbase TX] Extracting fee for: "${tx.title}" (type: ${tx.type}, rowId: ${rowId.substring(0, 20)}...)`)
+          log.debug(`[Coinbase TX] Extracting fee for: "${tx.title}" (type: ${tx.type}, rowId: ${rowId.substring(0, 20)}...)`)
           // Pass rowId and rowSelector so the function can re-query the row by ID
           // This ensures we click on the correct row even if DOM shifted
           const fee = await extractFeeFromDetailDialog(page, rowId, rowSelector, tx.title)
           if (fee !== undefined) {
             tx.fee = fee
-            console.log(`[Coinbase TX] Extracted fee $${fee.toFixed(2)} for ${tx.type} ${tx.contracts} contracts`)
+            log.debug(`[Coinbase TX] Extracted fee $${fee.toFixed(2)} for ${tx.type} ${tx.contracts} contracts`)
           }
           didExtractFee = true
         } else if (!existsInArchive && (tx.type === 'BUY' || tx.type === 'SELL') && !isBuySellTitle) {
           // Log a warning if type detection is wrong
-          console.warn(`[Coinbase TX] Skipping fee extraction - type is ${tx.type} but title is "${tx.title}"`)
+          log.warn(`[Coinbase TX] Skipping fee extraction - type is ${tx.type} but title is "${tx.title}"`)
         }
 
         totalScraped++
@@ -5276,7 +5279,7 @@ const scrapeCoinbaseTransactionsWithProgress = async (
           consecutiveExisting++
           // Early exit: if we've seen many consecutive existing transactions, we're caught up
           if (consecutiveExisting >= MAX_CONSECUTIVE_EXISTING) {
-            console.log(`[Coinbase TX] Early exit: ${consecutiveExisting} consecutive existing transactions, stopping scrape`)
+            log.debug(`[Coinbase TX] Early exit: ${consecutiveExisting} consecutive existing transactions, stopping scrape`)
             await saveCoinbaseTransactionsArchive(archive)
             return { newCount, totalScraped, stoppedAtDate: false }
           }
@@ -5324,11 +5327,11 @@ const scrapeCoinbaseTransactionsWithProgress = async (
         await page.waitForTimeout(3000)
         const finalCheck = await page.$$(rowSelector)
         if (finalCheck.length === currentRowCount) {
-          console.log(`[Coinbase TX] End of list detected after ${totalScraped} transactions`)
+          log.debug(`[Coinbase TX] End of list detected after ${totalScraped} transactions`)
           break
         }
         // Aggressive scroll loaded more items - reset counter to continue normal scrolling
-        console.log(`[Coinbase TX] Aggressive scroll loaded ${finalCheck.length - currentRowCount} more items`)
+        log.debug(`[Coinbase TX] Aggressive scroll loaded ${finalCheck.length - currentRowCount} more items`)
         noNewItemsCount = 0
       }
     } else {
@@ -5426,7 +5429,7 @@ const addRewardToArchive = (archive: CoinbaseDerivativesArchive, entry: Coinbase
  */
 const findCoinbaseFuturesPage = async (browser: Browser): Promise<Page | null> => {
   const contexts = browser.contexts()
-  console.log(`[Coinbase] Found ${contexts.length} browser contexts`)
+  log.debug(`[Coinbase] Found ${contexts.length} browser contexts`)
 
   for (let i = 0; i < contexts.length; i++) {
     const context = contexts[i]!
@@ -5437,7 +5440,7 @@ const findCoinbaseFuturesPage = async (browser: Browser): Promise<Page | null> =
       if (pageUrl.includes('coinbase.com') &&
           (pageUrl.includes('perpetual') || pageUrl.includes('portfolio') || pageUrl.includes('intx')) &&
           !pageUrl.includes('/signin') && !pageUrl.includes('/login')) {
-        console.log(`[Coinbase] Found Coinbase page: ${pageUrl}`)
+        log.debug(`[Coinbase] Found Coinbase page: ${pageUrl}`)
         return page
       }
     }
@@ -5455,7 +5458,7 @@ const fetchCoinbaseCashBalance = async (
   sendEvent?: (event: string, data: Record<string, unknown>) => void
 ): Promise<number | null> => {
   const currentUrl = page.url()
-  console.log(`[Coinbase] Fetching cash balance, current URL: ${currentUrl}`)
+  log.debug(`[Coinbase] Fetching cash balance, current URL: ${currentUrl}`)
 
   // Navigate to home page if not already there
   if (!currentUrl.includes('coinbase.com/home')) {
@@ -5467,7 +5470,7 @@ const fetchCoinbaseCashBalance = async (
     }).catch((err: Error) => err)
 
     if (navResult instanceof Error) {
-      console.log(`[Coinbase] Failed to navigate to home: ${navResult.message}`)
+      log.debug(`[Coinbase] Failed to navigate to home: ${navResult.message}`)
       return null
     }
 
@@ -5480,24 +5483,24 @@ const fetchCoinbaseCashBalance = async (
   const cashButton = await page.$('[data-testid="cash-balance-cell-cell-pressable"]').catch(() => null)
 
   if (!cashButton) {
-    console.log('[Coinbase] Cash balance cell not found')
+    log.debug('[Coinbase] Cash balance cell not found')
     return null
   }
 
   const ariaLabel = await cashButton.getAttribute('aria-label').catch(() => null)
-  console.log(`[Coinbase] Cash balance aria-label: ${ariaLabel}`)
+  log.debug(`[Coinbase] Cash balance aria-label: ${ariaLabel}`)
 
   if (!ariaLabel) return null
 
   // Extract amount from "Your Cash balance is $528,143.20, view assets"
   const match = ariaLabel.match(/Your Cash balance is \$([\d,]+\.?\d*)/)
   if (!match || !match[1]) {
-    console.log('[Coinbase] Could not parse cash balance from aria-label')
+    log.debug('[Coinbase] Could not parse cash balance from aria-label')
     return null
   }
 
   const cashBalance = parseFloat(match[1].replace(/,/g, ''))
-  console.log(`[Coinbase] Extracted cash balance: ${cashBalance}`)
+  log.debug(`[Coinbase] Extracted cash balance: ${cashBalance}`)
 
   return cashBalance
 }
@@ -5516,7 +5519,7 @@ const findCoinbaseRewardsPage = async (browser: Browser): Promise<Page | null> =
       if (pageUrl.includes('coinbase.com') &&
           (pageUrl.includes('rewards') || pageUrl.includes('earn')) &&
           !pageUrl.includes('/signin') && !pageUrl.includes('/login')) {
-        console.log(`[Coinbase] Found Coinbase rewards page: ${pageUrl}`)
+        log.debug(`[Coinbase] Found Coinbase rewards page: ${pageUrl}`)
         return page
       }
     }
@@ -5693,7 +5696,7 @@ importRouter.post('/coinbase-btcd/funding/bulk', async (req, res) => {
 
   for (const [date, amount] of Object.entries(entries)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      console.log(`[Coinbase] Skipping invalid date format: ${date}`)
+      log.debug(`[Coinbase] Skipping invalid date format: ${date}`)
       skipped++
       continue
     }
@@ -5747,7 +5750,7 @@ importRouter.post('/coinbase-btcd/rewards/bulk', async (req, res) => {
 
   for (const [date, amount] of Object.entries(entries)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      console.log(`[Coinbase] Skipping invalid date format: ${date}`)
+      log.debug(`[Coinbase] Skipping invalid date format: ${date}`)
       skipped++
       continue
     }
@@ -6195,12 +6198,12 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
   let page = await findCoinbaseTransactionsPage(browser)
 
   if (page) {
-    console.log(`[Coinbase TX] Using existing Coinbase page: ${page.url()}`)
+    log.debug(`[Coinbase TX] Using existing Coinbase page: ${page.url()}`)
     sendEvent('status', { message: 'Found Coinbase page', phase: 'navigating' })
 
     // If not on transactions page, navigate there
     if (!page.url().includes('/transactions')) {
-      console.log('[Coinbase TX] Navigating existing page to transactions...')
+      log.debug('[Coinbase TX] Navigating existing page to transactions...')
       sendEvent('status', { message: 'Navigating to transactions...', phase: 'navigating' })
 
       const navResult = await page.goto('https://www.coinbase.com/transactions', {
@@ -6209,7 +6212,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
       }).catch((err: Error) => err)
 
       if (navResult instanceof Error) {
-        console.log(`[Coinbase TX] Navigation failed: ${navResult.message}`)
+        log.debug(`[Coinbase TX] Navigation failed: ${navResult.message}`)
         sendEvent('error', { message: `Navigation failed: ${navResult.message}` })
         res.end()
         return
@@ -6219,7 +6222,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     }
   } else {
     // No existing page - create new one
-    console.log('[Coinbase TX] No Coinbase page found, creating new one')
+    log.debug('[Coinbase TX] No Coinbase page found, creating new one')
     sendEvent('status', { message: 'Opening Coinbase transactions...', phase: 'navigating' })
 
     page = await createNewPage(browser).catch((err: Error) => {
@@ -6233,13 +6236,13 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     }
 
     // Navigate to Coinbase transactions
-    console.log('[Coinbase TX] Navigating new page to transactions...')
+    log.debug('[Coinbase TX] Navigating new page to transactions...')
     const navResult = await page.goto('https://www.coinbase.com/transactions', {
       waitUntil: 'load',
       timeout: 30000
     }).catch((err: Error) => err)
 
-    console.log(`[Coinbase TX] Navigation result: ${navResult instanceof Error ? navResult.message : 'success'}`)
+    log.debug(`[Coinbase TX] Navigation result: ${navResult instanceof Error ? navResult.message : 'success'}`)
 
     if (navResult instanceof Error) {
       sendEvent('error', { message: `Navigation failed: ${navResult.message}` })
@@ -6249,11 +6252,11 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     }
 
     await page.waitForTimeout(2000)
-    console.log(`[Coinbase TX] After navigation, URL: ${page.url()}`)
+    log.debug(`[Coinbase TX] After navigation, URL: ${page.url()}`)
 
     // Check if redirected to login
     if (page.url().includes('/signin') || page.url().includes('/login')) {
-      console.log('[Coinbase TX] Redirected to login - user needs to log in manually')
+      log.debug('[Coinbase TX] Redirected to login - user needs to log in manually')
       sendEvent('error', {
         message: 'Please log in to Coinbase in your browser first, then navigate to the transactions page and try again.'
       })
@@ -6279,7 +6282,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
       const fundConfig = JSON.parse(fundContent)
       if (fundConfig.start_date) {
         stopDate = fundConfig.start_date
-        console.log(`[Coinbase TX] Using fund start date as stop date: ${stopDate}`)
+        log.debug(`[Coinbase TX] Using fund start date as stop date: ${stopDate}`)
       }
     }
   }
@@ -6315,7 +6318,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
       phase: 'loading',
       cleared: previousCount
     })
-    console.log(`[Coinbase TX] Cleared ${previousCount} entries from fund ${fundId}`)
+    log.debug(`[Coinbase TX] Cleared ${previousCount} entries from fund ${fundId}`)
   }
 
   // Load existing archive
@@ -6400,7 +6403,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     entriesApplied = fund.entries.length
 
     await writeFund(fundPath, fund)
-    console.log(`[Coinbase TX] Batch applied ${entriesApplied} entries to fund ${fundId}`)
+    log.debug(`[Coinbase TX] Batch applied ${entriesApplied} entries to fund ${fundId}`)
 
     sendEvent('applied', { entriesApplied, lastDate: fund.entries[fund.entries.length - 1]?.date || '' })
   }
@@ -6408,9 +6411,9 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
   // Keep the Coinbase page open for user reference (don't close it)
 
   // Fetch current cash balance from Coinbase home page
-  console.log(`[Coinbase TX] Calling fetchCoinbaseCashBalance...`)
+  log.debug(`[Coinbase TX] Calling fetchCoinbaseCashBalance...`)
   const cashBalance = await fetchCoinbaseCashBalance(page, sendEvent)
-  console.log(`[Coinbase TX] Cash balance result: ${cashBalance}`)
+  log.debug(`[Coinbase TX] Cash balance result: ${cashBalance}`)
 
   // Update or create cash entry if we have a fund and cash balance
   let cashUpdated = false
@@ -6425,7 +6428,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
       // Check if latest entry is from today and is HOLD - update it
       if (latestEntry && latestEntry.date === today && latestEntry.action === 'HOLD') {
         latestEntry.cash = cashBalance
-        console.log(`[Coinbase TX] Updated today's HOLD entry with cash: ${cashBalance}`)
+        log.debug(`[Coinbase TX] Updated today's HOLD entry with cash: ${cashBalance}`)
       } else {
         // Create new HOLD entry with cash update
         fund.entries.push({
@@ -6435,7 +6438,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
           cash: cashBalance,
           notes: 'Cash balance update from scrape'
         })
-        console.log(`[Coinbase TX] Created new HOLD entry with cash: ${cashBalance}`)
+        log.debug(`[Coinbase TX] Created new HOLD entry with cash: ${cashBalance}`)
       }
 
       await writeFund(fundPath, fund)
@@ -6712,7 +6715,7 @@ importRouter.post('/coinbase/transactions/apply', async (req, res) => {
   // Save the fund
   await writeFund(fundPath, fund)
 
-  console.log(`[Coinbase Import] Applied ${applied} entries to ${fundId}, skipped ${skipped} duplicates`)
+  log.debug(`[Coinbase Import] Applied ${applied} entries to ${fundId}, skipped ${skipped} duplicates`)
 
   res.json({
     success: true,

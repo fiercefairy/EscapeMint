@@ -57,7 +57,7 @@ describe('computeLimit', () => {
 
 describe('computeRecommendation', () => {
   it('returns null for closed fund', () => {
-    const closedConfig = { ...baseConfig, fund_size_usd: 0 }
+    const closedConfig = { ...baseConfig, status: 'closed' as const }
     const state = makeState()
     const result = computeRecommendation(closedConfig, state)
     expect(result).toBeNull()

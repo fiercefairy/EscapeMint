@@ -101,8 +101,6 @@ export interface FundEntry {
   entry_price?: number         // Average entry price at snapshot
   liquidation_price?: number   // Calculated liquidation price
   unrealized_pnl?: number      // Unrealized P&L at snapshot
-  funding_profit?: number      // Funding rate profit (positive) - DEPRECATED
-  funding_loss?: number        // Funding loss + fees (negative) - DEPRECATED
   margin_locked?: number       // Total margin locked in positions
   fee?: number                 // Trading fee associated with BUY/SELL action
   margin?: number              // Actual margin locked for BUY/SELL trades

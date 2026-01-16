@@ -100,9 +100,7 @@ fundsRouter.get('/', async (req, res, next) => {
     const latestEntry = f.entries[f.entries.length - 1]
     const firstEntry = f.entries[0]
 
-    // Check if fund is closed (explicit status or legacy zero fund size)
-    const isClosed = f.config.status === 'closed' ||
-      (f.config.status === undefined && f.config.fund_size_usd === 0)
+    const isClosed = f.config.status === 'closed'
 
     // Compute equity and size based on fund type
     let latestEquity = latest
@@ -269,10 +267,8 @@ fundsRouter.get('/actionable', async (req, res, next) => {
 
   const actionableFunds = funds
     .filter(f => {
-      // Skip closed funds (status field is the canonical indicator)
+      // Skip closed funds
       if (f.config.status === 'closed') return false
-      // Skip legacy closed funds (no explicit status, but zero fund size)
-      if (f.config.status === undefined && f.config.fund_size_usd === 0) return false
       // Skip cash and derivatives funds - they don't use interval-based trading recommendations
       const fundType = f.config.fund_type ?? 'stock'
       if (fundType === 'cash' || fundType === 'derivatives') return false
@@ -1022,9 +1018,9 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
   const stateForRecommendation: FundState = { ...correctedState, actual_value_usd: postActionEquity, cash_available_usd: effectiveCash }
   const recommendation = (isCashFund || isDerivativesFund) ? null : computeRecommendation(configWithActualFundSize, stateForRecommendation)
 
-  // Compute closed fund metrics if fund is closed (explicit status or legacy undefined status with zero fund size)
+  // Compute closed fund metrics if fund is closed
   let closedMetrics = null
-  const isClosed = fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)
+  const isClosed = fund.config.status === 'closed'
   if (isClosed && fund.entries.length > 0) {
     const firstEntry = fund.entries[0]
     const lastEntry = fund.entries[fund.entries.length - 1]
@@ -1479,7 +1475,7 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
 
   // For cash funds, auto-calculate value and cash from signed amount
   // Amount is signed: positive = deposit, negative = withdraw
-  // Legacy DEPOSIT/WITHDRAW actions are converted to signed amounts
+  // DEPOSIT/WITHDRAW actions are normalized to signed amounts with HOLD action
   if (isCashFund) {
     const sortedEntries = [...fund.entries].sort((a, b) =>
       new Date(a.date).getTime() - new Date(b.date).getTime()
@@ -1489,7 +1485,7 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
     // Previous balance is from cash field, or value, or 0 if first entry
     const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? 0
 
-    // Convert legacy DEPOSIT/WITHDRAW actions to signed amounts
+    // Normalize DEPOSIT/WITHDRAW actions to signed amounts
     if (entry.action === 'DEPOSIT' && entry.amount) {
       entry.amount = Math.abs(entry.amount)  // Ensure positive
       entry.action = 'HOLD'
