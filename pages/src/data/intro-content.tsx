@@ -101,8 +101,8 @@ export const INTRO_STEPS: IntroStep[] = [
     content: [
       'Example assets used by the creator (not financial advice):',
       'BTC is Bitcoin--the only truly scarce asset globally recognized as a store of value.',
-      'TQQQ is a 3x leveraged long on the Nasdaq-100.',
-      'SPXL is a 3x leveraged long on the S&P 500 (SPY).',
+      <><span className="font-semibold">TQQQ</span> is a 3x leveraged long on the Nasdaq-100.<br /><span className="text-xs text-slate-500">TQQQ seeks daily investment results, before fees and expenses, that correspond to three times (3x) the daily performance of the Nasdaq-100 Index.</span></>,
+      <><span className="font-semibold">SPXL</span> is a 3x leveraged long on the Russell 1000 Large Cap Index.<br /><span className="text-xs text-slate-500">SPXL seeks daily investment results, before fees and expenses, of 300% of the price performance of the Russell 1000 Index. There is no guarantee the fund will meet its stated investment objective.</span></>,
       'More volatility = more opportunities to buy low and sell high.',
       'Your choice of assets depends on your risk tolerance and research.'
     ],
