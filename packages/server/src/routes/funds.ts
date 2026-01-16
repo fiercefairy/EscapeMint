@@ -269,10 +269,11 @@ fundsRouter.get('/actionable', async (req, res, next) => {
 
   const actionableFunds = funds
     .filter(f => {
-      // Skip closed funds
+      // Skip closed funds (status field is the canonical indicator)
       if (f.config.status === 'closed') return false
-      // Skip funds with zero fund size (legacy closed indicator)
-      if (f.config.fund_size_usd === 0) return false
+      // Skip cash and derivatives funds - they don't use interval-based trading recommendations
+      const fundType = f.config.fund_type ?? 'stock'
+      if (fundType === 'cash' || fundType === 'derivatives') return false
       // Must have at least one entry
       if (f.entries.length === 0) return false
       return true

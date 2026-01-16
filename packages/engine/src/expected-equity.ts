@@ -140,7 +140,11 @@ export function computeExpectedTarget(
         // Expected target represents what invested capital SHOULD grow to at target APY.
         // In harvest mode, reduce both proportionally (closing out position).
         const isAccumulateMode = config.accumulate === true
-        if (!isAccumulateMode && startInput > 0) {
+        if (isAccumulateMode) {
+          // Accumulate mode: partial sells don't affect expected target
+          // Reset totalSells so they don't accumulate toward liquidation threshold
+          totalSells = 0
+        } else if (startInput > 0) {
           // Harvest mode: reduce expected gain and startInput proportionally
           let sellFraction: number
           if (hasShareTracking) {

@@ -99,15 +99,29 @@ describe('computeRecommendation', () => {
     expect(result?.amount).toBe(100)
   })
 
-  it('recommends SELL when above target by min_profit', () => {
+  it('recommends SELL when above target by min_profit and in profit', () => {
     const state = makeState({
       expected_target_usd: 1000,
       actual_value_usd: 1200,
-      target_diff_usd: 200
+      target_diff_usd: 200,
+      gain_usd: 200,
+      gain_pct: 0.2
     })
     const result = computeRecommendation(baseConfig, state)
     expect(result?.action).toBe('SELL')
     expect(result?.amount).toBe(1200) // Full liquidation (accumulate=false)
+  })
+
+  it('does NOT recommend SELL when above target but at a loss', () => {
+    const state = makeState({
+      expected_target_usd: 1000,
+      actual_value_usd: 1200,
+      target_diff_usd: 200,
+      gain_usd: -500,  // At a loss overall
+      gain_pct: -0.3
+    })
+    const result = computeRecommendation(baseConfig, state)
+    expect(result?.action).toBe('BUY') // Should DCA, not sell at a loss
   })
 
   it('sells only limit amount in accumulate mode', () => {
@@ -115,7 +129,9 @@ describe('computeRecommendation', () => {
     const state = makeState({
       expected_target_usd: 1000,
       actual_value_usd: 1200,
-      target_diff_usd: 200
+      target_diff_usd: 200,
+      gain_usd: 200,
+      gain_pct: 0.2
     })
     const result = computeRecommendation(accumulateConfig, state)
     expect(result?.action).toBe('SELL')
