@@ -289,9 +289,7 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
   const timeWeightedFundSize = daysActive > 0 ? dollarDays / daysActive : 0
 
   const isCashFund = fund.config.fund_type === 'cash'
-  // Match REST API logic: only treat zero fund_size as closed if status is undefined
-  const isClosed = fund.config.status === 'closed' ||
-    (fund.config.status === undefined && fund.config.fund_size_usd === 0)
+  const isClosed = fund.config.status === 'closed'
 
   // Use APY from finalMetrics (proper TWAB and compound interest formula)
   const realizedAPY = finalMetrics.realizedApy

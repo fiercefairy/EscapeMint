@@ -58,9 +58,8 @@ export function computeRecommendation(
     return null
   }
 
-  // Closed fund - no recommendation (only if explicitly closed or legacy undefined status with zero fund size)
-  const isClosed = config.status === 'closed' || (config.status === undefined && config.fund_size_usd === 0)
-  if (isClosed) {
+  // Closed fund - no recommendation
+  if (config.status === 'closed') {
     return null
   }
 

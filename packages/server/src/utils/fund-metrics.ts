@@ -90,7 +90,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
       return {
         fundSize: lastState.marginBalance,
         currentValue: lastState.equity,
-        cash: lastState.availableFunds,  // Available funds = marginBalance - initialMargin
+        cash: lastState.availableFunds,  // Available funds = marginBalance - marginLocked
         totalInvested: lastState.costBasis,
         cumDividends: 0,
         cumExpenses: lastState.cumFees,

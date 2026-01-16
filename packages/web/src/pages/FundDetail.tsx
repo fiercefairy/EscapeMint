@@ -472,7 +472,6 @@ export function FundDetail() {
         derivCumRebates: undefined as number | undefined,
         derivCumFees: undefined as number | undefined,
         derivNotionalValue: undefined as number | undefined,
-        derivInitialMargin: undefined as number | undefined,
         derivMarginLocked: undefined as number | undefined,
         derivMaintenanceMargin: undefined as number | undefined,
         derivAvailableFunds: undefined as number | undefined,
@@ -556,7 +555,6 @@ export function FundDetail() {
           derivCumFees: derivState.cumFees,
           // Margin tracking
           derivNotionalValue: derivState.notionalValue,
-          derivInitialMargin: derivState.initialMargin,
           derivMarginLocked: derivState.marginLocked,
           derivMaintenanceMargin: derivState.maintenanceMargin,
           derivAvailableFunds: effectiveAvailableFunds,  // Use tracked cash for available funds
@@ -1122,7 +1120,7 @@ export function FundDetail() {
                 <span className="text-slate-600">/</span>
                 <span className="text-white font-semibold uppercase">{fund.ticker}</span>
                 {/* Closed Tag */}
-                {(fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)) && (
+                {fund.config.status === 'closed' && (
                   <span className="px-1.5 py-0.5 text-[9px] leading-tight font-medium bg-slate-700 text-slate-400 rounded">Closed</span>
                 )}
                 {/* Audited Badge - clickable to toggle */}
@@ -1270,7 +1268,7 @@ export function FundDetail() {
                 {/* Current State */}
                 <div className="bg-slate-700/50 rounded-lg p-3">
                   <h3 className="text-sm font-semibold text-white mb-2">Current State</h3>
-                  {(fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)) && state?.closedMetrics ? (
+                  {fund.config.status === 'closed' && state?.closedMetrics ? (
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div>
                         <p className="text-[10px] text-slate-400">Total Invested</p>
@@ -1309,7 +1307,7 @@ export function FundDetail() {
                         <p className="font-medium text-red-400">{formatCurrency(state.closedMetrics.total_expenses_usd)}</p>
                       </div>
                     </div>
-                  ) : (fund.config.status === 'closed' || (fund.config.status === undefined && fund.config.fund_size_usd === 0)) ? (
+                  ) : fund.config.status === 'closed' ? (
                     <p className="text-slate-400 text-sm">This fund is closed. Historical data preserved below.</p>
                   ) : latestEntry && isDerivativesFund ? (
                     <div className="grid grid-cols-2 gap-2 text-sm">

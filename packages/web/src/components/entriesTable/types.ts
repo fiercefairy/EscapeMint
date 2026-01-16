@@ -136,7 +136,6 @@ export interface ComputedEntry extends FundEntry {
   derivCumFees?: number        // Cumulative fees (trading fees)
   // Margin tracking
   derivNotionalValue?: number      // Position value at avgEntry price
-  derivInitialMargin?: number      // Margin locked (typically 20%) - DEPRECATED: use derivMarginLocked
   derivMarginLocked?: number       // Actual margin locked (sum from FIFO queue)
   derivMaintenanceMargin?: number  // Minimum margin required (typically 5%)
   derivAvailableFunds?: number     // marginBalance - marginLocked
