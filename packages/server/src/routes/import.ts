@@ -6366,6 +6366,11 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     })
 
     // Fund was already loaded earlier (and cleared if clearFundEntries was set)
+    // Preserve any existing HOLD entries with cash balance (from scrapes)
+    const existingCashHolds = fund.entries.filter(e =>
+      e.action === 'HOLD' && e.cash !== undefined && e.cash > 0
+    )
+
     // Convert all perp-related transactions to fund entries
     const perpTxns = archive.transactions.filter(t => t.isPerpRelated)
     const allEntries: FundEntry[] = []
@@ -6386,6 +6391,9 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
       const entries = coinbaseTxToFundEntries(tx)
       allEntries.push(...entries)
     }
+
+    // Re-add preserved HOLD entries with cash balance
+    allEntries.push(...existingCashHolds)
 
     // Sort all entries properly and add to fund
     fund.entries = sortFundEntries(allEntries)

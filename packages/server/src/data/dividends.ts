@@ -45,3 +45,27 @@ export const TQQQ_DIVIDENDS: DividendPayment[] = [
   { exDate: '2025-09-24', amount: 0.04891 },
   { exDate: '2025-12-24', amount: 0.08554 }
 ]
+
+// Historical dividend data for SPY (ex-dividend dates and amounts per share)
+export const SPY_DIVIDENDS: DividendPayment[] = [
+  { exDate: '2021-03-19', amount: 1.27779 },
+  { exDate: '2021-06-18', amount: 1.37588 },
+  { exDate: '2021-09-17', amount: 1.42812 },
+  { exDate: '2021-12-17', amount: 1.63643 },
+  { exDate: '2022-03-18', amount: 1.36601 },
+  { exDate: '2022-06-17', amount: 1.57687 },
+  { exDate: '2022-09-16', amount: 1.5964 },
+  { exDate: '2022-12-16', amount: 1.7814 },
+  { exDate: '2023-03-17', amount: 1.5062 },
+  { exDate: '2023-06-16', amount: 1.63837 },
+  { exDate: '2023-09-15', amount: 1.58317 },
+  { exDate: '2023-12-15', amount: 1.90607 },
+  { exDate: '2024-03-15', amount: 1.59494 },
+  { exDate: '2024-06-21', amount: 1.75902 },
+  { exDate: '2024-09-20', amount: 1.74553 },
+  { exDate: '2024-12-20', amount: 1.96555 },
+  { exDate: '2025-03-21', amount: 1.69553 },
+  { exDate: '2025-06-20', amount: 1.76112 },
+  { exDate: '2025-09-19', amount: 1.83111 },
+  { exDate: '2025-12-19', amount: 1.99337 }
+]

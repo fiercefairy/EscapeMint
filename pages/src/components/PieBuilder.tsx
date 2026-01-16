@@ -2,41 +2,46 @@ import { useState } from 'react'
 
 interface Props {
   spxlPct: number
+  spyPct: number
   tqqqPct: number
   btcPct: number
-  onChange: (spxlPct: number, tqqqPct: number, btcPct: number) => void
+  onChange: (spxlPct: number, spyPct: number, tqqqPct: number, btcPct: number) => void
 }
 
-export function PieBuilder({ spxlPct, tqqqPct, btcPct, onChange }: Props) {
-  const total = spxlPct + tqqqPct + btcPct
-  const [locked, setLocked] = useState<{ SPXL: boolean; TQQQ: boolean; BTC: boolean }>({
+export function PieBuilder({ spxlPct, spyPct, tqqqPct, btcPct, onChange }: Props) {
+  const total = spxlPct + spyPct + tqqqPct + btcPct
+  const [locked, setLocked] = useState<{ SPXL: boolean; SPY: boolean; TQQQ: boolean; BTC: boolean }>({
     SPXL: false,
+    SPY: false,
     TQQQ: false,
     BTC: false
   })
 
-  const toggleLock = (asset: 'SPXL' | 'TQQQ' | 'BTC') => {
+  const toggleLock = (asset: 'SPXL' | 'SPY' | 'TQQQ' | 'BTC') => {
     setLocked(prev => ({ ...prev, [asset]: !prev[asset] }))
   }
 
-  const handleChange = (asset: 'SPXL' | 'TQQQ' | 'BTC', value: number) => {
+  const handleChange = (asset: 'SPXL' | 'SPY' | 'TQQQ' | 'BTC', value: number) => {
     let newSpxl = spxlPct
+    let newSpy = spyPct
     let newTqqq = tqqqPct
     let newBtc = btcPct
 
     // Set the changed value
     if (asset === 'SPXL') newSpxl = value
+    else if (asset === 'SPY') newSpy = value
     else if (asset === 'TQQQ') newTqqq = value
     else newBtc = value
 
     // Calculate difference from 100%
-    const newTotal = newSpxl + newTqqq + newBtc
+    const newTotal = newSpxl + newSpy + newTqqq + newBtc
     const diff = newTotal - 100
 
     if (diff !== 0) {
       // Get unlocked others (not the changed one, and not locked)
-      const unlocked: { asset: 'SPXL' | 'TQQQ' | 'BTC'; val: number }[] = []
+      const unlocked: { asset: 'SPXL' | 'SPY' | 'TQQQ' | 'BTC'; val: number }[] = []
       if (asset !== 'SPXL' && !locked.SPXL) unlocked.push({ asset: 'SPXL', val: newSpxl })
+      if (asset !== 'SPY' && !locked.SPY) unlocked.push({ asset: 'SPY', val: newSpy })
       if (asset !== 'TQQQ' && !locked.TQQQ) unlocked.push({ asset: 'TQQQ', val: newTqqq })
       if (asset !== 'BTC' && !locked.BTC) unlocked.push({ asset: 'BTC', val: newBtc })
 
@@ -50,6 +55,7 @@ export function PieBuilder({ spxlPct, tqqqPct, btcPct, onChange }: Props) {
             : (diff / unlocked.length)
           const newVal = Math.max(0, Math.min(100, u.val - adjust))
           if (u.asset === 'SPXL') newSpxl = newVal
+          else if (u.asset === 'SPY') newSpy = newVal
           else if (u.asset === 'TQQQ') newTqqq = newVal
           else newBtc = newVal
         }
@@ -58,28 +64,31 @@ export function PieBuilder({ spxlPct, tqqqPct, btcPct, onChange }: Props) {
 
     // Round to whole numbers
     newSpxl = Math.round(newSpxl)
+    newSpy = Math.round(newSpy)
     newTqqq = Math.round(newTqqq)
     newBtc = Math.round(newBtc)
 
     // Final adjustment to ensure exactly 100% after rounding (only adjust unlocked)
-    const finalTotal = newSpxl + newTqqq + newBtc
+    const finalTotal = newSpxl + newSpy + newTqqq + newBtc
     if (finalTotal !== 100) {
       const adjust = 100 - finalTotal
       // Find largest unlocked non-changed value to adjust
       const adjustable = [
         { asset: 'SPXL', val: newSpxl, canAdjust: asset !== 'SPXL' && !locked.SPXL },
+        { asset: 'SPY', val: newSpy, canAdjust: asset !== 'SPY' && !locked.SPY },
         { asset: 'TQQQ', val: newTqqq, canAdjust: asset !== 'TQQQ' && !locked.TQQQ },
         { asset: 'BTC', val: newBtc, canAdjust: asset !== 'BTC' && !locked.BTC }
       ].filter(a => a.canAdjust).sort((a, b) => b.val - a.val)
 
       if (adjustable.length > 0) {
         if (adjustable[0].asset === 'SPXL') newSpxl += adjust
+        else if (adjustable[0].asset === 'SPY') newSpy += adjust
         else if (adjustable[0].asset === 'TQQQ') newTqqq += adjust
         else newBtc += adjust
       }
     }
 
-    onChange(newSpxl, newTqqq, newBtc)
+    onChange(newSpxl, newSpy, newTqqq, newBtc)
   }
 
   return (
@@ -93,6 +102,15 @@ export function PieBuilder({ spxlPct, tqqqPct, btcPct, onChange }: Props) {
             title={`SPXL: ${spxlPct}%`}
           >
             {spxlPct > 20 ? `SPXL ${spxlPct}%` : spxlPct > 10 ? `${spxlPct}%` : ''}
+          </div>
+        )}
+        {spyPct > 0 && (
+          <div
+            className="flex items-center justify-center text-[9px] text-white font-medium gap-1"
+            style={{ width: `${spyPct}%`, backgroundColor: '#06b6d4' }}
+            title={`SPY: ${spyPct}%`}
+          >
+            {spyPct > 20 ? `SPY ${spyPct}%` : spyPct > 10 ? `${spyPct}%` : ''}
           </div>
         )}
         {tqqqPct > 0 && (
@@ -118,6 +136,7 @@ export function PieBuilder({ spxlPct, tqqqPct, btcPct, onChange }: Props) {
       {/* Sliders */}
       <div className="space-y-1">
         <SliderControl label="SPXL" value={spxlPct} onChange={(v) => handleChange('SPXL', v)} color="#3b82f6" locked={locked.SPXL} onToggleLock={() => toggleLock('SPXL')} />
+        <SliderControl label="SPY" value={spyPct} onChange={(v) => handleChange('SPY', v)} color="#06b6d4" locked={locked.SPY} onToggleLock={() => toggleLock('SPY')} />
         <SliderControl label="TQQQ" value={tqqqPct} onChange={(v) => handleChange('TQQQ', v)} color="#22c55e" locked={locked.TQQQ} onToggleLock={() => toggleLock('TQQQ')} />
         <SliderControl label="BTC" value={btcPct} onChange={(v) => handleChange('BTC', v)} color="#f97316" locked={locked.BTC} onToggleLock={() => toggleLock('BTC')} />
       </div>

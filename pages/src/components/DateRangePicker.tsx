@@ -23,7 +23,7 @@ export function DateRangePicker({ availableRange, selectedRange, onChange }: Dat
     }
   }
 
-  const handlePreset = (preset: 'all' | '1y' | '2y' | 'ytd') => {
+  const handlePreset = (preset: 'all' | '1y' | '2y' | '3y' | '4y' | 'ytd') => {
     const end = availableRange.end
     let start = availableRange.start
 
@@ -36,6 +36,16 @@ export function DateRangePicker({ availableRange, selectedRange, onChange }: Dat
     } else if (preset === '2y') {
       const endDate = new Date(end)
       endDate.setFullYear(endDate.getFullYear() - 2)
+      start = endDate.toISOString().split('T')[0]
+      if (start < availableRange.start) start = availableRange.start
+    } else if (preset === '3y') {
+      const endDate = new Date(end)
+      endDate.setFullYear(endDate.getFullYear() - 3)
+      start = endDate.toISOString().split('T')[0]
+      if (start < availableRange.start) start = availableRange.start
+    } else if (preset === '4y') {
+      const endDate = new Date(end)
+      endDate.setFullYear(endDate.getFullYear() - 4)
       start = endDate.toISOString().split('T')[0]
       if (start < availableRange.start) start = availableRange.start
     } else if (preset === 'ytd') {
@@ -81,11 +91,11 @@ export function DateRangePicker({ availableRange, selectedRange, onChange }: Dat
           <span className="text-white">{daysBetween}</span>d ({years}y)
         </span>
         <div className="flex items-center gap-1">
-          {(['ytd', '1y', '2y', 'all'] as const).map(preset => (
+          {(['ytd', '1y', '2y', '3y', '4y', 'all'] as const).map(preset => (
             <button
               key={preset}
               onClick={() => handlePreset(preset)}
-              className="px-1.5 py-0.5 text-[10px] bg-slate-700 hover:bg-slate-600 rounded transition-colors uppercase"
+              className="px-1.5 py-0.5 text-[10px] bg-slate-700 hover:bg-slate-600 rounded transition-colors uppercase cursor-pointer"
             >
               {preset}
             </button>

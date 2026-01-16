@@ -18,7 +18,7 @@ import type {
 } from './derivatives-types.js'
 
 // Default margin rates per Coinbase documentation
-const DEFAULT_INITIAL_MARGIN_RATE = 0.20  // 20%
+const DEFAULT_INITIAL_MARGIN_RATE = 0.25  // 25% (Coinbase BTC perpetuals)
 const DEFAULT_MAINTENANCE_MARGIN_RATE = 0.05  // 5%
 const DEFAULT_CONTRACT_MULTIPLIER = 0.01  // BIP micro-futures
 
@@ -792,6 +792,12 @@ export const computeDerivativesEntriesState = (
           // Derive implied asset price: assetPrice = value / (position * contractMultiplier)
           const notionalSize = position * contractMultiplier
           currentAssetPrice = entryValue / notionalSize
+        }
+        // If cash field is provided, sync marginBalance to actual account cash
+        // This allows cash balance scrapes to correct drift in calculated margin
+        const entryCash = (entry as { cash?: number }).cash
+        if (entryCash !== undefined && entryCash > 0) {
+          marginBalance = entryCash
         }
         break
       }

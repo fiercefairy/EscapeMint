@@ -137,6 +137,7 @@ async function main() {
   // Fetch stock data
   const tqqqRaw = await fetchYahooFinance('TQQQ')
   const spxlRaw = await fetchYahooFinance('SPXL')
+  const spyRaw = await fetchYahooFinance('SPY')
 
   // Fetch crypto data (Yahoo Finance has BTC-USD)
   const btcRaw = await fetchBitcoinYahoo()
@@ -144,31 +145,37 @@ async function main() {
   // Filter to Wednesdays (or nearest trading day for stocks)
   const tqqq = getWednesdayOrNearest(tqqqRaw)
   const spxl = getWednesdayOrNearest(spxlRaw)
+  const spy = getWednesdayOrNearest(spyRaw)
   // BTC trades 24/7 but Yahoo Finance only has daily data, use same logic
   const btc = getWednesdayOrNearest(btcRaw)
 
   console.log(`\nTQQQ: ${tqqqRaw.length} daily -> ${tqqq.length} weekly (Wednesdays)`)
   console.log(`SPXL: ${spxlRaw.length} daily -> ${spxl.length} weekly (Wednesdays)`)
+  console.log(`SPY: ${spyRaw.length} daily -> ${spy.length} weekly (Wednesdays)`)
   console.log(`BTC: ${btcRaw.length} daily -> ${btc.length} weekly (Wednesdays)`)
 
   // Save to files
   const tqqqPath = join(OUTPUT_DIR, 'tqqq-weekly.json')
   const spxlPath = join(OUTPUT_DIR, 'spxl-weekly.json')
+  const spyPath = join(OUTPUT_DIR, 'spy-weekly.json')
   const btcPath = join(OUTPUT_DIR, 'btcusd-weekly.json')
 
   writeFileSync(tqqqPath, JSON.stringify(tqqq, null, 2))
   writeFileSync(spxlPath, JSON.stringify(spxl, null, 2))
+  writeFileSync(spyPath, JSON.stringify(spy, null, 2))
   writeFileSync(btcPath, JSON.stringify(btc, null, 2))
 
   console.log(`\nSaved to:`)
   console.log(`  ${tqqqPath}`)
   console.log(`  ${spxlPath}`)
+  console.log(`  ${spyPath}`)
   console.log(`  ${btcPath}`)
 
   // Print date ranges
   console.log(`\nDate ranges:`)
   console.log(`  TQQQ: ${tqqq[0]?.date} to ${tqqq[tqqq.length - 1]?.date}`)
   console.log(`  SPXL: ${spxl[0]?.date} to ${spxl[spxl.length - 1]?.date}`)
+  console.log(`  SPY: ${spy[0]?.date} to ${spy[spy.length - 1]?.date}`)
   console.log(`  BTC: ${btc[0]?.date} to ${btc[btc.length - 1]?.date}`)
 }
 

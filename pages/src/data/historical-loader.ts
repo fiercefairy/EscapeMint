@@ -18,9 +18,13 @@ export async function loadHistoricalData(): Promise<Record<string, HistoricalDat
     const base = import.meta.env.BASE_URL
     // Add cache-busting timestamp to ensure fresh data
     const cacheBust = `?t=${Date.now()}`
-    const [spxl, tqqq, btc] = await Promise.all([
+    const [spxl, spy, tqqq, btc] = await Promise.all([
       fetch(`${base}data/spxl-weekly.json${cacheBust}`).then(r => {
         if (!r.ok) throw new Error(`Failed to load SPXL data: ${r.statusText}`)
+        return r.json()
+      }),
+      fetch(`${base}data/spy-weekly.json${cacheBust}`).then(r => {
+        if (!r.ok) throw new Error(`Failed to load SPY data: ${r.statusText}`)
         return r.json()
       }),
       fetch(`${base}data/tqqq-weekly.json${cacheBust}`).then(r => {
@@ -36,10 +40,12 @@ export async function loadHistoricalData(): Promise<Record<string, HistoricalDat
     // Debug: Log raw fetched data
     console.log('=== HISTORICAL DATA LOADED ===')
     console.log('SPXL dividends:', spxl.dividends?.length ?? 0, spxl.dividends?.slice(0, 3))
+    console.log('SPY dividends:', spy.dividends?.length ?? 0, spy.dividends?.slice(0, 3))
     console.log('TQQQ dividends:', tqqq.dividends?.length ?? 0, tqqq.dividends?.slice(0, 3))
 
     cachedData = {
       SPXL: spxl as HistoricalData,
+      SPY: spy as HistoricalData,
       TQQQ: tqqq as HistoricalData,
       BTC: btc as HistoricalData
     }
@@ -50,6 +56,11 @@ export async function loadHistoricalData(): Promise<Record<string, HistoricalDat
         dividendCount: spxl.dividends?.length ?? 0,
         firstDividend: spxl.dividends?.[0],
         priceCount: spxl.prices?.length ?? 0
+      },
+      SPY: {
+        dividendCount: spy.dividends?.length ?? 0,
+        firstDividend: spy.dividends?.[0],
+        priceCount: spy.prices?.length ?? 0
       },
       TQQQ: {
         dividendCount: tqqq.dividends?.length ?? 0,
