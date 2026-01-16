@@ -72,6 +72,31 @@ export const BRGNX_DIVIDENDS: DividendPayment[] = [
   { exDate: '2025-12-16', amount: 0.56537 }
 ]
 
+// Historical dividend data for VTI (ex-dividend dates and amounts per share)
+// Vanguard Total Stock Market ETF - pays quarterly
+export const VTI_DIVIDENDS: DividendPayment[] = [
+  { exDate: '2021-03-25', amount: 0.672 },
+  { exDate: '2021-06-24', amount: 0.675 },
+  { exDate: '2021-09-24', amount: 0.724 },
+  { exDate: '2021-12-27', amount: 0.859 },
+  { exDate: '2022-03-23', amount: 0.708 },
+  { exDate: '2022-06-23', amount: 0.749 },
+  { exDate: '2022-09-23', amount: 0.796 },
+  { exDate: '2022-12-22', amount: 0.931 },
+  { exDate: '2023-03-23', amount: 0.786 },
+  { exDate: '2023-06-23', amount: 0.827 },
+  { exDate: '2023-09-21', amount: 0.798 },
+  { exDate: '2023-12-21', amount: 1.002 },
+  { exDate: '2024-03-22', amount: 0.911 },
+  { exDate: '2024-06-28', amount: 0.952 },
+  { exDate: '2024-09-27', amount: 0.871 },
+  { exDate: '2024-12-23', amount: 0.941 },
+  { exDate: '2025-03-27', amount: 0.985 },
+  { exDate: '2025-06-30', amount: 0.913 },
+  { exDate: '2025-09-29', amount: 0.907 },
+  { exDate: '2025-12-22', amount: 0.951 }
+]
+
 // Historical dividend data for SPY (ex-dividend dates and amounts per share)
 export const SPY_DIVIDENDS: DividendPayment[] = [
   { exDate: '2021-03-19', amount: 1.27779 },

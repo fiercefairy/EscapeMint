@@ -1,7 +1,41 @@
 import type { HistoricalData, PricePoint, DateRange, DividendPayment } from '../data/types'
 
+// Helper to find the nearest price for a date when exact match doesn't exist
+// This handles cases where different assets have different weekly intervals
+function findNearestPrice(prices: PricePoint[], targetDate: string): number | undefined {
+  // First try exact match
+  const exact = prices.find(p => p.date === targetDate)
+  if (exact) return exact.value
+
+  // Find nearest date within 7 days
+  const target = new Date(targetDate).getTime()
+  let nearest: PricePoint | undefined
+  let minDiff = Infinity
+
+  for (const p of prices) {
+    const diff = Math.abs(new Date(p.date).getTime() - target)
+    if (diff < minDiff && diff <= 7 * 24 * 60 * 60 * 1000) { // within 7 days
+      minDiff = diff
+      nearest = p
+    }
+  }
+
+  return nearest?.value
+}
+
+// Build a map that also supports nearest-date lookup
+function buildPriceMap(prices: PricePoint[]): (date: string) => number | undefined {
+  const exactMap = new Map(prices.map(p => [p.date, p.value]))
+  return (date: string) => {
+    const exact = exactMap.get(date)
+    if (exact !== undefined) return exact
+    return findNearestPrice(prices, date)
+  }
+}
+
 export interface Allocation {
   SPXL: number
+  VTI: number
   BRGNX: number
   TQQQ: number
   BTC: number
@@ -11,12 +45,14 @@ export interface BlendedPriceResult {
   prices: PricePoint[]
   startingPrices: {
     SPXL: number
+    VTI: number
     BRGNX: number
     TQQQ: number
     BTC: number
   }
   dividends: {
     SPXL: DividendPayment[]
+    VTI: DividendPayment[]
     BRGNX: DividendPayment[]
     TQQQ: DividendPayment[]
   }
@@ -36,13 +72,17 @@ export function blendPricesWithDividends(
   dateRange: DateRange
 ): BlendedPriceResult {
   const spxl = historicalData.SPXL.prices
-  const spy = historicalData.BRGNX.prices
+  const vti = historicalData.VTI.prices
+  const brgnx = historicalData.BRGNX.prices
   const tqqq = historicalData.TQQQ.prices
   const btc = historicalData.BTC.prices
 
   // Build date lookup maps for fast access
+  // Use exact match for most assets, but VTI needs nearest-date lookup
+  // because its weekly interval is offset from the others
   const spxlMap = new Map(spxl.map(p => [p.date, p.value]))
-  const spyMap = new Map(spy.map(p => [p.date, p.value]))
+  const vtiLookup = buildPriceMap(vti) // VTI uses nearest-date for misaligned data
+  const brgnxMap = new Map(brgnx.map(p => [p.date, p.value]))
   const tqqqMap = new Map(tqqq.map(p => [p.date, p.value]))
   const btcMap = new Map(btc.map(p => [p.date, p.value]))
 
@@ -54,26 +94,30 @@ export function blendPricesWithDividends(
   if (dates.length === 0) {
     return {
       prices: [],
-      startingPrices: { SPXL: 1, BRGNX: 1, TQQQ: 1, BTC: 1 },
-      dividends: { SPXL: [], BRGNX: [], TQQQ: [] }
+      startingPrices: { SPXL: 1, VTI: 1, BRGNX: 1, TQQQ: 1, BTC: 1 },
+      dividends: { SPXL: [], VTI: [], BRGNX: [], TQQQ: [] }
     }
   }
 
   // Get starting values for normalization
   const firstDate = dates[0]
   const spxlStart = spxlMap.get(firstDate) || 1
-  const spyStart = spyMap.get(firstDate) || 1
+  const vtiStart = vtiLookup(firstDate) || 1
+  const brgnxStart = brgnxMap.get(firstDate) || 1
   const tqqqStart = tqqqMap.get(firstDate) || 1
   const btcStart = btcMap.get(firstDate) || 1
 
   // Filter dividends to date range
   const spxlDividendsRaw = historicalData.SPXL.dividends || []
-  const spyDividendsRaw = historicalData.BRGNX.dividends || []
+  const vtiDividendsRaw = historicalData.VTI.dividends || []
+  const brgnxDividendsRaw = historicalData.BRGNX.dividends || []
   const tqqqDividendsRaw = historicalData.TQQQ.dividends || []
 
   const spxlDividends = spxlDividendsRaw
     .filter(d => d.exDate >= dateRange.start && d.exDate <= dateRange.end)
-  const spyDividends = spyDividendsRaw
+  const vtiDividends = vtiDividendsRaw
+    .filter(d => d.exDate >= dateRange.start && d.exDate <= dateRange.end)
+  const brgnxDividends = brgnxDividendsRaw
     .filter(d => d.exDate >= dateRange.start && d.exDate <= dateRange.end)
   const tqqqDividends = tqqqDividendsRaw
     .filter(d => d.exDate >= dateRange.start && d.exDate <= dateRange.end)
@@ -81,11 +125,13 @@ export function blendPricesWithDividends(
   // Debug: Log dividend filtering
   console.log('Price blender dividend filtering:', {
     spxlRaw: spxlDividendsRaw.length,
-    spyRaw: spyDividendsRaw.length,
+    vtiRaw: vtiDividendsRaw.length,
+    brgnxRaw: brgnxDividendsRaw.length,
     tqqqRaw: tqqqDividendsRaw.length,
     dateRange,
     spxlFiltered: spxlDividends.length,
-    spyFiltered: spyDividends.length,
+    vtiFiltered: vtiDividends.length,
+    brgnxFiltered: brgnxDividends.length,
     tqqqFiltered: tqqqDividends.length
   })
 
@@ -93,14 +139,16 @@ export function blendPricesWithDividends(
   const prices = dates.map(date => {
     // Normalize each asset (start value = 100)
     const spxlNorm = ((spxlMap.get(date) || 0) / spxlStart) * 100
-    const spyNorm = ((spyMap.get(date) || 0) / spyStart) * 100
+    const vtiNorm = ((vtiLookup(date) || 0) / vtiStart) * 100
+    const brgnxNorm = ((brgnxMap.get(date) || 0) / brgnxStart) * 100
     const tqqqNorm = ((tqqqMap.get(date) || 0) / tqqqStart) * 100
     const btcNorm = ((btcMap.get(date) || 0) / btcStart) * 100
 
     // Calculate weighted blend
     const blendedValue =
       (spxlNorm * allocation.SPXL) +
-      (spyNorm * allocation.BRGNX) +
+      (vtiNorm * allocation.VTI) +
+      (brgnxNorm * allocation.BRGNX) +
       (tqqqNorm * allocation.TQQQ) +
       (btcNorm * allocation.BTC)
 
@@ -114,13 +162,15 @@ export function blendPricesWithDividends(
     prices,
     startingPrices: {
       SPXL: spxlStart,
-      BRGNX: spyStart,
+      VTI: vtiStart,
+      BRGNX: brgnxStart,
       TQQQ: tqqqStart,
       BTC: btcStart
     },
     dividends: {
       SPXL: spxlDividends,
-      BRGNX: spyDividends,
+      VTI: vtiDividends,
+      BRGNX: brgnxDividends,
       TQQQ: tqqqDividends
     }
   }

@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { SPXL_DIVIDENDS, TQQQ_DIVIDENDS, SPY_DIVIDENDS, BRGNX_DIVIDENDS, type DividendPayment } from '../../packages/server/src/data/dividends.js'
+import { SPXL_DIVIDENDS, TQQQ_DIVIDENDS, SPY_DIVIDENDS, BRGNX_DIVIDENDS, VTI_DIVIDENDS, type DividendPayment } from '../../packages/server/src/data/dividends.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -97,6 +97,29 @@ async function buildHistoricalData() {
     JSON.stringify(spyData, null, 2)
   )
   console.log(`✓ SPY: ${spyData.dataPoints} points (${spyData.startDate} to ${spyData.endDate})`)
+
+  // Process VTI (Total US Stock Market)
+  console.log('Processing VTI data from server weekly data...')
+  const vtiPrices = await loadOHLCVData(resolve(serverDataDir, 'vti-weekly.json'))
+  if (vtiPrices.length === 0) {
+    throw new Error('No valid VTI data found')
+  }
+
+  const vtiData: HistoricalData = {
+    ticker: 'VTI',
+    name: 'Vanguard Total Stock Market ETF',
+    type: 'stock',
+    startDate: vtiPrices[0].date,
+    endDate: vtiPrices[vtiPrices.length - 1].date,
+    dataPoints: vtiPrices.length,
+    prices: vtiPrices,
+    dividends: VTI_DIVIDENDS
+  }
+  await writeFile(
+    resolve(outputDir, 'vti-weekly.json'),
+    JSON.stringify(vtiData, null, 2)
+  )
+  console.log(`✓ VTI: ${vtiData.dataPoints} points (${vtiData.startDate} to ${vtiData.endDate})`)
 
   // Process TQQQ (3x NASDAQ)
   console.log('Processing TQQQ data from server weekly data...')

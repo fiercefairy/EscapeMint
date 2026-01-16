@@ -96,18 +96,31 @@ export const INTRO_STEPS: IntroStep[] = [
   },
   {
     id: 9,
+    title: 'Choosing Your Assets',
+    content: [
+      <><span className="font-semibold text-blue-400">Core principle:</span> Only invest in assets that can only go to zero if the entire economy collapses. Meme stocks can go to zero. If the whole market goes to zero, you have bigger problems than your stock holdings valuation.</>,
+      <><span className="font-semibold">For long-term holdings:</span> Total market indexes (VTI), Bitcoin (BTC), large-cap indexes, or mag-7 stocks. These are "hold forever" assets for retirement accounts.</>,
+      <><span className="font-semibold">For cash management:</span> Leveraged ETFs like TQQQ/SPXL can be used in harvest mode if you're confident the current market regime continues—low rates, tech growth, low volatility.</>,
+      'The key is matching your asset choice to your goal: stable accumulation vs. aggressive cash harvesting.',
+      'And if regime conditions change, you can rebalance—that\'s the power of a rules-based system.'
+    ],
+    chartType: 'none'
+  },
+  {
+    id: 10,
     title: 'Leveraged ETFs = More Volatility',
     content: [
       'Example assets used by the creator (not financial advice):',
       <><span className="font-semibold">TQQQ</span> is a 3x leveraged long on the Nasdaq-100.<br /><span className="text-xs text-slate-500">TQQQ seeks daily investment results, before fees and expenses, that correspond to three times (3x) the daily performance of the Nasdaq-100 Index.</span> <a href="https://portfolioslab.com/tools/stock-comparison/%5ENDX/TQQQ" target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300">Compare TQQQ vs Nasdaq-100 →</a></>,
       <><span className="font-semibold">SPXL</span> is a 3x leveraged long on the Russell 1000 Large Cap Index.<br /><span className="text-xs text-slate-500">SPXL seeks daily investment results, before fees and expenses, of 300% of the price performance of the Russell 1000 Index. There is no guarantee the fund will meet its stated investment objective.</span> <a href="https://portfolioslab.com/tools/stock-comparison/BRGNX/SPXL" target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300">Compare SPXL vs BRGNX →</a></>,
       'More volatility = more opportunities to buy low and sell high.',
+      <><span className="font-semibold text-amber-400">⚠️ Important:</span> Historical results are not guaranteed. The past decade was exceptionally favorable for leveraged ETFs—low interest rates, tech dominance, and sustained bull markets. A regime change (higher rates, stagflation, prolonged volatility) could significantly impair these products through volatility decay and higher borrowing costs.</>,
       'Your choice of assets depends on your risk tolerance and research.'
     ],
     chartType: 'leverage'
   },
   {
-    id: 10,
+    id: 11,
     title: 'What This System Is NOT',
     content: [
       'This is NOT for:',
@@ -120,7 +133,7 @@ export const INTRO_STEPS: IntroStep[] = [
     chartType: 'none'
   },
   {
-    id: 11,
+    id: 12,
     title: 'Your Personal Configuration',
     content: [
       'You control:',
@@ -133,11 +146,12 @@ export const INTRO_STEPS: IntroStep[] = [
     chartType: 'none'
   },
   {
-    id: 12,
+    id: 13,
     title: 'Get Started',
     content: [
       'Ready to simulate your first fund?',
-      'Try the backtest tool to see how this strategy would have performed with different assets and configurations.'
+      'Try the backtest tool to see how this strategy would have performed with different assets and configurations.',
+      <>For reference (not financial advice), the creator has a public M1 Finance Pie at <a href="https://m1.finance/ahf9WyY0IIek" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">m1.finance/ahf9WyY0IIek</a></>
     ],
     chartType: 'none',
     showDisclaimer: true

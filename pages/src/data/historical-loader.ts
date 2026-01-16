@@ -18,13 +18,17 @@ export async function loadHistoricalData(): Promise<Record<string, HistoricalDat
     const base = import.meta.env.BASE_URL
     // Add cache-busting timestamp to ensure fresh data
     const cacheBust = `?t=${Date.now()}`
-    const [spxl, spy, brgnx, tqqq, btc] = await Promise.all([
+    const [spxl, spy, vti, brgnx, tqqq, btc] = await Promise.all([
       fetch(`${base}data/spxl-weekly.json${cacheBust}`).then(r => {
         if (!r.ok) throw new Error(`Failed to load SPXL data: ${r.statusText}`)
         return r.json()
       }),
       fetch(`${base}data/spy-weekly.json${cacheBust}`).then(r => {
         if (!r.ok) throw new Error(`Failed to load SPY data: ${r.statusText}`)
+        return r.json()
+      }),
+      fetch(`${base}data/vti-weekly.json${cacheBust}`).then(r => {
+        if (!r.ok) throw new Error(`Failed to load VTI data: ${r.statusText}`)
         return r.json()
       }),
       fetch(`${base}data/brgnx-weekly.json${cacheBust}`).then(r => {
@@ -45,11 +49,13 @@ export async function loadHistoricalData(): Promise<Record<string, HistoricalDat
     console.log('=== HISTORICAL DATA LOADED ===')
     console.log('SPXL dividends:', spxl.dividends?.length ?? 0, spxl.dividends?.slice(0, 3))
     console.log('SPY dividends:', spy.dividends?.length ?? 0, spy.dividends?.slice(0, 3))
+    console.log('VTI dividends:', vti.dividends?.length ?? 0, vti.dividends?.slice(0, 3))
     console.log('TQQQ dividends:', tqqq.dividends?.length ?? 0, tqqq.dividends?.slice(0, 3))
 
     cachedData = {
       SPXL: spxl as HistoricalData,
       SPY: spy as HistoricalData,
+      VTI: vti as HistoricalData,
       BRGNX: brgnx as HistoricalData,
       TQQQ: tqqq as HistoricalData,
       BTC: btc as HistoricalData
