@@ -16,8 +16,7 @@ export const INTRO_STEPS: IntroStep[] = [
       '"The stock market is a device for transferring money from the impatient to the patient... nobody wants to get rich slowly." — Warren Buffett',
       'Getting rich is easy, as long as you\'re willing to do it slowly.',
       'You don\'t need to watch the news, analyze earnings reports, or pick individual stocks.',
-      'If you believe one thing:',
-      'The whole stock market goes up over time.'
+      'Remove emotion, track your position and follow the rules.'
     ],
     chartType: 'none',
     showDisclaimer: true
