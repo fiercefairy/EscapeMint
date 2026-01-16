@@ -331,7 +331,7 @@ export function BacktestView({ config, historicalData, dateRange, onChange, onAp
     <div className="space-y-4">
       {/* Configuration Panel - Compact */}
       <div className="bg-slate-800 rounded-lg border border-slate-700 p-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {/* Allocation */}
           <div>
             <h3 className="text-xs font-medium text-slate-400 mb-2">Allocation</h3>
