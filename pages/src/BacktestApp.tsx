@@ -342,6 +342,16 @@ export function BacktestApp() {
         <div className="container mx-auto px-4 sm:px-6 py-6 text-center text-sm text-slate-500">
           <p>Historical data: SPXL (3x Russell 1000), VTI (Total US Market), BRGNX (Russell 1000), TQQQ (3x NASDAQ), BTC (Bitcoin)</p>
           <p className="mt-1">All calculations run in-browser using EscapeMint engine</p>
+          <p className="mt-2">
+            <a
+              href="https://github.com/atomantic/EscapeMint"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              Run the App
+            </a>
+          </p>
         </div>
       </footer>
     </div>
