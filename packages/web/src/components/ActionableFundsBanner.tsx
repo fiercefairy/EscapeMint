@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchActionableFunds, FUNDS_CHANGED_EVENT, type ActionableFund } from '../api/funds'
 import { getFundTypeFeatures } from '@escapemint/engine'
 import { useSettings } from '../contexts/SettingsContext'
+import { isStockMarketClosed } from '../utils/format'
 
 // Days overdue threshold for high urgency styling (red border)
 const URGENCY_THRESHOLD_DAYS = 7
@@ -73,7 +74,16 @@ export function ActionableFundsBanner() {
     notifyActionableDismissed(newVisibleCount)
   }
 
-  const visibleFunds = actionableFunds.filter(f => !dismissed.has(f.id))
+  // Check if stock market is closed (weekend or holiday) - memoize to avoid recalculating
+  const marketClosed = useMemo(() => isStockMarketClosed(), [])
+
+  // Filter out dismissed funds and stock funds when market is closed
+  const visibleFunds = actionableFunds.filter(f => {
+    if (dismissed.has(f.id)) return false
+    // Skip stock funds on weekends/holidays since market is closed
+    if (marketClosed && f.fundType === 'stock') return false
+    return true
+  })
 
   // Notify on initial load and when actionable funds change
   useEffect(() => {

@@ -118,3 +118,116 @@ export const getPriorEquity = (entries: {
 
   return equity
 }
+
+/**
+ * Check if the US stock market is closed on the given date
+ * Returns true for weekends and major US stock market holidays
+ */
+export function isStockMarketClosed(date: Date = new Date()): boolean {
+  const dayOfWeek = date.getDay()
+
+  // Weekend check (Saturday = 6, Sunday = 0)
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    return true
+  }
+
+  // Check for US stock market holidays
+  return isUSMarketHoliday(date)
+}
+
+/**
+ * Check if date is a US stock market holiday
+ * Includes: New Year's Day, MLK Day, Presidents Day, Good Friday,
+ * Memorial Day, Juneteenth, Independence Day, Labor Day, Thanksgiving, Christmas
+ */
+function isUSMarketHoliday(date: Date): boolean {
+  const year = date.getFullYear()
+  const month = date.getMonth() // 0-indexed
+  const day = date.getDate()
+
+  // Helper to get observed date for fixed holidays
+  // If falls on Saturday, observed Friday. If Sunday, observed Monday.
+  const getObservedDate = (m: number, d: number): { month: number; day: number } => {
+    const holiday = new Date(year, m, d)
+    const dow = holiday.getDay()
+    if (dow === 6) return { month: m, day: d - 1 } // Saturday -> Friday
+    if (dow === 0) return { month: m, day: d + 1 } // Sunday -> Monday
+    return { month: m, day: d }
+  }
+
+  // Helper to get nth weekday of month (e.g., 3rd Monday)
+  const getNthWeekdayOfMonth = (m: number, weekday: number, n: number): number => {
+    const firstDay = new Date(year, m, 1)
+    const firstWeekday = firstDay.getDay()
+    const daysUntilWeekday = (weekday - firstWeekday + 7) % 7
+    return 1 + daysUntilWeekday + (n - 1) * 7
+  }
+
+  // Helper to get last weekday of month
+  const getLastWeekdayOfMonth = (m: number, weekday: number): number => {
+    const lastDay = new Date(year, m + 1, 0).getDate()
+    const lastDayOfWeek = new Date(year, m, lastDay).getDay()
+    const daysBack = (lastDayOfWeek - weekday + 7) % 7
+    return lastDay - daysBack
+  }
+
+  // New Year's Day (January 1, observed)
+  const newYears = getObservedDate(0, 1)
+  if (month === newYears.month && day === newYears.day) return true
+
+  // Martin Luther King Jr. Day (3rd Monday of January)
+  if (month === 0 && day === getNthWeekdayOfMonth(0, 1, 3)) return true
+
+  // Presidents Day (3rd Monday of February)
+  if (month === 1 && day === getNthWeekdayOfMonth(1, 1, 3)) return true
+
+  // Good Friday (Friday before Easter)
+  const easter = calculateEaster(year)
+  const goodFriday = new Date(easter)
+  goodFriday.setDate(goodFriday.getDate() - 2)
+  if (month === goodFriday.getMonth() && day === goodFriday.getDate()) return true
+
+  // Memorial Day (Last Monday of May)
+  if (month === 4 && day === getLastWeekdayOfMonth(4, 1)) return true
+
+  // Juneteenth (June 19, observed)
+  const juneteenth = getObservedDate(5, 19)
+  if (month === juneteenth.month && day === juneteenth.day) return true
+
+  // Independence Day (July 4, observed)
+  const july4 = getObservedDate(6, 4)
+  if (month === july4.month && day === july4.day) return true
+
+  // Labor Day (1st Monday of September)
+  if (month === 8 && day === getNthWeekdayOfMonth(8, 1, 1)) return true
+
+  // Thanksgiving (4th Thursday of November)
+  if (month === 10 && day === getNthWeekdayOfMonth(10, 4, 4)) return true
+
+  // Christmas (December 25, observed)
+  const christmas = getObservedDate(11, 25)
+  if (month === christmas.month && day === christmas.day) return true
+
+  return false
+}
+
+/**
+ * Calculate Easter Sunday using the Anonymous Gregorian algorithm
+ */
+function calculateEaster(year: number): Date {
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * m + 114) / 31) - 1
+  const day = ((h + l - 7 * m + 114) % 31) + 1
+  return new Date(year, month, day)
+}

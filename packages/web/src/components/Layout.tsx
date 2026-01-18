@@ -4,6 +4,7 @@ import { fetchFunds, fetchActionableFunds, FUNDS_CHANGED_EVENT, type FundSummary
 import { fetchPlatforms, type Platform } from '../api/platforms'
 import { useSettings } from '../contexts/SettingsContext'
 import { ACTIONABLE_DISMISSED_EVENT, getDismissedFundIds } from './ActionableFundsBanner'
+import { isStockMarketClosed } from '../utils/format'
 
 const SIDEBAR_COLLAPSED_KEY = 'escapemint-sidebar-collapsed'
 const EXPANDED_PLATFORMS_KEY = 'escapemint-expanded-platforms'
@@ -69,9 +70,15 @@ export function Layout() {
     }).catch(() => {})
     fetchActionableFunds(settings.testFundsMode).then(result => {
       if (result.data) {
-        // Filter out dismissed funds from the count
+        // Filter out dismissed funds and stock funds when market is closed
         const dismissed = getDismissedFundIds()
-        const visibleCount = result.data.actionableFunds.filter(f => !dismissed.has(f.id)).length
+        const marketClosed = isStockMarketClosed()
+        const visibleCount = result.data.actionableFunds.filter(f => {
+          if (dismissed.has(f.id)) return false
+          // Skip stock funds on weekends/holidays since market is closed
+          if (marketClosed && f.fundType === 'stock') return false
+          return true
+        }).length
         setActionableFundsCount(visibleCount)
       }
     }).catch(() => {})
