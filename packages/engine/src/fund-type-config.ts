@@ -1,4 +1,4 @@
-import type { FundType, SubFundConfig } from './types.js'
+import type { FundType, FundCategory, SubFundConfig } from './types.js'
 
 /**
  * Default configuration values by fund type.
@@ -200,6 +200,87 @@ export const ALLOWED_ACTIONS: Record<FundType, readonly string[]> = {
 }
 
 // ============================================
+// Fund Category Configuration
+// ============================================
+
+/**
+ * Display configuration for fund categories.
+ * Categories represent investment philosophy pillars.
+ */
+export interface FundCategoryConfig {
+  /** Display label for the category */
+  label: string
+  /** Short label for badges/tags (3-4 chars) */
+  shortLabel: string
+  /** Short description of the category purpose */
+  description: string
+  /** Color for charts and UI elements */
+  color: string
+  /** Tailwind text color class */
+  textColorClass: string
+  /** Example tickers for this category */
+  examples: string[]
+}
+
+/**
+ * Configuration for each fund category pillar.
+ */
+export const FUND_CATEGORY_CONFIG: Record<FundCategory, FundCategoryConfig> = {
+  liquidity: {
+    label: 'Liquidity',
+    shortLabel: 'Liq',
+    description: '24/7 cash access for spending and investing',
+    color: '#3b82f6', // blue
+    textColorClass: 'text-blue-400',
+    examples: ['Cash', 'Money Market']
+  },
+  yield: {
+    label: 'Yield',
+    shortLabel: 'Yld',
+    description: 'High yield cash storage (10-11% APY stable stocks)',
+    color: '#10b981', // green
+    textColorClass: 'text-emerald-400',
+    examples: ['STRC', 'High-yield ETFs']
+  },
+  sov: {
+    label: 'Store of Value',
+    shortLabel: 'SoV',
+    description: 'Global store of value, hedge against fiat',
+    color: '#f59e0b', // amber
+    textColorClass: 'text-amber-400',
+    examples: ['BTC', 'ETH']
+  },
+  volatility: {
+    label: 'Volatility',
+    shortLabel: 'Vol',
+    description: 'Capture whole market fluctuations',
+    color: '#ef4444', // red
+    textColorClass: 'text-red-400',
+    examples: ['TQQQ', 'SPXL', 'UPRO']
+  }
+}
+
+/**
+ * All available fund categories in display order.
+ */
+export const FUND_CATEGORIES: FundCategory[] = [
+  'liquidity',
+  'yield',
+  'sov',
+  'volatility'
+]
+
+/**
+ * Default category mapping based on fund type.
+ * Used when a fund doesn't have an explicit category set.
+ */
+export const DEFAULT_CATEGORY_BY_TYPE: Partial<Record<FundType, FundCategory>> = {
+  cash: 'liquidity',
+  derivatives: 'volatility'
+  // stock and crypto have no default - user must configure
+}
+
+// ============================================
 // Helper Functions
 // ============================================
 
@@ -291,4 +372,23 @@ export const applyFundTypeDefaults = <
   }
 
   return formData
+}
+
+/**
+ * Get configuration for a fund category.
+ */
+export const getFundCategoryConfig = (
+  category: FundCategory
+): FundCategoryConfig => FUND_CATEGORY_CONFIG[category]
+
+/**
+ * Get the effective category for a fund.
+ * Returns explicit category if set, otherwise falls back to type-based default.
+ */
+export const getEffectiveCategory = (
+  category: FundCategory | undefined,
+  fundType: FundType = 'stock'
+): FundCategory | undefined => {
+  if (category) return category
+  return DEFAULT_CATEGORY_BY_TYPE[fundType]
 }

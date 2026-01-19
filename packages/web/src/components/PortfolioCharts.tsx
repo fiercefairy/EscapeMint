@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, memo } from 'react'
 import * as d3 from 'd3'
 import type { TimeSeriesPoint, AllocationData } from '../api/funds'
 import { formatCurrencyCompact, formatPercentSimple } from '../utils/format'
+import { CategoryBarChart, type CategoryAllocation, type MarginInfo } from './CategoryBarChart'
 
 interface PortfolioChartsProps {
   timeSeries: TimeSeriesPoint[]
@@ -21,6 +22,8 @@ interface PortfolioChartsProps {
     realizedAPY?: number
     liquidAPY?: number
   }
+  categoryAllocations?: CategoryAllocation[]
+  marginInfo?: MarginInfo
 }
 
 // Colors for pie charts
@@ -1615,7 +1618,7 @@ const MarginChart = memo(function MarginChart({ data, currentAccess, currentBorr
   )
 })
 
-export const PortfolioCharts = memo(function PortfolioCharts({ timeSeries, allocations, totals, aggregateTotals }: PortfolioChartsProps) {
+export const PortfolioCharts = memo(function PortfolioCharts({ timeSeries, allocations, totals, aggregateTotals, categoryAllocations, marginInfo }: PortfolioChartsProps) {
   const hasMarginAccess = totals.totalCurrentMarginAccess > 0
   const [resize, setResize] = useState(0)
 
@@ -1694,8 +1697,8 @@ export const PortfolioCharts = memo(function PortfolioCharts({ timeSeries, alloc
         />
       </div>
 
-      {/* Time Series Charts - Row 2: Fund totals */}
-      <div className="grid grid-cols-2 gap-1 xs:gap-1.5 sm:gap-2">
+      {/* Time Series Charts - Row 2: Fund totals + Portfolio Allocation */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 xs:gap-1.5 sm:gap-2">
         <FundsStackedAreaChart
           data={timeSeries}
           allocations={allocations}
@@ -1708,6 +1711,13 @@ export const PortfolioCharts = memo(function PortfolioCharts({ timeSeries, alloc
           color="#10b981"
           resize={resize}
         />
+        {categoryAllocations && categoryAllocations.some(c => c.value > 0) && (
+          <CategoryBarChart
+            data={categoryAllocations}
+            margin={marginInfo}
+            title="Portfolio Allocation"
+          />
+        )}
       </div>
 
       {/* Time Series Charts - Row 3: Cash and allocation */}

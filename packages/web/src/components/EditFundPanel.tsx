@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { updateFund, deleteFund, syncFromSubfunds, notifyFundsChanged, type FundConfig, type FundStatus, type FundType } from '../api/funds'
+import { updateFund, deleteFund, syncFromSubfunds, notifyFundsChanged, type FundConfig, type FundStatus, type FundType, type FundCategory } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
 import { useSettings } from '../contexts/SettingsContext'
 import {
   isCashFund as checkIsCashFund,
   getFundTypeFeatures,
-  FUND_TYPE_DEFAULTS
+  FUND_TYPE_DEFAULTS,
+  FUND_CATEGORIES,
+  FUND_CATEGORY_CONFIG
 } from '@escapemint/engine'
 
 interface EditFundPanelProps {
@@ -35,6 +37,7 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
   const [selectedPlatform, setSelectedPlatform] = useState(fundPlatform.toLowerCase())
   const [ticker, setTicker] = useState(fundTicker.toLowerCase())
   const [fundType, setFundType] = useState<FundType>(config.fund_type ?? 'stock')
+  const [category, setCategory] = useState<FundCategory | ''>(config.category ?? '')
   const [formData, setFormData] = useState({
     status: config.status ?? 'active' as FundStatus,
     fund_size_usd: config.fund_size_usd,
@@ -81,6 +84,7 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
     const updatedConfig: Partial<FundConfig> = {
       status: formData.status,
       fund_type: fundType,
+      category: category || undefined,
       fund_size_usd: formData.fund_size_usd,
       target_apy: features.allowsTrading ? round(formData.target_apy / 100, 4) : (defaults.target_apy ?? 0),
       interval_days: features.allowsTrading ? formData.interval_days : (defaults.interval_days ?? 1),
@@ -217,6 +221,28 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
               })}
             </div>
           </div>
+
+          {/* Category Selection - not shown for cash funds (always liquidity) */}
+          {fundType !== 'cash' && (
+            <div>
+              <label className="block text-xs text-slate-400 mb-2">Category (for portfolio balance)</label>
+              <select
+                value={category}
+                onChange={e => setCategory(e.target.value as FundCategory | '')}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+              >
+                <option value="">No category</option>
+                {FUND_CATEGORIES.map(cat => {
+                  const catConfig = FUND_CATEGORY_CONFIG[cat]
+                  return (
+                    <option key={cat} value={cat}>
+                      {catConfig.label} - {catConfig.description}
+                    </option>
+                  )
+                })}
+              </select>
+            </div>
+          )}
 
           {/* Platform & Ticker */}
           <div className="grid grid-cols-2 gap-3">

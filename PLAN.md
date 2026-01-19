@@ -21,6 +21,29 @@ See the [docs/](./docs/) folder for detailed documentation:
 
 ## Recently Completed
 
+### Four Pillars Fund Categories (v0.27.0)
+Portfolio categorization system with 4 investment philosophy pillars: Liquidity, Yield, Store of Value, Volatility. Margin is tracked separately as borrowing capacity.
+
+**Features:**
+- [x] New `FundCategory` type with 4 categories and configuration
+- [x] Category selector in Create/Edit fund modals
+- [x] Horizontal bar chart on dashboard showing portfolio allocation by category
+- [x] Margin capacity indicator (available vs borrowed) shown separately
+- [x] Category badge on fund cards
+- [x] Auto-assign categories: cash→liquidity, derivatives→volatility, btc→sov, strc→yield
+- [x] Philosophy docs updated with "The Four Pillars of Portfolio Construction" section
+
+**Files Modified:**
+- `packages/engine/src/types.ts` - Added FundCategory type
+- `packages/engine/src/fund-type-config.ts` - Added FUND_CATEGORY_CONFIG
+- `packages/web/src/components/CategoryBarChart.tsx` - New horizontal bar chart with margin overlay
+- `packages/web/src/components/PortfolioCharts.tsx` - Integrated category bar chart
+- `packages/web/src/pages/Dashboard.tsx` - Category allocation computation
+- `packages/web/src/components/CreateFundModal.tsx` - Category selector with auto-assign
+- `packages/web/src/components/EditFundPanel.tsx` - Category selector
+- `packages/web/src/components/FundCard.tsx` - Category badge display
+- `docs/philosophy.md` - Added four pillars documentation
+
 ### Onboarding Wizard (v0.22)
 Interactive 12-step introduction wizard explaining the fund strategy with animated D3 chart visualizations.
 

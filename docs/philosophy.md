@@ -46,6 +46,73 @@ What we **avoid**:
 - Options, futures, or complex derivatives (except tracked perps)
 - Anything we wouldn't be comfortable holding through a 50% drawdown
 
+## The Four Pillars of Portfolio Construction
+
+The goal of EscapeMint is **not** to pick winners. We don't buy a basket of different holdings hoping one outperforms (SPXL + TQQQ + AMZN + AAPL). Instead, we put money into full market exposure and fill **four categorical buckets** that each serve a distinct purpose:
+
+```
+              SoV (BTC)
+                  |
+                  |
+    Yield ────────┼──────── Volatility
+    (STRC)        |         (TQQQ)
+                  |
+             Liquidity
+               (Cash)
+```
+
+### 1. Liquidity (Cash)
+**Purpose**: 24/7 access to spend or invest
+
+Your cash position provides instant liquidity. When opportunities arise or expenses hit, you have immediate access without selling positions at inopportune times.
+
+- **Examples**: Platform cash, money market funds
+- **Why it matters**: Flexibility to act on opportunities without forced selling
+
+### 2. Yield (High-Yield Cash Storage)
+**Purpose**: Earn elevated returns on idle capital (10-11% APY)
+
+Optional high-yield stable stocks provide better returns than cash while maintaining relative stability. Trading windows are a limiting factor, but you can move to cash easily when needed.
+
+- **Examples**: STRC, high-yield dividend ETFs
+- **Why it matters**: Beat inflation on cash reserves while staying liquid
+
+### 3. Store of Value (SoV)
+**Purpose**: Global store of value and hedge against fiat debasement
+
+BTC serves as the creator's largest holding—a hedge against all fiat currencies and governments. Not a trading position, but a forever hold.
+
+- **Examples**: BTC, ETH
+- **Why it matters**: Insurance against systemic fiat risk
+
+### 4. Volatility (Market Capture)
+**Purpose**: Capture whole market fluctuations
+
+Instead of picking individual stocks, we use leveraged broad market exposure (TQQQ) to capture volatility. The goal is the entire market's movement, not betting on specific companies.
+
+- **Examples**: TQQQ (3x Nasdaq), SPXL (3x S&P 500), UPRO
+- **Why it matters**: Higher returns than the index alone through systematic DCA
+
+### Margin: Your Borrowing Capacity
+
+Margin isn't an allocation category—it's borrowing capacity derived from your holdings. Built on stock holdings (particularly in M1 Finance pies), margin allows you to borrow against your portfolio for long-term accumulation or major purchases—without triggering capital gains.
+
+- **Examples**: M1 Finance pie with margin enabled, portfolio margin accounts
+- **Why it matters**: Tax-efficient access to capital while maintaining positions
+
+EscapeMint tracks your available margin and usage separately from your allocations, showing it as an overlay on the portfolio chart.
+
+### Why Categories Matter
+
+| Wrong Approach | EscapeMint Approach |
+|----------------|---------------------|
+| Buy AMZN hoping it beats AAPL | Buy TQQQ to capture the whole market |
+| Hold 20 different stocks "for diversification" | Fill 4 categorical buckets, each with purpose |
+| Pick the next 10-bagger | Systematic DCA into proven market exposure |
+| Time individual stock movements | Let volatility work for you through tiered DCA |
+
+Each fund you create in EscapeMint can be assigned to one of these categories, allowing you to visualize your portfolio balance across all four pillars.
+
 ## Two Operating Modes: Accumulate vs Harvest
 
 ### Mode 1: Accumulate (Building Your Position)

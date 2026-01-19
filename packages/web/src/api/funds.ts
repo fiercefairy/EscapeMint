@@ -18,10 +18,12 @@ export interface ChartBounds {
 
 export type FundStatus = 'active' | 'closed'
 export type FundType = 'cash' | 'stock' | 'crypto' | 'derivatives'
+export type FundCategory = 'liquidity' | 'yield' | 'sov' | 'volatility'
 
 export interface FundConfig {
   fund_type?: FundType
   status?: FundStatus
+  category?: FundCategory
   fund_size_usd: number
   target_apy: number
   interval_days: number
@@ -277,6 +279,7 @@ export interface FundMetrics {
   ticker: string
   status: 'active' | 'closed'
   fundType: 'cash' | 'stock' | 'crypto' | 'derivatives'
+  category?: FundCategory
   fundSize: number
   currentValue: number
   startInput: number
@@ -391,6 +394,8 @@ export interface AllocationData {
   id: string
   ticker: string
   platform: string
+  fundType?: FundType
+  category?: FundCategory
   value: number
   cash: number
   fundSize: number

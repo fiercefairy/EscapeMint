@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { createFund, notifyFundsChanged, type FundConfig, type FundType } from '../api/funds'
+import { createFund, notifyFundsChanged, type FundConfig, type FundType, type FundCategory } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
 import {
   getFundTypeFeatures,
-  FUND_TYPE_DEFAULTS
+  FUND_TYPE_DEFAULTS,
+  FUND_CATEGORIES,
+  FUND_CATEGORY_CONFIG,
+  DEFAULT_CATEGORY_BY_TYPE
 } from '@escapemint/engine'
 
 interface CreateFundModalProps {
@@ -25,6 +28,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
   const [selectedPlatform, setSelectedPlatform] = useState('')
   const [ticker, setTicker] = useState('')
   const [fundType, setFundType] = useState<FundType>('stock')
+  const [category, setCategory] = useState<FundCategory | ''>('')
   const [formData, setFormData] = useState({
     fund_size_usd: 10000,
     target_apy: 25, // Display as percentage
@@ -63,8 +67,12 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     })
   }, [])
 
-  // Update manage_cash default when fund type changes
+  // Update manage_cash default and category when fund type changes
   useEffect(() => {
+    // Set default category based on fund type
+    const defaultCategory = DEFAULT_CATEGORY_BY_TYPE[fundType]
+    setCategory(defaultCategory || '')
+
     if (fundType === 'stock' || fundType === 'crypto') {
       setFormData(prev => ({
         ...prev,
@@ -84,6 +92,18 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     }
   }, [fundType])
 
+  // Auto-assign category based on ticker
+  useEffect(() => {
+    if (!category) {
+      const t = ticker.toLowerCase()
+      if (t === 'btc') {
+        setCategory('sov')
+      } else if (t === 'strc') {
+        setCategory('yield')
+      }
+    }
+  }, [ticker, category])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedPlatform || !ticker) {
@@ -96,6 +116,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     const config: Partial<FundConfig> = {
       status: 'active',
       fund_type: fundType,
+      category: category || undefined,
       fund_size_usd: formData.fund_size_usd,
       target_apy: features.allowsTrading ? round(formData.target_apy / 100, 4) : (defaults.target_apy ?? 0),
       interval_days: features.allowsTrading ? formData.interval_days : (defaults.interval_days ?? 1),
@@ -180,6 +201,28 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                 : 'Stock funds support full trading, dividends, and DCA strategies'}
             </p>
           </div>
+
+          {/* Category Selection - not shown for cash funds (always liquidity) */}
+          {fundType !== 'cash' && (
+            <div>
+              <label className="block text-xs text-slate-400 mb-2">Category (for portfolio balance)</label>
+              <select
+                value={category}
+                onChange={e => setCategory(e.target.value as FundCategory | '')}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+              >
+                <option value="">No category</option>
+                {FUND_CATEGORIES.map(cat => {
+                  const catConfig = FUND_CATEGORY_CONFIG[cat]
+                  return (
+                    <option key={cat} value={cat}>
+                      {catConfig.label} - {catConfig.description}
+                    </option>
+                  )
+                })}
+              </select>
+            </div>
+          )}
 
           {/* Platform & Ticker */}
           <div className="grid grid-cols-2 gap-3">

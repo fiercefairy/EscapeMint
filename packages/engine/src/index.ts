@@ -33,6 +33,7 @@ export type {
   ActionType,
   FundStatus,
   FundType,
+  FundCategory,
   SubFundConfig,
   Trade,
   CashFlow,
@@ -67,6 +68,9 @@ export {
   FUND_TYPE_DEFAULTS,
   FUND_TYPE_FEATURES,
   ALLOWED_ACTIONS,
+  FUND_CATEGORY_CONFIG,
+  FUND_CATEGORIES,
+  DEFAULT_CATEGORY_BY_TYPE,
   isCashFund,
   isDerivativesFund,
   isTradingFund,
@@ -74,10 +78,13 @@ export {
   getFundTypeDefaults,
   getAllowedActions,
   isValidAction,
-  applyFundTypeDefaults
+  applyFundTypeDefaults,
+  getFundCategoryConfig,
+  getEffectiveCategory
 } from './fund-type-config.js'
 export type {
   FundTypeFeatures,
+  FundCategoryConfig,
   CashFundAction,
   TradingFundAction,
   DerivativesFundAction

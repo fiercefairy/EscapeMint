@@ -3,6 +3,17 @@ export type ActionType = 'BUY' | 'SELL' | 'HOLD'
 export type FundStatus = 'active' | 'closed'
 
 /**
+ * Fund category represents investment philosophy pillars:
+ * - 'liquidity': 24/7 cash access for spending/investing
+ * - 'yield': High yield cash storage (10-11% APY stable stocks like STRC)
+ * - 'sov': Store of Value, hedge against fiat (BTC)
+ * - 'volatility': Capture market fluctuations (TQQQ, whole market exposure)
+ *
+ * Note: Margin is tracked separately as borrowing capacity, not an allocation category.
+ */
+export type FundCategory = 'liquidity' | 'yield' | 'sov' | 'volatility'
+
+/**
  * Fund type determines asset class and available features:
  * - 'cash': Platform cash pools (DEPOSIT/WITHDRAW only, no dividends)
  * - 'stock': Stock/ETF trading (full features including dividends)
@@ -23,6 +34,13 @@ export interface SubFundConfig {
    * Defaults to 'active' if not specified.
    */
   status?: FundStatus
+
+  /**
+   * Fund category for portfolio balance tracking.
+   * Represents the investment philosophy pillar this fund belongs to.
+   * If not specified, defaults based on fund_type (cash→liquidity, crypto→sov, derivatives→volatility).
+   */
+  category?: FundCategory
 
   /**
    * Total capital allocated to this sub-fund (e.g., $10,000).
