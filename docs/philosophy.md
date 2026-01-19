@@ -35,7 +35,7 @@ We recommend building positions in:
 |------------|----------|------------------|
 | **Broad Market Indexes** | VTI, VOO, SPY | Entire US economy would need to collapse |
 | **Leveraged Long Indexes** | TQQQ, SPXL, UPRO | Amplified exposure to indexes (use with liquidation mode) |
-| **Battle-Tested Crypto** | BTC, ETH | Deep tendrils in global markets, institutional adoption |
+| **Battle-Tested Crypto** | BTC | Deep tendrils in global markets, institutional adoption |
 | **Dividend Aristocrats** | VIG, SCHD | Decades of dividend growth history |
 
 What we **avoid**:
@@ -82,7 +82,7 @@ Optional high-yield stable stocks provide better returns than cash while maintai
 
 BTC serves as the creator's largest holding—a hedge against all fiat currencies and governments. Not a trading position, but a forever hold.
 
-- **Examples**: BTC, ETH
+- **Examples**: BTC
 - **Why it matters**: Insurance against systemic fiat risk
 
 ### 4. Volatility (Market Capture)

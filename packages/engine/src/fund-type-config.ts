@@ -248,7 +248,7 @@ export const FUND_CATEGORY_CONFIG: Record<FundCategory, FundCategoryConfig> = {
     description: 'Global store of value, hedge against fiat',
     color: '#f59e0b', // amber
     textColorClass: 'text-amber-400',
-    examples: ['BTC', 'ETH']
+    examples: ['BTC']
   },
   volatility: {
     label: 'Volatility',
