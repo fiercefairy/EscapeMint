@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { formatCurrencyCompact, formatPercentSimple } from '../utils/format'
 
-export interface CategoryAllocation {
+export interface CategoryChartData {
   category: string
   label: string
   value: number
@@ -15,7 +15,7 @@ export interface MarginInfo {
 }
 
 interface CategoryBarChartProps {
-  data: CategoryAllocation[]
+  data: CategoryChartData[]
   margin?: MarginInfo
   title?: string
 }

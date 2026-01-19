@@ -8,7 +8,7 @@ import { WelcomePanel } from '../components/WelcomePanel'
 import { ActionableFundsBanner } from '../components/ActionableFundsBanner'
 import { useDashboard } from '../contexts/DashboardContext'
 import type { FundSummary, AggregateMetrics, FundCategory } from '../api/funds'
-import type { CategoryAllocation } from '../components/RadarChart'
+import type { CategoryChartData } from '../components/CategoryBarChart'
 import {
   FUND_CATEGORY_CONFIG,
   FUND_CATEGORIES,
@@ -354,7 +354,7 @@ export function Dashboard() {
   }, [metrics, filterPlatform])
 
   // Calculate category allocations for the portfolio chart
-  const categoryAllocations = useMemo((): CategoryAllocation[] => {
+  const categoryAllocations = useMemo((): CategoryChartData[] => {
     if (!filteredHistory?.currentAllocations || !funds) return []
 
     // Build a map of fund ID to category info (single or multi-category)

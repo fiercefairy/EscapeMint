@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, memo } from 'react'
 import * as d3 from 'd3'
 import type { TimeSeriesPoint, AllocationData } from '../api/funds'
 import { formatCurrencyCompact, formatPercentSimple } from '../utils/format'
-import { CategoryBarChart, type CategoryAllocation, type MarginInfo } from './CategoryBarChart'
+import { CategoryBarChart, type CategoryChartData, type MarginInfo } from './CategoryBarChart'
 
 interface PortfolioChartsProps {
   timeSeries: TimeSeriesPoint[]
@@ -22,7 +22,7 @@ interface PortfolioChartsProps {
     realizedAPY?: number
     liquidAPY?: number
   }
-  categoryAllocations?: CategoryAllocation[]
+  categoryAllocations?: CategoryChartData[]
   marginInfo?: MarginInfo
 }
 
