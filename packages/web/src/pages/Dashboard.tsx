@@ -7,7 +7,13 @@ import { CreateFundModal } from '../components/CreateFundModal'
 import { WelcomePanel } from '../components/WelcomePanel'
 import { ActionableFundsBanner } from '../components/ActionableFundsBanner'
 import { useDashboard } from '../contexts/DashboardContext'
-import type { FundSummary, AggregateMetrics } from '../api/funds'
+import type { FundSummary, AggregateMetrics, FundCategory } from '../api/funds'
+import type { CategoryChartData } from '../components/CategoryBarChart'
+import {
+  FUND_CATEGORY_CONFIG,
+  FUND_CATEGORIES,
+  getEffectiveCategory
+} from '@escapemint/engine'
 
 // Lazy load the heavy ImportWizard component (3000+ lines)
 const ImportWizard = lazy(() => import('../components/ImportWizard').then(m => ({ default: m.ImportWizard })))
@@ -347,6 +353,69 @@ export function Dashboard() {
     }
   }, [metrics, filterPlatform])
 
+  // Calculate category allocations for the portfolio chart
+  const categoryAllocations = useMemo((): CategoryChartData[] => {
+    if (!filteredHistory?.currentAllocations || !funds) return []
+
+    // Build a map of fund ID to category info (single or multi-category)
+    const fundCategoryInfo = new Map<string, {
+      singleCategory?: FundCategory
+      allocations?: Array<{ category: FundCategory; percentage: number }>
+    }>()
+    for (const fund of funds) {
+      // Multi-category funds take precedence
+      if (fund.config.category_allocations && fund.config.category_allocations.length > 0) {
+        fundCategoryInfo.set(fund.id, {
+          allocations: fund.config.category_allocations as Array<{ category: FundCategory; percentage: number }>
+        })
+      } else {
+        const effectiveCategory = getEffectiveCategory(
+          fund.config.category as FundCategory | undefined,
+          fund.config.fund_type
+        )
+        fundCategoryInfo.set(fund.id, { singleCategory: effectiveCategory })
+      }
+    }
+
+    // Sum values by category
+    const categoryTotals: Record<FundCategory, number> = {
+      liquidity: 0,
+      yield: 0,
+      sov: 0,
+      volatility: 0
+    }
+
+    for (const alloc of filteredHistory.currentAllocations) {
+      const info = fundCategoryInfo.get(alloc.id)
+      if (!info) continue
+
+      if (info.allocations) {
+        // Multi-category fund: split value based on percentages
+        for (const catAlloc of info.allocations) {
+          categoryTotals[catAlloc.category] += alloc.value * (catAlloc.percentage / 100)
+        }
+      } else if (info.singleCategory) {
+        // Single-category fund
+        categoryTotals[info.singleCategory] += alloc.value
+      }
+    }
+
+    // Calculate total for percentages
+    const total = Object.values(categoryTotals).reduce((sum, v) => sum + v, 0)
+
+    // Build the allocation array in the defined order
+    return FUND_CATEGORIES.map(cat => {
+      const config = FUND_CATEGORY_CONFIG[cat]
+      return {
+        category: cat,
+        label: config.label,
+        value: categoryTotals[cat],
+        percentage: total > 0 ? (categoryTotals[cat] / total) * 100 : 0,
+        color: config.color
+      }
+    })
+  }, [filteredHistory, funds])
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -461,6 +530,11 @@ export function Dashboard() {
                   totalGainUsd: filteredMetrics?.totalGainUsd ?? filteredHistory.aggregateTotals.totalGainUsd,
                   realizedAPY: filteredMetrics?.realizedAPY ?? 0,
                   liquidAPY: filteredMetrics?.liquidAPY ?? 0
+                }}
+                categoryAllocations={categoryAllocations}
+                marginInfo={{
+                  available: filteredHistory.totals.totalCurrentMarginAccess,
+                  borrowed: filteredHistory.totals.totalCurrentMarginBorrowed
                 }}
               />
             ) : null

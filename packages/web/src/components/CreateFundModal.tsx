@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { createFund, notifyFundsChanged, type FundConfig, type FundType } from '../api/funds'
+import { createFund, notifyFundsChanged, type FundConfig, type FundType, type FundCategory, type CategoryAllocation } from '../api/funds'
 import { fetchPlatforms, type Platform } from '../api/platforms'
 import {
   getFundTypeFeatures,
-  FUND_TYPE_DEFAULTS
+  FUND_TYPE_DEFAULTS,
+  FUND_CATEGORIES,
+  FUND_CATEGORY_CONFIG,
+  DEFAULT_CATEGORY_BY_TYPE
 } from '@escapemint/engine'
 
 interface CreateFundModalProps {
@@ -25,6 +28,9 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
   const [selectedPlatform, setSelectedPlatform] = useState('')
   const [ticker, setTicker] = useState('')
   const [fundType, setFundType] = useState<FundType>('stock')
+  const [category, setCategory] = useState<FundCategory | ''>('')
+  const [isMultiCategory, setIsMultiCategory] = useState(false)
+  const [categoryAllocations, setCategoryAllocations] = useState<CategoryAllocation[]>([])
   const [formData, setFormData] = useState({
     fund_size_usd: 10000,
     target_apy: 25, // Display as percentage
@@ -63,8 +69,12 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     })
   }, [])
 
-  // Update manage_cash default when fund type changes
+  // Update manage_cash default and category when fund type changes
   useEffect(() => {
+    // Set default category based on fund type
+    const defaultCategory = DEFAULT_CATEGORY_BY_TYPE[fundType]
+    setCategory(defaultCategory || '')
+
     if (fundType === 'stock' || fundType === 'crypto') {
       setFormData(prev => ({
         ...prev,
@@ -84,6 +94,18 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     }
   }, [fundType])
 
+  // Auto-assign category based on ticker
+  useEffect(() => {
+    if (!category) {
+      const t = ticker.toLowerCase()
+      if (t === 'btc') {
+        setCategory('sov')
+      } else if (t === 'strc') {
+        setCategory('yield')
+      }
+    }
+  }, [ticker, category])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedPlatform || !ticker) {
@@ -96,6 +118,9 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     const config: Partial<FundConfig> = {
       status: 'active',
       fund_type: fundType,
+      // Multi-category takes precedence, clear single category when using allocations
+      category: isMultiCategory ? undefined : (category || undefined),
+      category_allocations: isMultiCategory && categoryAllocations.length > 0 ? categoryAllocations : undefined,
       fund_size_usd: formData.fund_size_usd,
       target_apy: features.allowsTrading ? round(formData.target_apy / 100, 4) : (defaults.target_apy ?? 0),
       interval_days: features.allowsTrading ? formData.interval_days : (defaults.interval_days ?? 1),
@@ -180,6 +205,114 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                 : 'Stock funds support full trading, dividends, and DCA strategies'}
             </p>
           </div>
+
+          {/* Category Selection - not shown for cash funds (always liquidity) */}
+          {fundType !== 'cash' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs text-slate-400">Category (for portfolio balance)</label>
+                <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isMultiCategory}
+                    onChange={e => {
+                      setIsMultiCategory(e.target.checked)
+                      if (e.target.checked && categoryAllocations.length === 0) {
+                        setCategoryAllocations([{ category: 'volatility', percentage: 100 }])
+                      }
+                    }}
+                    className="rounded border-slate-600 bg-slate-700 text-mint-500 focus:ring-mint-500"
+                  />
+                  Multi-category (pie fund)
+                </label>
+              </div>
+
+              {!isMultiCategory ? (
+                <select
+                  value={category}
+                  onChange={e => setCategory(e.target.value as FundCategory | '')}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                >
+                  <option value="">No category</option>
+                  {FUND_CATEGORIES.map(cat => {
+                    const catConfig = FUND_CATEGORY_CONFIG[cat]
+                    return (
+                      <option key={cat} value={cat}>
+                        {catConfig.label} - {catConfig.description}
+                      </option>
+                    )
+                  })}
+                </select>
+              ) : (
+                <div className="space-y-2">
+                  {categoryAllocations.map((alloc, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <select
+                        value={alloc.category}
+                        onChange={e => {
+                          const newAllocations = [...categoryAllocations]
+                          newAllocations[index] = { ...alloc, category: e.target.value as FundCategory }
+                          setCategoryAllocations(newAllocations)
+                        }}
+                        className="flex-1 px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                      >
+                        {FUND_CATEGORIES.map(cat => (
+                          <option key={cat} value={cat}>
+                            {FUND_CATEGORY_CONFIG[cat].label}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={alloc.percentage}
+                          onChange={e => {
+                            const newAllocations = [...categoryAllocations]
+                            newAllocations[index] = { ...alloc, percentage: parseFloat(e.target.value) || 0 }
+                            setCategoryAllocations(newAllocations)
+                          }}
+                          className="w-16 px-2 py-1.5 bg-slate-700 border border-slate-600 rounded text-sm text-white text-right focus:outline-none focus:border-mint-500"
+                          min="0"
+                          max="100"
+                          step="1"
+                        />
+                        <span className="text-slate-400 text-sm">%</span>
+                      </div>
+                      {categoryAllocations.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setCategoryAllocations(categoryAllocations.filter((_, i) => i !== index))}
+                          className="p-1 text-slate-400 hover:text-red-400"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setCategoryAllocations([...categoryAllocations, { category: 'liquidity', percentage: 0 }])}
+                      className="text-xs text-mint-400 hover:text-mint-300"
+                    >
+                      + Add category
+                    </button>
+                    {(() => {
+                      const total = categoryAllocations.reduce((sum, a) => sum + a.percentage, 0)
+                      const isValid = Math.abs(total - 100) < 0.01
+                      return (
+                        <span className={`text-xs ${isValid ? 'text-slate-400' : 'text-amber-400'}`}>
+                          Total: {total.toFixed(0)}%{!isValid && ' (should be 100%)'}
+                        </span>
+                      )
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Platform & Ticker */}
           <div className="grid grid-cols-2 gap-3">

@@ -3,8 +3,11 @@ import type { FundSummary } from '../api/funds'
 import {
   isCashFund as checkIsCashFund,
   isDerivativesFund as checkIsDerivativesFund,
-  getFundTypeFeatures
+  getFundTypeFeatures,
+  FUND_CATEGORY_CONFIG,
+  getEffectiveCategory
 } from '@escapemint/engine'
+import type { FundCategory } from '../api/funds'
 
 export interface FundCardProps {
   fund: FundSummary
@@ -23,6 +26,11 @@ export const FundCard = memo(function FundCard({ fund, impactPct, realizedAPY, l
   const isCashFund = checkIsCashFund(fund.config.fund_type)
   const isDerivativesFund = checkIsDerivativesFund(fund.config.fund_type)
   const features = getFundTypeFeatures(fund.config.fund_type ?? 'stock')
+  const effectiveCategory = getEffectiveCategory(
+    fund.config.category as FundCategory | undefined,
+    fund.config.fund_type
+  )
+  const categoryConfig = effectiveCategory ? FUND_CATEGORY_CONFIG[effectiveCategory] : null
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -74,6 +82,18 @@ export const FundCard = memo(function FundCard({ fund, impactPct, realizedAPY, l
           )}
           {!isClosed && features.allowsTrading && fund.config.accumulate && (
             <span className="px-1 xs:px-1.5 py-0.5 text-[7px] xs:text-[8px] sm:text-[10px] bg-mint-900 text-mint-400 rounded whitespace-nowrap">Acc</span>
+          )}
+          {categoryConfig && (
+            <span
+              className="px-1 xs:px-1.5 py-0.5 text-[7px] xs:text-[8px] sm:text-[10px] rounded whitespace-nowrap"
+              style={{
+                backgroundColor: `${categoryConfig.color}20`,
+                color: categoryConfig.color
+              }}
+              title={categoryConfig.description}
+            >
+              {categoryConfig.shortLabel}
+            </span>
           )}
         </div>
       </div>

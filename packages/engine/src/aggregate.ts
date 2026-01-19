@@ -1,4 +1,4 @@
-import type { SubFundConfig, Trade, CashFlow, FundState, FundType } from './types.js'
+import type { SubFundConfig, Trade, CashFlow, FundState, FundType, FundCategory } from './types.js'
 import { isCashFund as checkIsCashFund } from './fund-type-config.js'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
@@ -16,6 +16,7 @@ export interface FundMetrics {
   ticker: string
   status: 'active' | 'closed'
   fundType: FundType
+  category?: FundCategory
   fundSize: number
   currentValue: number
   startInput: number
@@ -256,6 +257,7 @@ export function computeFundMetrics(
     ticker,
     status: config.status ?? 'active',
     fundType: config.fund_type ?? 'stock',
+    ...(config.category && { category: config.category }),
     fundSize: config.fund_size_usd,
     currentValue,
     startInput: state?.start_input_usd ?? 0,
