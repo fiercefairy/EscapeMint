@@ -182,45 +182,49 @@ export function isStockMarketClosed(date: Date = new Date()): boolean {
  * Check if date is a US stock market holiday
  * Includes: New Year's Day, MLK Day, Presidents Day, Good Friday,
  * Memorial Day, Juneteenth, Independence Day, Labor Day, Thanksgiving, Christmas
+ *
+ * Note: This function expects a UTC date (created via Date.UTC) and uses
+ * UTC methods to avoid timezone issues.
  */
 function isUSMarketHoliday(date: Date): boolean {
-  const year = date.getFullYear()
-  const month = date.getMonth() // 0-indexed
-  const day = date.getDate()
+  // Use UTC methods since we receive a UTC date from isStockMarketClosed
+  const year = date.getUTCFullYear()
+  const month = date.getUTCMonth() // 0-indexed
+  const day = date.getUTCDate()
 
   // Helper to get observed date for fixed holidays
   // If falls on Saturday, observed Friday. If Sunday, observed Monday.
   // Uses Date arithmetic to safely handle month boundaries.
   const getObservedDate = (m: number, d: number): { month: number; day: number } => {
-    const holiday = new Date(year, m, d)
-    const dow = holiday.getDay()
+    const holiday = new Date(Date.UTC(year, m, d))
+    const dow = holiday.getUTCDay()
     if (dow === 6) {
       // Saturday -> observed on previous Friday
       const observed = new Date(holiday)
-      observed.setDate(observed.getDate() - 1)
-      return { month: observed.getMonth(), day: observed.getDate() }
+      observed.setUTCDate(observed.getUTCDate() - 1)
+      return { month: observed.getUTCMonth(), day: observed.getUTCDate() }
     }
     if (dow === 0) {
       // Sunday -> observed on next Monday
       const observed = new Date(holiday)
-      observed.setDate(observed.getDate() + 1)
-      return { month: observed.getMonth(), day: observed.getDate() }
+      observed.setUTCDate(observed.getUTCDate() + 1)
+      return { month: observed.getUTCMonth(), day: observed.getUTCDate() }
     }
     return { month: m, day: d }
   }
 
   // Helper to get nth weekday of month (e.g., 3rd Monday)
   const getNthWeekdayOfMonth = (m: number, weekday: number, n: number): number => {
-    const firstDay = new Date(year, m, 1)
-    const firstWeekday = firstDay.getDay()
+    const firstDay = new Date(Date.UTC(year, m, 1))
+    const firstWeekday = firstDay.getUTCDay()
     const daysUntilWeekday = (weekday - firstWeekday + 7) % 7
     return 1 + daysUntilWeekday + (n - 1) * 7
   }
 
   // Helper to get last weekday of month
   const getLastWeekdayOfMonth = (m: number, weekday: number): number => {
-    const lastDay = new Date(year, m + 1, 0).getDate()
-    const lastDayOfWeek = new Date(year, m, lastDay).getDay()
+    const lastDay = new Date(Date.UTC(year, m + 1, 0)).getUTCDate()
+    const lastDayOfWeek = new Date(Date.UTC(year, m, lastDay)).getUTCDay()
     const daysBack = (lastDayOfWeek - weekday + 7) % 7
     return lastDay - daysBack
   }
@@ -235,11 +239,11 @@ function isUSMarketHoliday(date: Date): boolean {
   // Presidents Day (3rd Monday of February)
   if (month === 1 && day === getNthWeekdayOfMonth(1, 1, 3)) return true
 
-  // Good Friday (Friday before Easter)
+  // Good Friday (Friday before Easter - 2 days before Easter Sunday)
   const easter = calculateEaster(year)
   const goodFriday = new Date(easter)
-  goodFriday.setDate(goodFriday.getDate() - 2)
-  if (month === goodFriday.getMonth() && day === goodFriday.getDate()) return true
+  goodFriday.setUTCDate(goodFriday.getUTCDate() - 2)
+  if (month === goodFriday.getUTCMonth() && day === goodFriday.getUTCDate()) return true
 
   // Memorial Day (Last Monday of May)
   if (month === 4 && day === getLastWeekdayOfMonth(4, 1)) return true
@@ -267,6 +271,7 @@ function isUSMarketHoliday(date: Date): boolean {
 
 /**
  * Calculate Easter Sunday using the Anonymous Gregorian algorithm
+ * Returns a UTC date for consistency with isUSMarketHoliday
  */
 function calculateEaster(year: number): Date {
   const a = year % 19
@@ -283,5 +288,5 @@ function calculateEaster(year: number): Date {
   const m = Math.floor((a + 11 * h + 22 * l) / 451)
   const month = Math.floor((h + l - 7 * m + 114) / 31) - 1
   const day = ((h + l - 7 * m + 114) % 31) + 1
-  return new Date(year, month, day)
+  return new Date(Date.UTC(year, month, day))
 }
