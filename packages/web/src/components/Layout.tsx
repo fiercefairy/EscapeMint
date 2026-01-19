@@ -71,6 +71,7 @@ export function Layout() {
     fetchActionableFunds(settings.testFundsMode).then(result => {
       if (result.data) {
         // Filter out dismissed funds and stock funds when market is closed
+        // Market status recalculates on each data fetch, which handles day transitions
         const dismissed = getDismissedFundIds()
         const marketClosed = isStockMarketClosed()
         const visibleCount = result.data.actionableFunds.filter(f => {

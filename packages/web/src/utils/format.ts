@@ -120,19 +120,62 @@ export const getPriorEquity = (entries: {
 }
 
 /**
- * Check if the US stock market is closed on the given date
- * Returns true for weekends and major US stock market holidays
+ * Check if the US stock market is closed on the given date.
+ *
+ * This check is performed using US Eastern Time (America/New_York),
+ * independent of the user's local browser timezone. Returns true for
+ * weekends and major US stock market holidays.
  */
 export function isStockMarketClosed(date: Date = new Date()): boolean {
-  const dayOfWeek = date.getDay()
+  // Normalize the provided date to US Eastern Time calendar components
+  const usEasternFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    weekday: 'short'
+  })
 
-  // Weekend check (Saturday = 6, Sunday = 0)
-  if (dayOfWeek === 0 || dayOfWeek === 6) {
+  const parts = usEasternFormatter.formatToParts(date)
+
+  let year: number | undefined
+  let month: number | undefined
+  let day: number | undefined
+  let weekday: string | undefined
+
+  for (const part of parts) {
+    if (part.type === 'year') {
+      year = Number(part.value)
+    } else if (part.type === 'month') {
+      month = Number(part.value)
+    } else if (part.type === 'day') {
+      day = Number(part.value)
+    } else if (part.type === 'weekday') {
+      weekday = part.value
+    }
+  }
+
+  // Fallback to local-time behavior if parsing fails for any reason
+  if (!year || !month || !day || !weekday) {
+    const localDayOfWeek = date.getDay()
+    if (localDayOfWeek === 0 || localDayOfWeek === 6) {
+      return true
+    }
+    return isUSMarketHoliday(date)
+  }
+
+  // Weekend check in US Eastern Time (Saturday/Sunday)
+  if (weekday === 'Sat' || weekday === 'Sun') {
     return true
   }
 
+  // Construct a synthetic Date corresponding to the US Eastern calendar date.
+  // Using UTC here ensures isUSMarketHoliday operates on the correct year/month/day
+  // regardless of the user's local timezone offset.
+  const usEasternDate = new Date(Date.UTC(year, month - 1, day))
+
   // Check for US stock market holidays
-  return isUSMarketHoliday(date)
+  return isUSMarketHoliday(usEasternDate)
 }
 
 /**
@@ -147,11 +190,22 @@ function isUSMarketHoliday(date: Date): boolean {
 
   // Helper to get observed date for fixed holidays
   // If falls on Saturday, observed Friday. If Sunday, observed Monday.
+  // Uses Date arithmetic to safely handle month boundaries.
   const getObservedDate = (m: number, d: number): { month: number; day: number } => {
     const holiday = new Date(year, m, d)
     const dow = holiday.getDay()
-    if (dow === 6) return { month: m, day: d - 1 } // Saturday -> Friday
-    if (dow === 0) return { month: m, day: d + 1 } // Sunday -> Monday
+    if (dow === 6) {
+      // Saturday -> observed on previous Friday
+      const observed = new Date(holiday)
+      observed.setDate(observed.getDate() - 1)
+      return { month: observed.getMonth(), day: observed.getDate() }
+    }
+    if (dow === 0) {
+      // Sunday -> observed on next Monday
+      const observed = new Date(holiday)
+      observed.setDate(observed.getDate() + 1)
+      return { month: observed.getMonth(), day: observed.getDate() }
+    }
     return { month: m, day: d }
   }
 

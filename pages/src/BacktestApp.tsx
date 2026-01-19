@@ -349,7 +349,7 @@ export function BacktestApp() {
               rel="noopener noreferrer"
               className="text-blue-400 hover:text-blue-300 transition-colors"
             >
-              Run the App
+              View on GitHub
             </a>
           </p>
         </div>

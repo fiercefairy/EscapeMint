@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchActionableFunds, FUNDS_CHANGED_EVENT, type ActionableFund } from '../api/funds'
 import { getFundTypeFeatures } from '@escapemint/engine'
@@ -74,8 +74,9 @@ export function ActionableFundsBanner() {
     notifyActionableDismissed(newVisibleCount)
   }
 
-  // Check if stock market is closed (weekend or holiday) - memoize to avoid recalculating
-  const marketClosed = useMemo(() => isStockMarketClosed(), [])
+  // Check if stock market is closed (weekend or holiday)
+  // No memoization needed - lightweight check that updates correctly when data refreshes
+  const marketClosed = isStockMarketClosed()
 
   // Filter out dismissed funds and stock funds when market is closed
   const visibleFunds = actionableFunds.filter(f => {
