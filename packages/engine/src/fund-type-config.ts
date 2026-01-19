@@ -237,10 +237,10 @@ export const FUND_CATEGORY_CONFIG: Record<FundCategory, FundCategoryConfig> = {
   yield: {
     label: 'Yield',
     shortLabel: 'Yld',
-    description: 'High yield cash storage (10-11% APY stable stocks)',
+    description: 'Stable high-yield instruments (STRC or similar)',
     color: '#10b981', // green
     textColorClass: 'text-emerald-400',
-    examples: ['STRC', 'High-yield ETFs']
+    examples: ['STRC']
   },
   sov: {
     label: 'Store of Value',

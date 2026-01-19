@@ -69,12 +69,12 @@ Your cash position provides instant liquidity. When opportunities arise or expen
 - **Examples**: Platform cash, money market funds
 - **Why it matters**: Flexibility to act on opportunities without forced selling
 
-### 2. Yield (High-Yield Cash Storage)
+### 2. Yield (Stable High-Yield)
 **Purpose**: Earn elevated returns on idle capital (10-11% APY)
 
-Optional high-yield stable stocks provide better returns than cash while maintaining relative stability. Trading windows are a limiting factor, but you can move to cash easily when needed.
+An optional pillar for stable high-yield instruments. This is specifically for stable dividend stocks like STRC—not volatile high-dividend ETFs. The key is stability: these should be instruments you can move to cash easily when needed without significant price risk.
 
-- **Examples**: STRC, high-yield dividend ETFs
+- **Examples**: STRC (or similar stable dividend stocks)
 - **Why it matters**: Beat inflation on cash reserves while staying liquid
 
 ### 3. Store of Value (SoV)

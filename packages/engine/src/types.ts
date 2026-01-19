@@ -5,7 +5,7 @@ export type FundStatus = 'active' | 'closed'
 /**
  * Fund category represents investment philosophy pillars:
  * - 'liquidity': 24/7 cash access for spending/investing
- * - 'yield': High yield cash storage (10-11% APY stable stocks like STRC)
+ * - 'yield': Stable high-yield instruments (STRC or similar stable dividend stocks)
  * - 'sov': Store of Value, hedge against fiat (BTC)
  * - 'volatility': Capture market fluctuations (TQQQ, whole market exposure)
  *
