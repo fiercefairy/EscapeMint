@@ -106,9 +106,10 @@ export const parseFormulaValue = (input: string): number => {
 }
 
 // Wizard indicator component - animated arrow pointing to a field
+// Uses absolute positioning to avoid affecting vertical layout
 function WizardIndicator({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="absolute right-0 top-0 flex items-center gap-1">
       <span className="text-mint-400 text-lg animate-wizard-arrow">→</span>
       <span className="text-mint-400 text-xs font-medium animate-pulse">{label}</span>
     </div>
@@ -337,7 +338,9 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           {/* Row 1: Date, Cash Balance, Amount */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Date</label>
+              <div className="relative mb-1 h-5">
+                <label className="text-sm text-slate-400">Date</label>
+              </div>
               <input
                 type="date"
                 value={formData.date}
@@ -347,7 +350,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               />
             </div>
             <div>
-              <div className="flex items-center justify-between mb-1">
+              <div className="relative mb-1 h-5">
                 <label className="text-sm text-slate-400">Cash Balance ($)</label>
                 {wizardStep === 1 && <WizardIndicator label="Update first" />}
               </div>
@@ -465,7 +468,9 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
         {/* Row 1: Date, Equity, Action, Amount */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Date</label>
+            <div className="relative mb-1 h-5">
+              <label className="text-sm text-slate-400">Date</label>
+            </div>
             <input
               type="date"
               value={formData.date}
@@ -475,7 +480,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
             />
           </div>
           <div>
-            <div className="flex items-center justify-between mb-1">
+            <div className="relative mb-1 h-5">
               <label className="text-sm text-slate-400">
                 {fundType === 'derivatives' ? 'Equity ($) - calculated' : 'Equity ($)'}
               </label>
@@ -593,7 +598,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
         {marginEnabled && !isCashFund && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
             <div>
-              <div className="flex items-center justify-between mb-1">
+              <div className="relative mb-1 h-5">
                 <label className="text-sm text-slate-400">Margin Available ($)</label>
                 {wizardStep === 2 && <WizardIndicator label="Update next" />}
               </div>
@@ -614,7 +619,9 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               </p>
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Margin Borrowed ($)</label>
+              <div className="relative mb-1 h-5">
+                <label className="text-sm text-slate-400">Margin Borrowed ($)</label>
+              </div>
               <input
                 type="number"
                 value={formData.margin_borrowed}
