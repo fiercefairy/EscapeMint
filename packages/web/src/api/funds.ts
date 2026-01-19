@@ -20,10 +20,16 @@ export type FundStatus = 'active' | 'closed'
 export type FundType = 'cash' | 'stock' | 'crypto' | 'derivatives'
 export type FundCategory = 'liquidity' | 'yield' | 'sov' | 'volatility'
 
+export interface CategoryAllocation {
+  category: FundCategory
+  percentage: number
+}
+
 export interface FundConfig {
   fund_type?: FundType
   status?: FundStatus
   category?: FundCategory
+  category_allocations?: CategoryAllocation[]
   fund_size_usd: number
   target_apy: number
   interval_days: number

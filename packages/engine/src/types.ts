@@ -14,6 +14,17 @@ export type FundStatus = 'active' | 'closed'
 export type FundCategory = 'liquidity' | 'yield' | 'sov' | 'volatility'
 
 /**
+ * Category allocation for multi-category "pie" funds.
+ * Allows a single fund to be split across multiple investment philosophy categories.
+ */
+export interface CategoryAllocation {
+  /** The category this allocation belongs to */
+  category: FundCategory
+  /** Percentage of the fund allocated to this category (0-100, should sum to 100) */
+  percentage: number
+}
+
+/**
  * Fund type determines asset class and available features:
  * - 'cash': Platform cash pools (DEPOSIT/WITHDRAW only, no dividends)
  * - 'stock': Stock/ETF trading (full features including dividends)
@@ -39,8 +50,16 @@ export interface SubFundConfig {
    * Fund category for portfolio balance tracking.
    * Represents the investment philosophy pillar this fund belongs to.
    * If not specified, defaults based on fund_type (cash→liquidity, crypto→sov, derivatives→volatility).
+   * For single-category funds only. Use category_allocations for multi-category "pie" funds.
    */
   category?: FundCategory
+
+  /**
+   * Multi-category allocations for "pie" funds (e.g., M1 Finance pies).
+   * When set, the fund's value is split across categories based on these percentages.
+   * Percentages should sum to 100. Takes precedence over single category field.
+   */
+  category_allocations?: CategoryAllocation[]
 
   /**
    * Total capital allocated to this sub-fund (e.g., $10,000).

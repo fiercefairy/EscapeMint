@@ -353,18 +353,28 @@ export function Dashboard() {
     }
   }, [metrics, filterPlatform])
 
-  // Calculate category allocations for the radar chart
+  // Calculate category allocations for the portfolio chart
   const categoryAllocations = useMemo((): CategoryAllocation[] => {
     if (!filteredHistory?.currentAllocations || !funds) return []
 
-    // Build a map of fund ID to category
-    const fundCategoryMap = new Map<string, FundCategory | undefined>()
+    // Build a map of fund ID to category info (single or multi-category)
+    const fundCategoryInfo = new Map<string, {
+      singleCategory?: FundCategory
+      allocations?: Array<{ category: FundCategory; percentage: number }>
+    }>()
     for (const fund of funds) {
-      const effectiveCategory = getEffectiveCategory(
-        fund.config.category as FundCategory | undefined,
-        fund.config.fund_type
-      )
-      fundCategoryMap.set(fund.id, effectiveCategory)
+      // Multi-category funds take precedence
+      if (fund.config.category_allocations && fund.config.category_allocations.length > 0) {
+        fundCategoryInfo.set(fund.id, {
+          allocations: fund.config.category_allocations as Array<{ category: FundCategory; percentage: number }>
+        })
+      } else {
+        const effectiveCategory = getEffectiveCategory(
+          fund.config.category as FundCategory | undefined,
+          fund.config.fund_type
+        )
+        fundCategoryInfo.set(fund.id, { singleCategory: effectiveCategory })
+      }
     }
 
     // Sum values by category
@@ -376,9 +386,17 @@ export function Dashboard() {
     }
 
     for (const alloc of filteredHistory.currentAllocations) {
-      const category = fundCategoryMap.get(alloc.id)
-      if (category) {
-        categoryTotals[category] += alloc.value
+      const info = fundCategoryInfo.get(alloc.id)
+      if (!info) continue
+
+      if (info.allocations) {
+        // Multi-category fund: split value based on percentages
+        for (const catAlloc of info.allocations) {
+          categoryTotals[catAlloc.category] += alloc.value * (catAlloc.percentage / 100)
+        }
+      } else if (info.singleCategory) {
+        // Single-category fund
+        categoryTotals[info.singleCategory] += alloc.value
       }
     }
 

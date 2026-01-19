@@ -34,6 +34,7 @@ export type {
   FundStatus,
   FundType,
   FundCategory,
+  CategoryAllocation,
   SubFundConfig,
   Trade,
   CashFlow,
