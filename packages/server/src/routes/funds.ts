@@ -24,6 +24,7 @@ import {
   computeAggregateMetrics,
   computeClosedFundMetrics,
   computeDerivativesEntriesState,
+  computeExpectedTarget,
   type FundState
 } from '@escapemint/engine'
 import { notFound, badRequest } from '../middleware/error-handler.js'
@@ -379,6 +380,7 @@ fundsRouter.get('/history', async (req, res, next) => {
     totalCashInterest: number
     totalRealizedGain: number
     totalUnrealizedGain: number
+    totalExpectedTarget: number
     realizedAPY: number
     liquidAPY: number
     totalGainUsd: number
@@ -400,6 +402,7 @@ fundsRouter.get('/history', async (req, res, next) => {
     let totalCashInterest = 0
     let totalRealizedGain = 0
     let totalUnrealizedGain = 0
+    let totalExpectedTarget = 0
     let totalGainUsd = 0  // Track gain per-fund (handles cash funds properly)
     const fundBreakdown: Record<string, number> = {}
 
@@ -503,6 +506,13 @@ fundsRouter.get('/history', async (req, res, next) => {
           totalUnrealizedGain += state.gain_usd - state.realized_gains_usd
         }
 
+        // Expected target for trading funds with target_apy
+        // Cash funds don't have target APY concept
+        if (!isCashFund && fund.config.target_apy > 0) {
+          const expectedTarget = computeExpectedTarget(fund.config, trades, date)
+          totalExpectedTarget += expectedTarget
+        }
+
         // Track dividends and expenses for display
         for (const entry of entriesUpToDate) {
           if (entry.dividend) totalDividends += Math.abs(entry.dividend)
@@ -566,6 +576,7 @@ fundsRouter.get('/history', async (req, res, next) => {
       totalCashInterest,
       totalRealizedGain,
       totalUnrealizedGain,
+      totalExpectedTarget,
       realizedAPY,
       liquidAPY,
       totalGainUsd: totalGainUsdForChart,  // Use totalValue - totalStartInput to match aggregate

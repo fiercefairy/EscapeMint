@@ -10,6 +10,7 @@ import { readdir } from 'node:fs/promises'
 import { readFund, type FundData } from '@escapemint/storage'
 import {
   computeDerivativesEntriesState,
+  computeExpectedTarget,
   type SubFundConfig
 } from '@escapemint/engine'
 import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
@@ -93,6 +94,7 @@ export interface TimeSeriesPoint {
   totalCashInterest: number
   totalRealizedGain: number
   totalUnrealizedGain: number
+  totalExpectedTarget: number
   realizedAPY: number
   liquidAPY: number
   totalGainUsd: number
@@ -474,6 +476,7 @@ function computeHistory(funds: FundData[]): DashboardHistory {
     let totalCashInterest = 0
     let totalRealizedGain = 0
     let totalUnrealizedGain = 0
+    let totalExpectedTarget = 0
     let totalGainUsd = 0
     const fundBreakdown: Record<string, number> = {}
     const realizedGainBreakdown: Record<string, number> = {}
@@ -589,6 +592,13 @@ function computeHistory(funds: FundData[]): DashboardHistory {
 
         // Cash - use computed cash from metrics
         totalCash += metrics.cash
+
+        // Expected target for trading funds with target_apy
+        if (!isCashFund && fund.config.target_apy > 0) {
+          const trades = sortedEntries.filter(e => e.action === 'BUY' || e.action === 'SELL')
+          const expectedTarget = computeExpectedTarget(fund.config, trades, date)
+          totalExpectedTarget += expectedTarget
+        }
       }
 
       // Margin - still need to get from entry
@@ -630,6 +640,7 @@ function computeHistory(funds: FundData[]): DashboardHistory {
       totalCashInterest,
       totalRealizedGain,
       totalUnrealizedGain,
+      totalExpectedTarget,
       realizedAPY,
       liquidAPY,
       totalGainUsd,
