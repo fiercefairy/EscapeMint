@@ -11,7 +11,8 @@ import { readFund, type FundData } from '@escapemint/storage'
 import {
   computeDerivativesEntriesState,
   computeExpectedTarget,
-  type SubFundConfig
+  type SubFundConfig,
+  type Trade
 } from '@escapemint/engine'
 import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
 
@@ -595,7 +596,19 @@ function computeHistory(funds: FundData[]): DashboardHistory {
 
         // Expected target for trading funds with target_apy
         if (!isCashFund && fund.config.target_apy > 0) {
-          const trades = sortedEntries.filter(e => e.action === 'BUY' || e.action === 'SELL')
+          // Convert FundEntry[] to Trade[] for computeExpectedTarget
+          const trades: Trade[] = sortedEntries
+            .filter(e => e.action === 'BUY' || e.action === 'SELL')
+            .map(e => {
+              const trade: Trade = {
+                date: e.date,
+                amount_usd: e.amount ?? 0,
+                type: e.action === 'BUY' ? 'buy' : 'sell',
+                value: e.value
+              }
+              if (e.shares !== undefined) trade.shares = e.shares
+              return trade
+            })
           const expectedTarget = computeExpectedTarget(fund.config, trades, date)
           totalExpectedTarget += expectedTarget
         }
