@@ -339,140 +339,6 @@ const PlatformPieChart = memo(function PlatformPieChart({ data, title, valueKey 
   )
 })
 
-// Area Chart Component
-const AreaChart = memo(function AreaChart({ data, title, valueKey, color = '#10b981', formatValue = formatCurrencyCompact, resize }: {
-  data: TimeSeriesPoint[]
-  title: string
-  valueKey: keyof TimeSeriesPoint
-  color?: string
-  formatValue?: (v: number) => string
-  resize?: number
-}) {
-  const ref = useRef<SVGSVGElement>(null)
-  const tooltipRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!ref.current || data.length === 0) return
-
-    const svg = d3.select(ref.current)
-    svg.selectAll('*').remove()
-
-    const containerWidth = ref.current.clientWidth
-    const margin = getResponsiveMargin(containerWidth)
-    const axisFontSize = getAxisFontSize(containerWidth)
-    const width = containerWidth - margin.left - margin.right
-    const height = ref.current.clientHeight - margin.top - margin.bottom
-
-    const g = svg
-      .append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`)
-
-    const values = data.map(d => ({
-      date: new Date(d.date),
-      value: d[valueKey] as number
-    }))
-
-    const x = d3.scaleTime()
-      .domain(d3.extent(values, d => d.date) as [Date, Date])
-      .range([0, width])
-
-    const yExtent = d3.extent(values, d => d.value) as [number, number]
-    const yMin = Math.min(0, yExtent[0])
-    const yMax = yExtent[1]
-
-    const y = d3.scaleLinear()
-      .domain([yMin, yMax])
-      .nice()
-      .range([height, 0])
-
-    const area = d3.area<typeof values[0]>()
-      .x(d => x(d.date))
-      .y0(y(Math.max(0, yMin)))
-      .y1(d => y(d.value))
-      .curve(d3.curveMonotoneX)
-
-    const line = d3.line<typeof values[0]>()
-      .x(d => x(d.date))
-      .y(d => y(d.value))
-      .curve(d3.curveMonotoneX)
-
-    const tooltip = d3.select(tooltipRef.current)
-
-    g.append('path')
-      .datum(values)
-      .attr('fill', `${color}33`)
-      .attr('d', area)
-
-    g.append('path')
-      .datum(values)
-      .attr('fill', 'none')
-      .attr('stroke', color)
-      .attr('stroke-width', 1.5)
-      .attr('d', line)
-
-    // Invisible overlay for mouse tracking
-    const bisect = d3.bisector<typeof values[0], Date>(d => d.date).left
-
-    g.append('rect')
-      .attr('width', width)
-      .attr('height', height)
-      .attr('fill', 'transparent')
-      .attr('cursor', 'crosshair')
-      .on('mouseover', () => tooltip.style('opacity', 1))
-      .on('mousemove', function(event) {
-        const [mx] = d3.pointer(event)
-        const date = x.invert(mx)
-        const i = bisect(values, date, 1)
-        const d0 = values[i - 1]
-        const d1 = values[i]
-        if (!d0 || !d1) return
-        const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
-        tooltip
-          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/>${formatValue(d.value)}`)
-        // Position tooltip - flip to left side if near right edge
-        const tooltipWidth = 120
-        const leftPos = event.pageX + tooltipWidth + 20 > window.innerWidth
-          ? event.pageX - tooltipWidth - 10
-          : event.pageX + 10
-        tooltip
-          .style('left', leftPos + 'px')
-          .style('top', (event.pageY - 10) + 'px')
-      })
-      .on('mouseout', () => tooltip.style('opacity', 0))
-
-    // X axis
-    g.append('g')
-      .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(x).ticks(3).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
-      .selectAll('text')
-      .attr('fill', '#64748b')
-      .attr('font-size', axisFontSize)
-
-    // Y axis
-    g.append('g')
-      .call(d3.axisLeft(y).ticks(3).tickFormat(d => formatValue(d as number)))
-      .selectAll('text')
-      .attr('fill', '#64748b')
-      .attr('font-size', axisFontSize)
-
-    svg.selectAll('.domain').attr('stroke', '#334155')
-    svg.selectAll('.tick line').attr('stroke', '#334155')
-
-  }, [data, valueKey, color, formatValue, resize])
-
-  return (
-    <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
-      <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white mb-0.5">{title}</h3>
-      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
-      <div
-        ref={tooltipRef}
-        className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[180px]"
-        style={{ opacity: 0 }}
-      />
-    </div>
-  )
-})
-
 // Stacked Area Chart for Cash vs Asset
 const StackedAreaChart = memo(function StackedAreaChart({ data, resize }: { data: TimeSeriesPoint[]; resize?: number }) {
   const ref = useRef<SVGSVGElement>(null)
@@ -600,6 +466,311 @@ const StackedAreaChart = memo(function StackedAreaChart({ data, resize }: { data
         </span>
         <span className="flex items-center gap-0.5 text-slate-400">
           <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-violet-500" />Asset
+        </span>
+      </div>
+    </div>
+  )
+})
+
+// Stacked Area Chart for Fund Liquid Value (Cash + Asset in absolute dollars)
+const LiquidValueStackedChart = memo(function LiquidValueStackedChart({ data, resize }: { data: TimeSeriesPoint[]; resize?: number }) {
+  const ref = useRef<SVGSVGElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!ref.current || data.length === 0) return
+
+    const svg = d3.select(ref.current)
+    svg.selectAll('*').remove()
+
+    const containerWidth = ref.current.clientWidth
+    const margin = getResponsiveMargin(containerWidth)
+    const axisFontSize = getAxisFontSize(containerWidth)
+    const width = containerWidth - margin.left - margin.right
+    const height = ref.current.clientHeight - margin.top - margin.bottom
+
+    const g = svg
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`)
+
+    const values = data.map(d => ({
+      date: new Date(d.date),
+      cash: d.totalCash,
+      asset: d.totalValue,
+      total: d.totalCash + d.totalValue
+    }))
+
+    const maxTotal = d3.max(values, d => d.total) ?? 0
+
+    const x = d3.scaleTime()
+      .domain(d3.extent(values, d => d.date) as [Date, Date])
+      .range([0, width])
+
+    const y = d3.scaleLinear()
+      .domain([0, maxTotal * 1.05])
+      .range([height, 0])
+
+    const stack = d3.stack<typeof values[0]>()
+      .keys(['cash', 'asset'])
+
+    const stackedData = stack(values)
+
+    const area = d3.area<d3.SeriesPoint<typeof values[0]>>()
+      .x(d => x(d.data.date))
+      .y0(d => y(d[0]))
+      .y1(d => y(d[1]))
+      .curve(d3.curveMonotoneX)
+
+    const colors = ['#10b981', '#8b5cf6']
+
+    g.selectAll('path.area')
+      .data(stackedData)
+      .enter()
+      .append('path')
+      .attr('class', 'area')
+      .attr('fill', (_, i) => colors[i] ?? '#666')
+      .attr('d', area)
+
+    // Tooltip and mouse tracking
+    const tooltip = d3.select(tooltipRef.current)
+    const bisect = d3.bisector<typeof values[0], Date>(d => d.date).left
+
+    g.append('rect')
+      .attr('width', width)
+      .attr('height', height)
+      .attr('fill', 'transparent')
+      .attr('cursor', 'crosshair')
+      .on('mouseover', () => tooltip.style('opacity', 1))
+      .on('mousemove', function(event) {
+        const [mx] = d3.pointer(event)
+        const date = x.invert(mx)
+        const i = bisect(values, date, 1)
+        const d0 = values[i - 1]
+        const d1 = values[i]
+        if (!d0 || !d1) return
+        const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
+        tooltip
+          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/>Cash: ${formatCurrencyCompact(d.cash)}<br/>Assets: ${formatCurrencyCompact(d.asset)}<br/>Total: ${formatCurrencyCompact(d.total)}`)
+        // Position tooltip - flip to left side if near right edge
+        const tooltipWidth = 160
+        const leftPos = event.pageX + tooltipWidth + 20 > window.innerWidth
+          ? event.pageX - tooltipWidth - 10
+          : event.pageX + 10
+        tooltip
+          .style('left', leftPos + 'px')
+          .style('top', (event.pageY - 10) + 'px')
+      })
+      .on('mouseout', () => tooltip.style('opacity', 0))
+
+    // X axis
+    g.append('g')
+      .attr('transform', `translate(0,${height})`)
+      .call(d3.axisBottom(x).ticks(3).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
+      .selectAll('text')
+      .attr('fill', '#64748b')
+      .attr('font-size', axisFontSize)
+
+    // Y axis
+    g.append('g')
+      .call(d3.axisLeft(y).ticks(3).tickFormat(d => formatCurrencyCompact(d as number)))
+      .selectAll('text')
+      .attr('fill', '#64748b')
+      .attr('font-size', axisFontSize)
+
+    svg.selectAll('.domain').attr('stroke', '#334155')
+    svg.selectAll('.tick line').attr('stroke', '#334155')
+
+  }, [data, resize])
+
+  return (
+    <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
+      <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white mb-0.5">Fund Liquid Value</h3>
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
+      <div
+        ref={tooltipRef}
+        className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[200px]"
+        style={{ opacity: 0 }}
+      />
+      <div className="flex gap-1 xs:gap-1.5 sm:gap-2 mt-0.5 justify-center text-[6px] xs:text-[7px] sm:text-[8px] md:text-[9px]">
+        <span className="flex items-center gap-0.5 text-slate-400">
+          <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500" />Cash
+        </span>
+        <span className="flex items-center gap-0.5 text-slate-400">
+          <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-violet-500" />Assets
+        </span>
+      </div>
+    </div>
+  )
+})
+
+// Portfolio Value & Allocation Chart (aggregate version)
+const PortfolioValueAllocationChart = memo(function PortfolioValueAllocationChart({ data, resize }: { data: TimeSeriesPoint[]; resize?: number }) {
+  const ref = useRef<SVGSVGElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+
+  // Check if we have target data to display
+  const hasTarget = data.some(d => (d.totalExpectedTarget ?? 0) > 0)
+
+  useEffect(() => {
+    if (!ref.current || data.length === 0) return
+
+    const svg = d3.select(ref.current)
+    svg.selectAll('*').remove()
+
+    const containerWidth = ref.current.clientWidth
+    const margin = getResponsiveMargin(containerWidth)
+    const axisFontSize = getAxisFontSize(containerWidth)
+    const width = containerWidth - margin.left - margin.right
+    const height = ref.current.clientHeight - margin.top - margin.bottom
+
+    const g = svg
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`)
+
+    const values = data.map(d => ({
+      date: new Date(d.date),
+      value: d.totalValue,
+      invested: d.totalStartInput,
+      fundSize: d.totalFundSize,
+      target: d.totalExpectedTarget
+    }))
+
+    const x = d3.scaleTime()
+      .domain(d3.extent(values, d => d.date) as [Date, Date])
+      .range([0, width])
+
+    // Y scale based on max of fund size, asset value, target, or invested
+    // Use || 0 to handle undefined/NaN values that would break Math.max
+    const yMax = d3.max(values, d => Math.max(
+      d.fundSize || 0,
+      d.value || 0,
+      d.target || 0,
+      d.invested || 0
+    )) || 1
+    const y = d3.scaleLinear()
+      .domain([0, yMax * 1.05])
+      .nice()
+      .range([height, 0])
+
+    // Invested area (purple)
+    const investedArea = d3.area<typeof values[0]>()
+      .x(d => x(d.date))
+      .y0(height)
+      .y1(d => y(d.invested))
+      .curve(d3.curveMonotoneX)
+
+    // Draw invested area (purple)
+    g.append('path')
+      .datum(values)
+      .attr('fill', '#8b5cf633')
+      .attr('d', investedArea)
+
+    // Asset value line (orange)
+    const valueLine = d3.line<typeof values[0]>()
+      .x(d => x(d.date))
+      .y(d => y(d.value))
+      .curve(d3.curveMonotoneX)
+
+    g.append('path')
+      .datum(values)
+      .attr('fill', 'none')
+      .attr('stroke', '#f59e0b')
+      .attr('stroke-width', 2)
+      .attr('d', valueLine)
+
+    // Target line (cyan dashed) - if target data exists
+    if (hasTarget) {
+      const targetLine = d3.line<typeof values[0]>()
+        .x(d => x(d.date))
+        .y(d => y(d.target || 0))
+        .curve(d3.curveMonotoneX)
+
+      g.append('path')
+        .datum(values)
+        .attr('fill', 'none')
+        .attr('stroke', '#06b6d4')
+        .attr('stroke-width', 1.5)
+        .attr('stroke-dasharray', '4,3')
+        .attr('d', targetLine)
+    }
+
+    // Tooltip and mouse tracking
+    const tooltip = d3.select(tooltipRef.current)
+    const bisect = d3.bisector<typeof values[0], Date>(d => d.date).left
+
+    g.append('rect')
+      .attr('width', width)
+      .attr('height', height)
+      .attr('fill', 'transparent')
+      .attr('cursor', 'crosshair')
+      .on('mouseover', () => tooltip.style('opacity', 1))
+      .on('mousemove', function(event) {
+        const [mx] = d3.pointer(event)
+        const date = x.invert(mx)
+        const i = bisect(values, date, 1)
+        const d0 = values[i - 1]
+        const d1 = values[i]
+        if (!d0 || !d1) return
+        const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
+        const targetHtml = hasTarget ? `<br/><span style="color:#06b6d4">Target: ${formatCurrencyCompact(d.target)}</span>` : ''
+        tooltip
+          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/><span style="color:#f59e0b">Value: ${formatCurrencyCompact(d.value)}</span>${targetHtml}<br/><span style="color:#8b5cf6">Invested: ${formatCurrencyCompact(d.invested)}</span>`)
+        const tooltipWidth = 160
+        const leftPos = event.pageX + tooltipWidth + 20 > window.innerWidth
+          ? event.pageX - tooltipWidth - 10
+          : event.pageX + 10
+        tooltip
+          .style('left', leftPos + 'px')
+          .style('top', (event.pageY - 10) + 'px')
+      })
+      .on('mouseout', () => tooltip.style('opacity', 0))
+
+    // X axis
+    g.append('g')
+      .attr('transform', `translate(0,${height})`)
+      .call(d3.axisBottom(x).ticks(3).tickFormat(d => d3.timeFormat('%b %y')(d as Date)))
+      .selectAll('text')
+      .attr('fill', '#64748b')
+      .attr('font-size', axisFontSize)
+
+    // Y axis
+    g.append('g')
+      .call(d3.axisLeft(y).ticks(3).tickFormat(d => formatCurrencyCompact(d as number)))
+      .selectAll('text')
+      .attr('fill', '#64748b')
+      .attr('font-size', axisFontSize)
+
+    svg.selectAll('.domain').attr('stroke', '#334155')
+    svg.selectAll('.tick line').attr('stroke', '#334155')
+
+  }, [data, resize, hasTarget])
+
+  // Get latest values for legend
+  const latestData = data.length > 0 ? data[data.length - 1] : null
+
+  return (
+    <div className="bg-slate-800 rounded-lg p-1 xs:p-1.5 sm:p-2 border border-slate-700 relative touch-manipulation active:bg-slate-700/30">
+      <h3 className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-xs font-medium text-white mb-0.5">Value & Allocation</h3>
+      <svg ref={ref} className="w-full h-[100px] xs:h-[110px] sm:h-[130px] md:h-[150px]" style={{ overflow: 'visible' }} />
+      <div
+        ref={tooltipRef}
+        className="fixed bg-slate-900 text-white text-[9px] xs:text-[10px] sm:text-xs px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded shadow-lg pointer-events-none z-50 border border-slate-700 max-w-[200px]"
+        style={{ opacity: 0 }}
+      />
+      <div className="flex gap-1 xs:gap-1.5 sm:gap-2 mt-0.5 justify-center flex-wrap text-[6px] xs:text-[7px] sm:text-[8px] md:text-[9px]">
+        <span className="flex items-center gap-0.5 text-orange-400">
+          <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-orange-500" />
+          Value{latestData && <span className="text-white ml-0.5">{formatCurrencyCompact(latestData.totalValue)}</span>}
+        </span>
+        {hasTarget && (
+          <span className="flex items-center gap-0.5 text-cyan-400">
+            <span className="w-1 h-0.5 xs:w-1.5 xs:h-0.5 sm:w-1.5 sm:h-0.5 md:w-2 md:h-0.5 rounded-sm bg-cyan-500" style={{ borderTop: '1px dashed' }} />
+            Target{latestData && <span className="text-white ml-0.5">{formatCurrencyCompact(latestData.totalExpectedTarget)}</span>}
+          </span>
+        )}
+        <span className="flex items-center gap-0.5 text-violet-400">
+          <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-violet-500" />
+          Invested{latestData && <span className="text-white ml-0.5">{formatCurrencyCompact(latestData.totalStartInput)}</span>}
         </span>
       </div>
     </div>
@@ -1174,6 +1345,7 @@ const APYChart = memo(function APYChart({ data, currentRealizedAPY, currentLiqui
     const values = data.map(d => ({
       date: new Date(d.date),
       realized: d.realizedAPY,
+      unrealized: d.liquidAPY - d.realizedAPY,
       liquid: d.liquidAPY
     }))
 
@@ -1183,11 +1355,11 @@ const APYChart = memo(function APYChart({ data, currentRealizedAPY, currentLiqui
 
     // Calculate data-driven bounds
     const dataMin = Math.min(
-      d3.min(values, d => Math.min(d.realized, d.liquid)) ?? 0,
+      d3.min(values, d => Math.min(d.realized, d.unrealized, d.liquid)) ?? 0,
       0
     )
     const dataMax = Math.max(
-      d3.max(values, d => Math.max(d.realized, d.liquid)) ?? 0,
+      d3.max(values, d => Math.max(d.realized, d.unrealized, d.liquid)) ?? 0,
       0
     )
 
@@ -1249,6 +1421,19 @@ const APYChart = memo(function APYChart({ data, currentRealizedAPY, currentLiqui
       .attr('stroke-width', 2)
       .attr('d', realizedLine)
 
+    // Line for unrealized APY (orange)
+    const unrealizedLine = d3.line<typeof values[0]>()
+      .x(d => x(d.date))
+      .y(d => y(clamp(d.unrealized)))
+      .curve(d3.curveMonotoneX)
+
+    g.append('path')
+      .datum(values)
+      .attr('fill', 'none')
+      .attr('stroke', '#f97316')
+      .attr('stroke-width', 2)
+      .attr('d', unrealizedLine)
+
     // Line for liquid APY (blue)
     const liquidLine = d3.line<typeof values[0]>()
       .x(d => x(d.date))
@@ -1270,6 +1455,14 @@ const APYChart = memo(function APYChart({ data, currentRealizedAPY, currentLiqui
         .attr('cy', y(clamp(lastDataPoint.realized)))
         .attr('r', 4)
         .attr('fill', '#10b981')
+        .attr('stroke', 'white')
+        .attr('stroke-width', 1.5)
+
+      g.append('circle')
+        .attr('cx', x(lastDataPoint.date))
+        .attr('cy', y(clamp(lastDataPoint.unrealized)))
+        .attr('r', 4)
+        .attr('fill', '#f97316')
         .attr('stroke', 'white')
         .attr('stroke-width', 1.5)
 
@@ -1300,7 +1493,7 @@ const APYChart = memo(function APYChart({ data, currentRealizedAPY, currentLiqui
         if (!d0 || !d1) return
         const d = date.getTime() - d0.date.getTime() > d1.date.getTime() - date.getTime() ? d1 : d0
         tooltip
-          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/><span style="color:#10b981">Realized: ${formatPercentSimple(d.realized)}</span><br/><span style="color:#3b82f6">Liquid: ${formatPercentSimple(d.liquid)}</span>`)
+          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.date)}</strong><br/><span style="color:#10b981">Realized: ${formatPercentSimple(d.realized)}</span><br/><span style="color:#f97316">Unrealized: ${formatPercentSimple(d.unrealized)}</span><br/><span style="color:#3b82f6">Liquid: ${formatPercentSimple(d.liquid)}</span>`)
         // Position tooltip - flip to left side if near right edge
         const tooltipWidth = 140
         const leftPos = event.pageX + tooltipWidth + 20 > window.innerWidth
@@ -1354,6 +1547,10 @@ const APYChart = memo(function APYChart({ data, currentRealizedAPY, currentLiqui
           <span className="flex items-center gap-0.5 text-emerald-400">
             <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500" />
             {formatPercentSimple(currentRealizedAPY)}
+          </span>
+          <span className="flex items-center gap-0.5 text-orange-400">
+            <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-orange-500" />
+            {formatPercentSimple(currentLiquidAPY - currentRealizedAPY)}
           </span>
           <span className="flex items-center gap-0.5 text-blue-400">
             <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-1.5 sm:h-1.5 md:w-2 md:h-2 rounded-full bg-blue-500" />
@@ -1669,14 +1866,20 @@ export const PortfolioCharts = memo(function PortfolioCharts({ timeSeries, alloc
       {/* Mobile: Allocation Lists (compact, no pie charts) */}
       <div className="grid grid-cols-1 gap-1.5 sm:hidden">
         <AllocationList data={allocations} title="Fund Allocation" valueKey="fundSize" />
-        <AllocationList data={allocations} title="Asset Allocation" valueKey="value" />
+        {categoryAllocations && categoryAllocations.some(c => c.value > 0) && (
+          <CategoryBarChart data={categoryAllocations} margin={marginInfo} title="Portfolio Allocation" />
+        )}
         <AllocationList data={platformAllocations} title="Platform Allocation" valueKey="value" showPlatformOnly />
       </div>
 
       {/* Desktop: Pie Charts Row */}
       <div className="hidden sm:grid grid-cols-3 gap-2">
         <PieChart data={allocations} title="Fund Allocation" valueKey="fundSize" />
-        <PieChart data={allocations} title="Asset Allocation" valueKey="value" />
+        {categoryAllocations && categoryAllocations.some(c => c.value > 0) ? (
+          <CategoryBarChart data={categoryAllocations} margin={marginInfo} title="Portfolio Allocation" />
+        ) : (
+          <PieChart data={allocations} title="Asset Allocation" valueKey="value" />
+        )}
         <PlatformPieChart data={platformAllocations} title="Platform Allocation" valueKey="value" />
       </div>
 
@@ -1697,38 +1900,19 @@ export const PortfolioCharts = memo(function PortfolioCharts({ timeSeries, alloc
         />
       </div>
 
-      {/* Time Series Charts - Row 2: Fund totals + Portfolio Allocation */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 xs:gap-1.5 sm:gap-2">
+      {/* Time Series Charts - Row 2: Fund totals */}
+      <div className="grid grid-cols-2 gap-1 xs:gap-1.5 sm:gap-2">
         <FundsStackedAreaChart
           data={timeSeries}
           allocations={allocations}
           resize={resize}
         />
-        <AreaChart
-          data={timeSeries}
-          title="Fund Liquid Value"
-          valueKey="totalValue"
-          color="#10b981"
-          resize={resize}
-        />
-        {categoryAllocations && categoryAllocations.some(c => c.value > 0) && (
-          <CategoryBarChart
-            data={categoryAllocations}
-            margin={marginInfo}
-            title="Portfolio Allocation"
-          />
-        )}
+        <LiquidValueStackedChart data={timeSeries} resize={resize} />
       </div>
 
-      {/* Time Series Charts - Row 3: Cash and allocation */}
-      <div className={`grid ${hasMarginAccess ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'} gap-1 xs:gap-1.5 sm:gap-2`}>
-        <AreaChart
-          data={timeSeries}
-          title="Cash"
-          valueKey="totalCash"
-          color="#06b6d4"
-          resize={resize}
-        />
+      {/* Time Series Charts - Row 3: Value & Allocation, Margin, Cash vs Asset */}
+      <div className={`grid ${hasMarginAccess ? 'grid-cols-3' : 'grid-cols-2'} gap-1 xs:gap-1.5 sm:gap-2`}>
+        <PortfolioValueAllocationChart data={timeSeries} resize={resize} />
         {hasMarginAccess && (
           <MarginChart
             data={timeSeries}

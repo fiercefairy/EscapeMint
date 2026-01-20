@@ -387,6 +387,7 @@ export interface TimeSeriesPoint {
   totalCashInterest: number
   totalRealizedGain: number
   totalUnrealizedGain: number
+  totalExpectedTarget: number
   realizedAPY: number
   liquidAPY: number
   totalGainUsd: number

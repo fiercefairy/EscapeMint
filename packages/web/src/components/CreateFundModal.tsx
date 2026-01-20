@@ -121,7 +121,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
       // Multi-category takes precedence, clear single category when using allocations
       category: isMultiCategory ? undefined : (category || undefined),
       category_allocations: isMultiCategory && categoryAllocations.length > 0 ? categoryAllocations : undefined,
-      fund_size_usd: formData.fund_size_usd,
+      fund_size_usd: fundType === 'cash' ? formData.fund_size_usd : 0,
       target_apy: features.allowsTrading ? round(formData.target_apy / 100, 4) : (defaults.target_apy ?? 0),
       interval_days: features.allowsTrading ? formData.interval_days : (defaults.interval_days ?? 1),
       input_min_usd: features.allowsTrading ? formData.input_min_usd : (defaults.input_min_usd ?? 0),
@@ -344,22 +344,24 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
             </div>
           </div>
 
-          {/* Fund Size and Start Date */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">{!features.allowsTrading ? 'Initial Balance ($)' : 'Fund Size ($)'}</label>
-              <input
-                type="number"
-                name="fund_size_usd"
-                id="fund-size"
-                value={formData.fund_size_usd}
-                onChange={e => setFormData({ ...formData, fund_size_usd: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                step="100"
-                min="0"
-                required
-              />
-            </div>
+          {/* Fund Size (cash only) and Start Date */}
+          <div className={`grid gap-3 ${fundType === 'cash' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {fundType === 'cash' && (
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Initial Balance ($)</label>
+                <input
+                  type="number"
+                  name="fund_size_usd"
+                  id="fund-size"
+                  value={formData.fund_size_usd}
+                  onChange={e => setFormData({ ...formData, fund_size_usd: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                  step="100"
+                  min="0"
+                  required
+                />
+              </div>
+            )}
             <div>
               <label className="block text-xs text-slate-400 mb-1">Start Date</label>
               <input

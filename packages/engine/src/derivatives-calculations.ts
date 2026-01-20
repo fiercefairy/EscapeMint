@@ -19,7 +19,7 @@ import type {
 
 // Default margin rates per Coinbase documentation
 const DEFAULT_INITIAL_MARGIN_RATE = 0.25  // 25% (Coinbase BTC perpetuals)
-const DEFAULT_MAINTENANCE_MARGIN_RATE = 0.05  // 5%
+const DEFAULT_MAINTENANCE_MARGIN_RATE = 0.20  // 20% (Coinbase BTC perpetuals)
 const DEFAULT_CONTRACT_MULTIPLIER = 0.01  // BIP micro-futures
 
 /**
@@ -597,11 +597,13 @@ interface DerivativesFundEntry {
  *
  * @param entries - Fund entries from TSV
  * @param contractMultiplier - Units of underlying asset per contract (default 0.01)
+ * @param maintenanceMarginRate - Maintenance margin rate for liquidation (default 0.20)
  * @returns Array of entry states with running calculations
  */
 export const computeDerivativesEntriesState = (
   entries: DerivativesFundEntry[],
-  contractMultiplier: number = DEFAULT_CONTRACT_MULTIPLIER
+  contractMultiplier: number = DEFAULT_CONTRACT_MULTIPLIER,
+  maintenanceMarginRate: number = DEFAULT_MAINTENANCE_MARGIN_RATE
 ): DerivativesEntryState[] => {
   // Action priority order within the same date
   const actionOrder: Record<string, number> = {
@@ -806,8 +808,8 @@ export const computeDerivativesEntriesState = (
 
     // Margin calculations (futures don't spend cash, they lock margin)
     // marginLocked: Sum of actual margin from cost basis queue
-    // Maintenance margin: typically 5% of notional value (exchange enforced)
-    const maintenanceMargin = notionalValue * DEFAULT_MAINTENANCE_MARGIN_RATE
+    // Maintenance margin: typically 20% of notional value for Coinbase BTC perpetuals
+    const maintenanceMargin = notionalValue * maintenanceMarginRate
     const availableFunds = marginBalance - marginLocked  // Use actual margin locked
 
     // Margin ratio = maintenance margin / funds for margin

@@ -24,6 +24,7 @@ import {
   computeAggregateMetrics,
   computeClosedFundMetrics,
   computeDerivativesEntriesState,
+  computeExpectedTarget,
   type FundState
 } from '@escapemint/engine'
 import { notFound, badRequest } from '../middleware/error-handler.js'
@@ -111,7 +112,8 @@ fundsRouter.get('/', async (req, res, next) => {
     } else if (isDerivativesFund && f.entries.length > 0) {
       // For derivatives funds, compute the derivatives state to get equity and margin
       const contractMultiplier = f.config.contract_multiplier ?? 0.01
-      const derivStates = computeDerivativesEntriesState(f.entries, contractMultiplier)
+      const maintenanceMarginRate = f.config.maintenance_margin_rate ?? 0.20
+      const derivStates = computeDerivativesEntriesState(f.entries, contractMultiplier, maintenanceMarginRate)
       const lastState = derivStates[derivStates.length - 1]
       if (lastState) {
         latestEquity = { date: lastState.date, value: lastState.equity }
@@ -174,7 +176,8 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
     if (isDerivativesFund && fund.entries.length > 0) {
       // For derivatives, compute derivatives state and map to FundState-compatible object
       const contractMultiplier = fund.config.contract_multiplier ?? 0.01
-      const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier)
+      const maintenanceMarginRate = fund.config.maintenance_margin_rate ?? 0.20
+      const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier, maintenanceMarginRate)
       const lastState = derivStates[derivStates.length - 1]
 
       if (lastState) {
@@ -330,7 +333,8 @@ fundsRouter.get('/history', async (req, res, next) => {
   for (const fund of funds) {
     if (fund.config.fund_type === 'derivatives' && fund.entries.length > 0) {
       const contractMultiplier = fund.config.contract_multiplier ?? 0.01
-      const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier)
+      const maintenanceMarginRate = fund.config.maintenance_margin_rate ?? 0.20
+      const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier, maintenanceMarginRate)
       const dateMap = new Map<string, { equity: number, costBasis: number, marginBalance: number, availableFunds: number, realizedPnl: number, unrealizedPnl: number, cumInterest: number }>()
       for (const entry of derivStates) {
         dateMap.set(entry.date, {
@@ -376,6 +380,7 @@ fundsRouter.get('/history', async (req, res, next) => {
     totalCashInterest: number
     totalRealizedGain: number
     totalUnrealizedGain: number
+    totalExpectedTarget: number
     realizedAPY: number
     liquidAPY: number
     totalGainUsd: number
@@ -397,6 +402,7 @@ fundsRouter.get('/history', async (req, res, next) => {
     let totalCashInterest = 0
     let totalRealizedGain = 0
     let totalUnrealizedGain = 0
+    let totalExpectedTarget = 0
     let totalGainUsd = 0  // Track gain per-fund (handles cash funds properly)
     const fundBreakdown: Record<string, number> = {}
 
@@ -500,6 +506,13 @@ fundsRouter.get('/history', async (req, res, next) => {
           totalUnrealizedGain += state.gain_usd - state.realized_gains_usd
         }
 
+        // Expected target for trading funds with target_apy
+        // Cash funds don't have target APY concept
+        if (!isCashFund && fund.config.target_apy > 0) {
+          const expectedTarget = computeExpectedTarget(fund.config, trades, date)
+          totalExpectedTarget += expectedTarget
+        }
+
         // Track dividends and expenses for display
         for (const entry of entriesUpToDate) {
           if (entry.dividend) totalDividends += Math.abs(entry.dividend)
@@ -563,6 +576,7 @@ fundsRouter.get('/history', async (req, res, next) => {
       totalCashInterest,
       totalRealizedGain,
       totalUnrealizedGain,
+      totalExpectedTarget,
       realizedAPY,
       liquidAPY,
       totalGainUsd: totalGainUsdForChart,  // Use totalValue - totalStartInput to match aggregate
@@ -843,7 +857,8 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
   let state
   if (isDerivativesFund) {
     const contractMultiplier = fund.config.contract_multiplier ?? 0.01
-    const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier)
+    const maintenanceMarginRate = fund.config.maintenance_margin_rate ?? 0.20
+    const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier, maintenanceMarginRate)
     const lastState = derivStates[derivStates.length - 1]
 
     if (lastState) {
@@ -1043,12 +1058,14 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
 
   if (isDerivativesFund) {
     const contractMultiplier = fund.config.contract_multiplier ?? 0.01
+    const maintenanceMarginRate = fund.config.maintenance_margin_rate ?? 0.20
 
     // Unrealized P&L is calculated at each entry using the BTC price at that snapshot
     // (derived from the trade price: btcPrice = contractPrice / contractMultiplier)
     derivativesEntriesState = computeDerivativesEntriesState(
       fund.entries,
-      contractMultiplier
+      contractMultiplier,
+      maintenanceMarginRate
     )
   }
 

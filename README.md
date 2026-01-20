@@ -37,7 +37,7 @@ EscapeMint has specific fund import handling for the following brokerages:
 | Platform | Fund Types | Features |
 |----------|-----------|----------|
 | **[Robinhood](https://join.robinhood.com/adame110/)** | Stock, Crypto | DCA, cash interest, margin tracking |
-| **[M1 Finance](https://m1.finance/ahf9WyY0IIek)** | Stock | DCA, dividend reinvestment |
+| **[M1 Finance](https://m1.finance/kJ_TN6Y3KKYI)** | Stock | DCA, dividend reinvestment |
 | **[Coinbase](https://advanced.coinbase.com/join/XWJ3U4F)** | Crypto, Derivatives | Spot trading, perpetual futures |
 | **[Crypto.com](https://crypto.com/app/iwmcxzu8n5)** | Crypto | Spot trading |
 

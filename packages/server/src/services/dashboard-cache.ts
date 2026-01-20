@@ -10,7 +10,9 @@ import { readdir } from 'node:fs/promises'
 import { readFund, type FundData } from '@escapemint/storage'
 import {
   computeDerivativesEntriesState,
-  type SubFundConfig
+  computeExpectedTarget,
+  type SubFundConfig,
+  type Trade
 } from '@escapemint/engine'
 import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
 
@@ -93,6 +95,7 @@ export interface TimeSeriesPoint {
   totalCashInterest: number
   totalRealizedGain: number
   totalUnrealizedGain: number
+  totalExpectedTarget: number
   realizedAPY: number
   liquidAPY: number
   totalGainUsd: number
@@ -432,7 +435,8 @@ function computeHistory(funds: FundData[]): DashboardHistory {
   for (const fund of funds) {
     if (fund.config.fund_type === 'derivatives' && fund.entries.length > 0) {
       const contractMultiplier = fund.config.contract_multiplier ?? 0.01
-      const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier)
+      const maintenanceMarginRate = fund.config.maintenance_margin_rate ?? 0.20
+      const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier, maintenanceMarginRate)
       const dateMap = new Map<string, DerivState>()
       for (const entry of derivStates) {
         dateMap.set(entry.date, {
@@ -473,6 +477,7 @@ function computeHistory(funds: FundData[]): DashboardHistory {
     let totalCashInterest = 0
     let totalRealizedGain = 0
     let totalUnrealizedGain = 0
+    let totalExpectedTarget = 0
     let totalGainUsd = 0
     const fundBreakdown: Record<string, number> = {}
     const realizedGainBreakdown: Record<string, number> = {}
@@ -588,6 +593,25 @@ function computeHistory(funds: FundData[]): DashboardHistory {
 
         // Cash - use computed cash from metrics
         totalCash += metrics.cash
+
+        // Expected target for trading funds with target_apy
+        if (!isCashFund && fund.config.target_apy > 0) {
+          // Convert FundEntry[] to Trade[] for computeExpectedTarget
+          const trades: Trade[] = sortedEntries
+            .filter(e => e.action === 'BUY' || e.action === 'SELL')
+            .map(e => {
+              const trade: Trade = {
+                date: e.date,
+                amount_usd: e.amount ?? 0,
+                type: e.action === 'BUY' ? 'buy' : 'sell',
+                value: e.value
+              }
+              if (e.shares !== undefined) trade.shares = e.shares
+              return trade
+            })
+          const expectedTarget = computeExpectedTarget(fund.config, trades, date)
+          totalExpectedTarget += expectedTarget
+        }
       }
 
       // Margin - still need to get from entry
@@ -629,6 +653,7 @@ function computeHistory(funds: FundData[]): DashboardHistory {
       totalCashInterest,
       totalRealizedGain,
       totalUnrealizedGain,
+      totalExpectedTarget,
       realizedAPY,
       liquidAPY,
       totalGainUsd,
