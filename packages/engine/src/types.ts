@@ -214,8 +214,8 @@ export interface SubFundConfig {
   initial_margin_rate?: number
 
   /**
-   * Maintenance margin rate for liquidation calculation (e.g., 0.05 for 5%).
-   * Defaults to 0.05 for Coinbase.
+   * Maintenance margin rate for liquidation calculation (e.g., 0.20 for 20%).
+   * Defaults to 0.20 for Coinbase BTC perpetuals.
    */
   maintenance_margin_rate?: number
 

@@ -432,7 +432,8 @@ function computeHistory(funds: FundData[]): DashboardHistory {
   for (const fund of funds) {
     if (fund.config.fund_type === 'derivatives' && fund.entries.length > 0) {
       const contractMultiplier = fund.config.contract_multiplier ?? 0.01
-      const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier)
+      const maintenanceMarginRate = fund.config.maintenance_margin_rate ?? 0.20
+      const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier, maintenanceMarginRate)
       const dateMap = new Map<string, DerivState>()
       for (const entry of derivStates) {
         dateMap.set(entry.date, {
