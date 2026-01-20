@@ -30,6 +30,7 @@ test-results/
 # Shipped reports (sanitized, commented to track in git)
 #packages/web/public/playwright-report/
 #packages/web/public/code-coverage/
+packages/web/public/playwright-report/data/
 
 # Legacy test directory at repo root (defunct - using e2e/ now)
 /test/
