@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
-import { addFundEntry, previewRecommendation, type FundEntry, type FundState, type Recommendation, type FundType } from '../api/funds'
+import { addFundEntry, previewRecommendation, updateFundConfig, type FundEntry, type FundState, type Recommendation, type FundType, type FundStatus } from '../api/funds'
 import { EntryForm, buildEntryFromForm, createEmptyFormData, detectDigitError, type EntryFormData, type ActionType } from './EntryForm'
+import { ConfirmDialog } from './ConfirmDialog'
 import { getPriorEquity } from '../utils/format'
 
 export interface AddEntryModalProps {
@@ -15,15 +16,20 @@ export interface AddEntryModalProps {
   fundType?: FundType | undefined
   marginEnabled?: boolean | undefined
   platform?: string | undefined
+  fundStatus?: FundStatus | undefined
   onClose: () => void
   onAdded: () => void
 }
 
-export function AddEntryModal({ fundId, fundTicker, currentRecommendation, existingEntries = [], targetApy, minProfitUsd, manageCash, fundType = 'stock', marginEnabled = false, platform, onClose, onAdded }: AddEntryModalProps) {
+export function AddEntryModal({ fundId, fundTicker, currentRecommendation, existingEntries = [], targetApy, minProfitUsd, manageCash, fundType = 'stock', marginEnabled = false, platform, fundStatus, onClose, onAdded }: AddEntryModalProps) {
   const [loading, setLoading] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [result, setResult] = useState<{ state: FundState; recommendation: Recommendation; margin_available?: number; margin_borrowed?: number } | null>(null)
   const [preview, setPreview] = useState<{ state: FundState; recommendation: Recommendation | null; margin_available: number; fund_size: number } | null>(null)
+  const [showReopenConfirm, setShowReopenConfirm] = useState(false)
+  const [pendingEntry, setPendingEntry] = useState<Partial<FundEntry> | null>(null)
+
+  const isClosed = fundStatus === 'closed'
 
   // Pre-populate form with latest entry values for continuity
   const getInitialFormData = (): EntryFormData => {
@@ -160,17 +166,30 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     applyRecommendation(preview.recommendation)
   }, [preview, fundType, applyRecommendation])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const saveEntry = async (entry: Partial<FundEntry>, shouldReopenFund = false) => {
     setLoading(true)
 
-    const entry = buildEntryFromForm(formData, fundType)
     const response = await addFundEntry(fundId, entry)
 
     if (response.error) {
       toast.error(response.error)
-    } else if (response.data) {
+      setLoading(false)
+      return
+    }
+
+    // If fund needs to be reopened, update its status
+    if (shouldReopenFund) {
+      const configResponse = await updateFundConfig(fundId, { status: 'active' })
+      if (configResponse.error) {
+        toast.error('Entry saved but failed to reopen fund: ' + configResponse.error)
+      } else {
+        toast.success('Entry added and fund reopened')
+      }
+    } else {
       toast.success('Entry recorded')
+    }
+
+    if (response.data) {
       setResult({
         state: response.data.state,
         recommendation: response.data.recommendation
@@ -180,6 +199,34 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     }
 
     setLoading(false)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    const entry = buildEntryFromForm(formData, fundType)
+
+    // If fund is closed, prompt user to confirm reopening
+    if (isClosed) {
+      setPendingEntry(entry)
+      setShowReopenConfirm(true)
+      return
+    }
+
+    await saveEntry(entry)
+  }
+
+  const handleReopenAndSave = async () => {
+    setShowReopenConfirm(false)
+    if (pendingEntry) {
+      await saveEntry(pendingEntry, true)
+      setPendingEntry(null)
+    }
+  }
+
+  const handleCancelReopen = () => {
+    setShowReopenConfirm(false)
+    setPendingEntry(null)
   }
 
   const handleClose = () => {
@@ -460,6 +507,16 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
           </div>
         </form>
       </div>
+
+      {showReopenConfirm && (
+        <ConfirmDialog
+          title="Reopen Fund?"
+          message="This fund is currently closed. Adding an entry will reopen it. Continue?"
+          confirmLabel="Reopen & Save"
+          onConfirm={handleReopenAndSave}
+          onCancel={handleCancelReopen}
+        />
+      )}
     </div>
   )
 }

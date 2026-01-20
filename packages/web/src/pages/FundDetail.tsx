@@ -1607,6 +1607,7 @@ export function FundDetail() {
             fundType={fund.config.fund_type}
             marginEnabled={fund.config.margin_enabled}
             platform={fund.platform}
+            fundStatus={fund.config.status}
             onClose={() => {
               setShowAddEntry(false)
               if (isAdding) navigate(`/fund/${fund.id}`, { replace: true })
