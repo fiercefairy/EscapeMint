@@ -15,7 +15,7 @@ const SUPPORTED_PLATFORMS = [
     name: 'M1 Finance',
     description: 'Automated investing with dividend reinvestment',
     fundTypes: ['Stock'],
-    referralUrl: 'https://m1.finance/kJ_TN6Y3KKYI',
+    referralUrl: 'https://m1.finance/OGMwOZn__m2e',
     color: 'teal'
   },
   {
