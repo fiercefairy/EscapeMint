@@ -12,6 +12,8 @@ export interface ScenarioConfig {
   brgnxPct: number
   tqqqPct: number
   btcPct: number
+  gldPct: number
+  slvPct: number
 
   // DCA strategy
   initialCash: number
@@ -108,7 +110,9 @@ export function runBacktest(
     VTI: scenario.vtiPct / 100,
     BRGNX: scenario.brgnxPct / 100,
     TQQQ: scenario.tqqqPct / 100,
-    BTC: scenario.btcPct / 100
+    BTC: scenario.btcPct / 100,
+    GLD: scenario.gldPct / 100,
+    SLV: scenario.slvPct / 100
   }
 
   const blendResult = blendPricesWithDividends(historicalData, allocation, dateRange)
@@ -120,6 +124,8 @@ export function runBacktest(
   console.log('VTI divs in range:', blendResult.dividends.VTI.length, blendResult.dividends.VTI)
   console.log('BRGNX divs in range:', blendResult.dividends.BRGNX.length, blendResult.dividends.BRGNX)
   console.log('TQQQ divs in range:', blendResult.dividends.TQQQ.length, blendResult.dividends.TQQQ)
+  console.log('GLD divs in range:', blendResult.dividends.GLD.length, blendResult.dividends.GLD)
+  console.log('SLV divs in range:', blendResult.dividends.SLV.length, blendResult.dividends.SLV)
   console.log('Date range:', dateRange)
 
   if (blendedPrices.length === 0) {
@@ -161,10 +167,14 @@ export function runBacktest(
   //   $X * VTI_pct / VTI_starting_price worth of VTI shares
   //   $X * BRGNX_pct / BRGNX_starting_price worth of BRGNX shares
   //   $X * TQQQ_pct / TQQQ_starting_price worth of TQQQ shares
+  //   $X * GLD_pct / GLD_starting_price worth of GLD shares
+  //   $X * SLV_pct / SLV_starting_price worth of SLV shares
   let spxlEquivShares = 0
   let vtiEquivShares = 0
   let brgnxEquivShares = 0
   let tqqqEquivShares = 0
+  let gldEquivShares = 0
+  let slvEquivShares = 0
   const { startingPrices, dividends: allDividends } = blendResult
 
   // Weekly interest rate from annual APY
@@ -207,20 +217,24 @@ export function runBacktest(
 
     // Calculate dividends for this period (based on equivalent shares held)
     let weeklyDividend = 0
-    if (i > 0 && (spxlEquivShares > 0 || vtiEquivShares > 0 || brgnxEquivShares > 0 || tqqqEquivShares > 0)) {
+    if (i > 0 && (spxlEquivShares > 0 || vtiEquivShares > 0 || brgnxEquivShares > 0 || tqqqEquivShares > 0 || gldEquivShares > 0 || slvEquivShares > 0)) {
       // Get dividends that occurred between last entry and this entry
       const spxlDivs = getDividendsInRange(allDividends.SPXL, previousDate, point.date)
       const vtiDivs = getDividendsInRange(allDividends.VTI, previousDate, point.date)
       const brgnxDivs = getDividendsInRange(allDividends.BRGNX, previousDate, point.date)
       const tqqqDivs = getDividendsInRange(allDividends.TQQQ, previousDate, point.date)
+      const gldDivs = getDividendsInRange(allDividends.GLD, previousDate, point.date)
+      const slvDivs = getDividendsInRange(allDividends.SLV, previousDate, point.date)
 
       // Debug: Log when dividends are found
-      if (spxlDivs.length > 0 || vtiDivs.length > 0 || brgnxDivs.length > 0 || tqqqDivs.length > 0) {
+      if (spxlDivs.length > 0 || vtiDivs.length > 0 || brgnxDivs.length > 0 || tqqqDivs.length > 0 || gldDivs.length > 0 || slvDivs.length > 0) {
         const spxlDivAmt = spxlDivs.reduce((sum, d) => sum + spxlEquivShares * d.amount, 0)
         const vtiDivAmt = vtiDivs.reduce((sum, d) => sum + vtiEquivShares * d.amount, 0)
         const brgnxDivAmt = brgnxDivs.reduce((sum, d) => sum + brgnxEquivShares * d.amount, 0)
         const tqqqDivAmt = tqqqDivs.reduce((sum, d) => sum + tqqqEquivShares * d.amount, 0)
-        console.log(`Dividend on ${point.date}: SPXL $${spxlDivAmt.toFixed(2)}, VTI $${vtiDivAmt.toFixed(2)}, BRGNX $${brgnxDivAmt.toFixed(2)}, TQQQ $${tqqqDivAmt.toFixed(2)}`)
+        const gldDivAmt = gldDivs.reduce((sum, d) => sum + gldEquivShares * d.amount, 0)
+        const slvDivAmt = slvDivs.reduce((sum, d) => sum + slvEquivShares * d.amount, 0)
+        console.log(`Dividend on ${point.date}: SPXL $${spxlDivAmt.toFixed(2)}, VTI $${vtiDivAmt.toFixed(2)}, BRGNX $${brgnxDivAmt.toFixed(2)}, TQQQ $${tqqqDivAmt.toFixed(2)}, GLD $${gldDivAmt.toFixed(2)}, SLV $${slvDivAmt.toFixed(2)}`)
       }
 
       // Calculate dividend income from SPXL
@@ -241,6 +255,16 @@ export function runBacktest(
       // Calculate dividend income from TQQQ
       for (const div of tqqqDivs) {
         weeklyDividend += tqqqEquivShares * div.amount
+      }
+
+      // Calculate dividend income from GLD (typically none)
+      for (const div of gldDivs) {
+        weeklyDividend += gldEquivShares * div.amount
+      }
+
+      // Calculate dividend income from SLV (typically none)
+      for (const div of slvDivs) {
+        weeklyDividend += slvEquivShares * div.amount
       }
 
       // Add dividends to cash (simulates receiving dividend payment)
@@ -292,6 +316,8 @@ export function runBacktest(
         vtiEquivShares += (amount * allocation.VTI) / startingPrices.VTI
         brgnxEquivShares += (amount * allocation.BRGNX) / startingPrices.BRGNX
         tqqqEquivShares += (amount * allocation.TQQQ) / startingPrices.TQQQ
+        gldEquivShares += (amount * allocation.GLD) / startingPrices.GLD
+        slvEquivShares += (amount * allocation.SLV) / startingPrices.SLV
 
         // Debug: Log first BUY
         if (trades.length === 0) {
@@ -301,6 +327,8 @@ export function runBacktest(
           console.log('VTI equiv shares:', vtiEquivShares.toFixed(4))
           console.log('BRGNX equiv shares:', brgnxEquivShares.toFixed(4))
           console.log('TQQQ equiv shares:', tqqqEquivShares.toFixed(4))
+          console.log('GLD equiv shares:', gldEquivShares.toFixed(4))
+          console.log('SLV equiv shares:', slvEquivShares.toFixed(4))
         }
 
         trades.push({
@@ -333,6 +361,8 @@ export function runBacktest(
         vtiEquivShares *= (1 - sellProportion)
         brgnxEquivShares *= (1 - sellProportion)
         tqqqEquivShares *= (1 - sellProportion)
+        gldEquivShares *= (1 - sellProportion)
+        slvEquivShares *= (1 - sellProportion)
 
         // Check for full liquidation using multiple detection methods (matches engine)
         // After selling, remaining equity = (shares - sharesToSell) * price = equity - sellAmount
@@ -350,6 +380,8 @@ export function runBacktest(
           vtiEquivShares = 0
           brgnxEquivShares = 0
           tqqqEquivShares = 0
+          gldEquivShares = 0
+          slvEquivShares = 0
         } else {
           // Partial sell - reduce cost basis proportionally
           if (scenario.accumulate) {

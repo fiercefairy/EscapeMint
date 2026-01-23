@@ -15,19 +15,21 @@ function getDefaultAccumulateConfig(): ScenarioConfig {
   return {
     id: 'backtest',
     name: 'DCA Backtest',
-    spxlPct: 25,
-    vtiPct: 25,
+    spxlPct: 0,
+    vtiPct: 5,
     brgnxPct: 0,
-    tqqqPct: 25,
-    btcPct: 25,
+    tqqqPct: 15,
+    btcPct: 70,
+    gldPct: 5,
+    slvPct: 5,
     initialCash: 10000,
     weeklyDCA: 100,
-    targetAPY: 0.20,
+    targetAPY: 0.25,
     minProfitUSD: 1000,
     accumulate: true,
     inputMin: 100,
-    inputMid: 200,
-    inputMax: 250,
+    inputMid: 100,
+    inputMax: 100,
     maxAtPct: -0.25,
     marginAccessUSD: 0,
     marginAPR: 0.05,
@@ -39,11 +41,13 @@ function getDefaultHarvestConfig(): ScenarioConfig {
   return {
     id: 'backtest',
     name: 'DCA Backtest',
-    spxlPct: 25,
-    vtiPct: 0,
+    spxlPct: 0,
+    vtiPct: 5,
     brgnxPct: 0,
-    tqqqPct: 25,
-    btcPct: 50,
+    tqqqPct: 15,
+    btcPct: 70,
+    gldPct: 5,
+    slvPct: 5,
     initialCash: 10000,
     weeklyDCA: 100,
     targetAPY: 0.40,
@@ -60,7 +64,7 @@ function getDefaultHarvestConfig(): ScenarioConfig {
 }
 
 // Preset configurations for each mode
-export type PresetName = 'TQQQ' | 'SPXL' | 'VTI' | 'BRGNX' | 'BTC' | 'Blend'
+export type PresetName = 'TQQQ' | 'SPXL' | 'VTI' | 'BRGNX' | 'BTC' | 'GLD' | 'SLV' | 'Blend'
 
 export interface Preset {
   name: PresetName
@@ -78,6 +82,8 @@ export const PRESETS: Preset[] = [
       brgnxPct: 0,
       tqqqPct: 100,
       btcPct: 0,
+      gldPct: 0,
+      slvPct: 0,
       targetAPY: accumulate ? 0.20 : 0.52,
       inputMin: 100,
       inputMid: 100,
@@ -93,6 +99,8 @@ export const PRESETS: Preset[] = [
       brgnxPct: 0,
       tqqqPct: 0,
       btcPct: 0,
+      gldPct: 0,
+      slvPct: 0,
       targetAPY: 0.10,
       inputMin: 100,
       inputMid: 100,
@@ -108,6 +116,8 @@ export const PRESETS: Preset[] = [
       brgnxPct: 0,
       tqqqPct: 0,
       btcPct: 0,
+      gldPct: 0,
+      slvPct: 0,
       targetAPY: 0.10,
       inputMin: 100,
       inputMid: 100,
@@ -123,6 +133,8 @@ export const PRESETS: Preset[] = [
       brgnxPct: 100,
       tqqqPct: 0,
       btcPct: 0,
+      gldPct: 0,
+      slvPct: 0,
       targetAPY: 0.10,
       inputMin: 100,
       inputMid: 100,
@@ -138,10 +150,46 @@ export const PRESETS: Preset[] = [
       brgnxPct: 0,
       tqqqPct: 0,
       btcPct: 100,
+      gldPct: 0,
+      slvPct: 0,
       targetAPY: accumulate ? 0.30 : 0.80,
       inputMin: 100,
       inputMid: 100,
       inputMax: accumulate ? 100 : 200
+    })
+  },
+  {
+    name: 'GLD',
+    label: 'GLD',
+    getConfig: (accumulate, _base) => ({
+      spxlPct: 0,
+      vtiPct: 0,
+      brgnxPct: 0,
+      tqqqPct: 0,
+      btcPct: 0,
+      gldPct: 100,
+      slvPct: 0,
+      targetAPY: 0.08,
+      inputMin: 100,
+      inputMid: 100,
+      inputMax: accumulate ? 100 : 150
+    })
+  },
+  {
+    name: 'SLV',
+    label: 'SLV',
+    getConfig: (accumulate, _base) => ({
+      spxlPct: 0,
+      vtiPct: 0,
+      brgnxPct: 0,
+      tqqqPct: 0,
+      btcPct: 0,
+      gldPct: 0,
+      slvPct: 100,
+      targetAPY: 0.10,
+      inputMin: 100,
+      inputMid: 100,
+      inputMax: accumulate ? 100 : 150
     })
   },
   {
@@ -155,6 +203,8 @@ export const PRESETS: Preset[] = [
         brgnxPct: defaults.brgnxPct,
         tqqqPct: defaults.tqqqPct,
         btcPct: defaults.btcPct,
+        gldPct: defaults.gldPct,
+        slvPct: defaults.slvPct,
         targetAPY: defaults.targetAPY,
         inputMin: defaults.inputMin,
         inputMid: defaults.inputMid,
@@ -340,7 +390,7 @@ export function BacktestApp() {
       {/* Footer */}
       <footer className="border-t border-slate-800 mt-12">
         <div className="container mx-auto px-4 sm:px-6 py-6 text-center text-sm text-slate-500">
-          <p>Historical data: SPXL (3x Russell 1000), VTI (Total US Market), BRGNX (Russell 1000), TQQQ (3x NASDAQ), BTC (Bitcoin)</p>
+          <p>Historical data: SPXL (3x Russell 1000), VTI (Total US Market), BRGNX (Russell 1000), TQQQ (3x NASDAQ), BTC (Bitcoin), GLD (Gold), SLV (Silver)</p>
           <p className="mt-1">All calculations run in-browser using EscapeMint engine</p>
           <p className="mt-2">
             <a
