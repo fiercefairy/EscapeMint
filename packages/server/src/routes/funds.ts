@@ -1986,7 +1986,7 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
 
           // Trade component (Buy/Sell) - only if there's a non-dividend cash effect
           const tradeEffect = cashEffect - dividendDelta
-          if (tradeEffect !== 0 && entry.shares) {
+          if (tradeEffect !== 0) {
             const noteAction = tradeEffect > 0 ? 'Sell' : 'Buy'
             parts.push(`${noteAction} ${tickerUpper}${entry.shares ? ` (${entry.shares} shares)` : ''}`)
           }
@@ -2073,10 +2073,11 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
             const newDateEntryIndex = cashFundData.entries.findIndex(e => e.date === newDate)
             if (newDateEntryIndex >= 0) {
               const newDateEntry = cashFundData.entries[newDateEntryIndex]!
-              newDateEntry.value = round2((newDateEntry.value ?? 0) + newCashEffect)
+              // Use cashDelta because existing value already includes cascaded effects from old dates
+              newDateEntry.value = round2((newDateEntry.value ?? 0) + cashDelta)
               newDateEntry.cash = newDateEntry.value
               newDateEntry.fund_size = newDateEntry.value
-              newDateEntry.amount = round2((newDateEntry.amount ?? 0) + newCashEffect)
+              newDateEntry.amount = round2((newDateEntry.amount ?? 0) + cashDelta)
               newDateEntry.notes = appendAutoNote(newDateEntry.notes, createAutoNote(newCashEffect, dividendDelta))
               applyMarginAdjustment(newDateEntry)
               excludeFromPropagation.add(newDate)
