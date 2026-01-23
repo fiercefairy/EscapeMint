@@ -139,6 +139,9 @@ async function main() {
   const spxlRaw = await fetchYahooFinance('SPXL')
   const spyRaw = await fetchYahooFinance('SPY')
   const brgnxRaw = await fetchYahooFinance('BRGNX') // Russell 1000 (SPXL comparison)
+  const vtiRaw = await fetchYahooFinance('VTI')
+  const gldRaw = await fetchYahooFinance('GLD') // Gold ETF
+  const slvRaw = await fetchYahooFinance('SLV') // Silver ETF
 
   // Fetch crypto data (Yahoo Finance has BTC-USD)
   const btcRaw = await fetchBitcoinYahoo()
@@ -148,6 +151,9 @@ async function main() {
   const spxl = getWednesdayOrNearest(spxlRaw)
   const spy = getWednesdayOrNearest(spyRaw)
   const brgnx = getWednesdayOrNearest(brgnxRaw)
+  const vti = getWednesdayOrNearest(vtiRaw)
+  const gld = getWednesdayOrNearest(gldRaw)
+  const slv = getWednesdayOrNearest(slvRaw)
   // BTC trades 24/7 but Yahoo Finance only has daily data, use same logic
   const btc = getWednesdayOrNearest(btcRaw)
 
@@ -155,6 +161,9 @@ async function main() {
   console.log(`SPXL: ${spxlRaw.length} daily -> ${spxl.length} weekly (Wednesdays)`)
   console.log(`SPY: ${spyRaw.length} daily -> ${spy.length} weekly (Wednesdays)`)
   console.log(`BRGNX: ${brgnxRaw.length} daily -> ${brgnx.length} weekly (Wednesdays)`)
+  console.log(`VTI: ${vtiRaw.length} daily -> ${vti.length} weekly (Wednesdays)`)
+  console.log(`GLD: ${gldRaw.length} daily -> ${gld.length} weekly (Wednesdays)`)
+  console.log(`SLV: ${slvRaw.length} daily -> ${slv.length} weekly (Wednesdays)`)
   console.log(`BTC: ${btcRaw.length} daily -> ${btc.length} weekly (Wednesdays)`)
 
   // Save to files
@@ -162,12 +171,18 @@ async function main() {
   const spxlPath = join(OUTPUT_DIR, 'spxl-weekly.json')
   const spyPath = join(OUTPUT_DIR, 'spy-weekly.json')
   const brgnxPath = join(OUTPUT_DIR, 'brgnx-weekly.json')
+  const vtiPath = join(OUTPUT_DIR, 'vti-weekly.json')
+  const gldPath = join(OUTPUT_DIR, 'gld-weekly.json')
+  const slvPath = join(OUTPUT_DIR, 'slv-weekly.json')
   const btcPath = join(OUTPUT_DIR, 'btcusd-weekly.json')
 
   writeFileSync(tqqqPath, JSON.stringify(tqqq, null, 2))
   writeFileSync(spxlPath, JSON.stringify(spxl, null, 2))
   writeFileSync(spyPath, JSON.stringify(spy, null, 2))
   writeFileSync(brgnxPath, JSON.stringify(brgnx, null, 2))
+  writeFileSync(vtiPath, JSON.stringify(vti, null, 2))
+  writeFileSync(gldPath, JSON.stringify(gld, null, 2))
+  writeFileSync(slvPath, JSON.stringify(slv, null, 2))
   writeFileSync(btcPath, JSON.stringify(btc, null, 2))
 
   console.log(`\nSaved to:`)
@@ -175,6 +190,9 @@ async function main() {
   console.log(`  ${spxlPath}`)
   console.log(`  ${spyPath}`)
   console.log(`  ${brgnxPath}`)
+  console.log(`  ${vtiPath}`)
+  console.log(`  ${gldPath}`)
+  console.log(`  ${slvPath}`)
   console.log(`  ${btcPath}`)
 
   // Print date ranges
@@ -183,6 +201,9 @@ async function main() {
   console.log(`  SPXL: ${spxl[0]?.date} to ${spxl[spxl.length - 1]?.date}`)
   console.log(`  SPY: ${spy[0]?.date} to ${spy[spy.length - 1]?.date}`)
   console.log(`  BRGNX: ${brgnx[0]?.date} to ${brgnx[brgnx.length - 1]?.date}`)
+  console.log(`  VTI: ${vti[0]?.date} to ${vti[vti.length - 1]?.date}`)
+  console.log(`  GLD: ${gld[0]?.date} to ${gld[gld.length - 1]?.date}`)
+  console.log(`  SLV: ${slv[0]?.date} to ${slv[slv.length - 1]?.date}`)
   console.log(`  BTC: ${btc[0]?.date} to ${btc[btc.length - 1]?.date}`)
 }
 

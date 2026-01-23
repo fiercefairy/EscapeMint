@@ -6,19 +6,23 @@ interface Props {
   brgnxPct: number
   tqqqPct: number
   btcPct: number
-  onChange: (spxlPct: number, vtiPct: number, brgnxPct: number, tqqqPct: number, btcPct: number) => void
+  gldPct: number
+  slvPct: number
+  onChange: (spxlPct: number, vtiPct: number, brgnxPct: number, tqqqPct: number, btcPct: number, gldPct: number, slvPct: number) => void
 }
 
-type AssetKey = 'SPXL' | 'VTI' | 'BRGNX' | 'TQQQ' | 'BTC'
+type AssetKey = 'SPXL' | 'VTI' | 'BRGNX' | 'TQQQ' | 'BTC' | 'GLD' | 'SLV'
 
-export function PieBuilder({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct, onChange }: Props) {
-  const total = spxlPct + vtiPct + brgnxPct + tqqqPct + btcPct
+export function PieBuilder({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct, gldPct, slvPct, onChange }: Props) {
+  const total = spxlPct + vtiPct + brgnxPct + tqqqPct + btcPct + gldPct + slvPct
   const [locked, setLocked] = useState<Record<AssetKey, boolean>>({
     SPXL: false,
     VTI: false,
     BRGNX: false,
     TQQQ: false,
-    BTC: false
+    BTC: false,
+    GLD: false,
+    SLV: false
   })
 
   const toggleLock = (asset: AssetKey) => {
@@ -31,16 +35,20 @@ export function PieBuilder({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct, onChang
     let newBrgnx = brgnxPct
     let newTqqq = tqqqPct
     let newBtc = btcPct
+    let newGld = gldPct
+    let newSlv = slvPct
 
     // Set the changed value
     if (asset === 'SPXL') newSpxl = value
     else if (asset === 'VTI') newVti = value
     else if (asset === 'BRGNX') newBrgnx = value
     else if (asset === 'TQQQ') newTqqq = value
-    else newBtc = value
+    else if (asset === 'BTC') newBtc = value
+    else if (asset === 'GLD') newGld = value
+    else newSlv = value
 
     // Calculate difference from 100%
-    const newTotal = newSpxl + newVti + newBrgnx + newTqqq + newBtc
+    const newTotal = newSpxl + newVti + newBrgnx + newTqqq + newBtc + newGld + newSlv
     const diff = newTotal - 100
 
     if (diff !== 0) {
@@ -51,6 +59,8 @@ export function PieBuilder({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct, onChang
       if (asset !== 'BRGNX' && !locked.BRGNX) unlocked.push({ asset: 'BRGNX', val: newBrgnx })
       if (asset !== 'TQQQ' && !locked.TQQQ) unlocked.push({ asset: 'TQQQ', val: newTqqq })
       if (asset !== 'BTC' && !locked.BTC) unlocked.push({ asset: 'BTC', val: newBtc })
+      if (asset !== 'GLD' && !locked.GLD) unlocked.push({ asset: 'GLD', val: newGld })
+      if (asset !== 'SLV' && !locked.SLV) unlocked.push({ asset: 'SLV', val: newSlv })
 
       const unlockedTotal = unlocked.reduce((sum, u) => sum + u.val, 0)
 
@@ -65,7 +75,9 @@ export function PieBuilder({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct, onChang
           else if (u.asset === 'VTI') newVti = newVal
           else if (u.asset === 'BRGNX') newBrgnx = newVal
           else if (u.asset === 'TQQQ') newTqqq = newVal
-          else newBtc = newVal
+          else if (u.asset === 'BTC') newBtc = newVal
+          else if (u.asset === 'GLD') newGld = newVal
+          else newSlv = newVal
         }
       }
     }
@@ -76,9 +88,11 @@ export function PieBuilder({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct, onChang
     newBrgnx = Math.round(newBrgnx)
     newTqqq = Math.round(newTqqq)
     newBtc = Math.round(newBtc)
+    newGld = Math.round(newGld)
+    newSlv = Math.round(newSlv)
 
     // Final adjustment to ensure exactly 100% after rounding (only adjust unlocked)
-    const finalTotal = newSpxl + newVti + newBrgnx + newTqqq + newBtc
+    const finalTotal = newSpxl + newVti + newBrgnx + newTqqq + newBtc + newGld + newSlv
     if (finalTotal !== 100) {
       const adjust = 100 - finalTotal
       // Find largest unlocked non-changed value to adjust
@@ -87,7 +101,9 @@ export function PieBuilder({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct, onChang
         { asset: 'VTI' as AssetKey, val: newVti, canAdjust: asset !== 'VTI' && !locked.VTI },
         { asset: 'BRGNX' as AssetKey, val: newBrgnx, canAdjust: asset !== 'BRGNX' && !locked.BRGNX },
         { asset: 'TQQQ' as AssetKey, val: newTqqq, canAdjust: asset !== 'TQQQ' && !locked.TQQQ },
-        { asset: 'BTC' as AssetKey, val: newBtc, canAdjust: asset !== 'BTC' && !locked.BTC }
+        { asset: 'BTC' as AssetKey, val: newBtc, canAdjust: asset !== 'BTC' && !locked.BTC },
+        { asset: 'GLD' as AssetKey, val: newGld, canAdjust: asset !== 'GLD' && !locked.GLD },
+        { asset: 'SLV' as AssetKey, val: newSlv, canAdjust: asset !== 'SLV' && !locked.SLV }
       ].filter(a => a.canAdjust).sort((a, b) => b.val - a.val)
 
       if (adjustable.length > 0) {
@@ -95,11 +111,13 @@ export function PieBuilder({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct, onChang
         else if (adjustable[0].asset === 'VTI') newVti += adjust
         else if (adjustable[0].asset === 'BRGNX') newBrgnx += adjust
         else if (adjustable[0].asset === 'TQQQ') newTqqq += adjust
-        else newBtc += adjust
+        else if (adjustable[0].asset === 'BTC') newBtc += adjust
+        else if (adjustable[0].asset === 'GLD') newGld += adjust
+        else newSlv += adjust
       }
     }
 
-    onChange(newSpxl, newVti, newBrgnx, newTqqq, newBtc)
+    onChange(newSpxl, newVti, newBrgnx, newTqqq, newBtc, newGld, newSlv)
   }
 
   return (
@@ -151,6 +169,24 @@ export function PieBuilder({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct, onChang
             {btcPct > 20 ? `BTC ${btcPct}%` : btcPct > 10 ? `${btcPct}%` : ''}
           </div>
         )}
+        {gldPct > 0 && (
+          <div
+            className="flex items-center justify-center text-[9px] text-white font-medium gap-1"
+            style={{ width: `${gldPct}%`, backgroundColor: '#eab308' }}
+            title={`GLD: ${gldPct}%`}
+          >
+            {gldPct > 20 ? `GLD ${gldPct}%` : gldPct > 10 ? `${gldPct}%` : ''}
+          </div>
+        )}
+        {slvPct > 0 && (
+          <div
+            className="flex items-center justify-center text-[9px] text-white font-medium gap-1"
+            style={{ width: `${slvPct}%`, backgroundColor: '#94a3b8' }}
+            title={`SLV: ${slvPct}%`}
+          >
+            {slvPct > 20 ? `SLV ${slvPct}%` : slvPct > 10 ? `${slvPct}%` : ''}
+          </div>
+        )}
       </div>
 
       {/* Sliders */}
@@ -160,6 +196,8 @@ export function PieBuilder({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct, onChang
         <SliderControl label="BRGNX" value={brgnxPct} onChange={(v) => handleChange('BRGNX', v)} color="#06b6d4" locked={locked.BRGNX} onToggleLock={() => toggleLock('BRGNX')} />
         <SliderControl label="TQQQ" value={tqqqPct} onChange={(v) => handleChange('TQQQ', v)} color="#22c55e" locked={locked.TQQQ} onToggleLock={() => toggleLock('TQQQ')} />
         <SliderControl label="BTC" value={btcPct} onChange={(v) => handleChange('BTC', v)} color="#f97316" locked={locked.BTC} onToggleLock={() => toggleLock('BTC')} />
+        <SliderControl label="GLD" value={gldPct} onChange={(v) => handleChange('GLD', v)} color="#eab308" locked={locked.GLD} onToggleLock={() => toggleLock('GLD')} />
+        <SliderControl label="SLV" value={slvPct} onChange={(v) => handleChange('SLV', v)} color="#94a3b8" locked={locked.SLV} onToggleLock={() => toggleLock('SLV')} />
       </div>
 
       {total !== 100 && (

@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { SPXL_DIVIDENDS, TQQQ_DIVIDENDS, SPY_DIVIDENDS, BRGNX_DIVIDENDS, VTI_DIVIDENDS, type DividendPayment } from '../../packages/server/src/data/dividends.js'
+import { SPXL_DIVIDENDS, TQQQ_DIVIDENDS, SPY_DIVIDENDS, BRGNX_DIVIDENDS, VTI_DIVIDENDS, GLD_DIVIDENDS, SLV_DIVIDENDS, type DividendPayment } from '../../packages/server/src/data/dividends.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -188,6 +188,52 @@ async function buildHistoricalData() {
     JSON.stringify(btcData, null, 2)
   )
   console.log(`✓ BTC: ${btcData.dataPoints} points (${btcData.startDate} to ${btcData.endDate})`)
+
+  // Process GLD (Gold ETF)
+  console.log('Processing GLD data from server weekly data...')
+  const gldPrices = await loadOHLCVData(resolve(serverDataDir, 'gld-weekly.json'))
+  if (gldPrices.length === 0) {
+    throw new Error('No valid GLD data found')
+  }
+
+  const gldData: HistoricalData = {
+    ticker: 'GLD',
+    name: 'SPDR Gold Shares',
+    type: 'stock',
+    startDate: gldPrices[0].date,
+    endDate: gldPrices[gldPrices.length - 1].date,
+    dataPoints: gldPrices.length,
+    prices: gldPrices,
+    dividends: GLD_DIVIDENDS
+  }
+  await writeFile(
+    resolve(outputDir, 'gld-weekly.json'),
+    JSON.stringify(gldData, null, 2)
+  )
+  console.log(`✓ GLD: ${gldData.dataPoints} points (${gldData.startDate} to ${gldData.endDate})`)
+
+  // Process SLV (Silver ETF)
+  console.log('Processing SLV data from server weekly data...')
+  const slvPrices = await loadOHLCVData(resolve(serverDataDir, 'slv-weekly.json'))
+  if (slvPrices.length === 0) {
+    throw new Error('No valid SLV data found')
+  }
+
+  const slvData: HistoricalData = {
+    ticker: 'SLV',
+    name: 'iShares Silver Trust',
+    type: 'stock',
+    startDate: slvPrices[0].date,
+    endDate: slvPrices[slvPrices.length - 1].date,
+    dataPoints: slvPrices.length,
+    prices: slvPrices,
+    dividends: SLV_DIVIDENDS
+  }
+  await writeFile(
+    resolve(outputDir, 'slv-weekly.json'),
+    JSON.stringify(slvData, null, 2)
+  )
+  console.log(`✓ SLV: ${slvData.dataPoints} points (${slvData.startDate} to ${slvData.endDate})`)
 
   console.log('\n✓ Historical data built successfully!')
 }

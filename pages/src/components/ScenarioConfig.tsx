@@ -44,8 +44,10 @@ export function ScenarioConfiguration({ config, onChange }: Props) {
               brgnxPct={config.brgnxPct}
               tqqqPct={config.tqqqPct}
               btcPct={config.btcPct}
-              onChange={(spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct) =>
-                updateConfig({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct })
+              gldPct={config.gldPct}
+              slvPct={config.slvPct}
+              onChange={(spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct, gldPct, slvPct) =>
+                updateConfig({ spxlPct, vtiPct, brgnxPct, tqqqPct, btcPct, gldPct, slvPct })
               }
             />
           </section>

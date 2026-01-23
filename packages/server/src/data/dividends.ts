@@ -120,3 +120,9 @@ export const SPY_DIVIDENDS: DividendPayment[] = [
   { exDate: '2025-09-19', amount: 1.83111 },
   { exDate: '2025-12-19', amount: 1.99337 }
 ]
+
+// GLD (SPDR Gold Shares) - No dividends (commodity ETF holding physical gold)
+export const GLD_DIVIDENDS: DividendPayment[] = []
+
+// SLV (iShares Silver Trust) - No dividends (commodity ETF holding physical silver)
+export const SLV_DIVIDENDS: DividendPayment[] = []

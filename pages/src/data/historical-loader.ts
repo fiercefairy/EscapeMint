@@ -18,7 +18,7 @@ export async function loadHistoricalData(): Promise<Record<string, HistoricalDat
     const base = import.meta.env.BASE_URL
     // Add cache-busting timestamp to ensure fresh data
     const cacheBust = `?t=${Date.now()}`
-    const [spxl, spy, vti, brgnx, tqqq, btc] = await Promise.all([
+    const [spxl, spy, vti, brgnx, tqqq, btc, gld, slv] = await Promise.all([
       fetch(`${base}data/spxl-weekly.json${cacheBust}`).then(r => {
         if (!r.ok) throw new Error(`Failed to load SPXL data: ${r.statusText}`)
         return r.json()
@@ -42,6 +42,14 @@ export async function loadHistoricalData(): Promise<Record<string, HistoricalDat
       fetch(`${base}data/btc-weekly.json${cacheBust}`).then(r => {
         if (!r.ok) throw new Error(`Failed to load BTC data: ${r.statusText}`)
         return r.json()
+      }),
+      fetch(`${base}data/gld-weekly.json${cacheBust}`).then(r => {
+        if (!r.ok) throw new Error(`Failed to load GLD data: ${r.statusText}`)
+        return r.json()
+      }),
+      fetch(`${base}data/slv-weekly.json${cacheBust}`).then(r => {
+        if (!r.ok) throw new Error(`Failed to load SLV data: ${r.statusText}`)
+        return r.json()
       })
     ])
 
@@ -51,6 +59,8 @@ export async function loadHistoricalData(): Promise<Record<string, HistoricalDat
     console.log('SPY dividends:', spy.dividends?.length ?? 0, spy.dividends?.slice(0, 3))
     console.log('VTI dividends:', vti.dividends?.length ?? 0, vti.dividends?.slice(0, 3))
     console.log('TQQQ dividends:', tqqq.dividends?.length ?? 0, tqqq.dividends?.slice(0, 3))
+    console.log('GLD dividends:', gld.dividends?.length ?? 0, gld.dividends?.slice(0, 3))
+    console.log('SLV dividends:', slv.dividends?.length ?? 0, slv.dividends?.slice(0, 3))
 
     cachedData = {
       SPXL: spxl as HistoricalData,
@@ -58,7 +68,9 @@ export async function loadHistoricalData(): Promise<Record<string, HistoricalDat
       VTI: vti as HistoricalData,
       BRGNX: brgnx as HistoricalData,
       TQQQ: tqqq as HistoricalData,
-      BTC: btc as HistoricalData
+      BTC: btc as HistoricalData,
+      GLD: gld as HistoricalData,
+      SLV: slv as HistoricalData
     }
 
     // Debug: Log loaded dividend data
