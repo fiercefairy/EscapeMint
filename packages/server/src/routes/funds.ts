@@ -1966,13 +1966,15 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
 
         // Helper to remove auto notes for this ticker from a notes string (case-insensitive)
         const tickerUpper = fund.ticker.toUpperCase()
+        // Escape regex metacharacters in ticker so it's treated literally in the pattern
+        const escapedTicker = tickerUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         const removeAutoNote = (notes: string | undefined): string => {
           if (!notes) return ''
           // Match auto notes at beginning or after pipe, capturing the ticker case-insensitively
           return notes
             .replace(
               new RegExp(
-                `(^\\s*Auto:[^|]*${tickerUpper}[^|]*(\\s*\\|\\s*)?)|(\\s*\\|\\s*Auto:[^|]*${tickerUpper}[^|]*)`,
+                `(^\\s*Auto:[^|]*${escapedTicker}[^|]*(\\s*\\|\\s*)?)|(\\s*\\|\\s*Auto:[^|]*${escapedTicker}[^|]*)`,
                 'gi'
               ),
               ''
@@ -2084,11 +2086,12 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
             } else {
               // Create new cash entry for the new date
               // Get previous cash balance from latest entry before this date
+              // If newDate is before all entries, use config defaults instead
               const entriesBefore = cashFundData.entries.filter(e => e.date < newDate)
               const prevEntry = entriesBefore.length > 0
                 ? entriesBefore.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
-                : cashFundData.entries[cashFundData.entries.length - 1]
-              const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? 0
+                : undefined
+              const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? cashFundData.config.fund_size_usd ?? 0
               const prevMarginAvailable = prevEntry?.margin_available ?? cashFundData.config.margin_access_usd ?? 0
               const prevMarginBorrowed = prevEntry?.margin_borrowed ?? 0
               const newBalance = round2(prevBalance + newCashEffect)
@@ -2124,11 +2127,12 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
             } else {
               // No existing cash entry for this date - create one with full newCashEffect
               // (not cashDelta, since there's no old effect to remove)
+              // If entry.date is before all entries, use config defaults instead
               const entriesBefore = cashFundData.entries.filter(e => e.date < entry.date)
               const prevEntry = entriesBefore.length > 0
                 ? entriesBefore.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
-                : cashFundData.entries[cashFundData.entries.length - 1]
-              const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? 0
+                : undefined
+              const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? cashFundData.config.fund_size_usd ?? 0
               const prevMarginAvailable = prevEntry?.margin_available ?? cashFundData.config.margin_access_usd ?? 0
               const prevMarginBorrowed = prevEntry?.margin_borrowed ?? 0
               // Use newCashEffect for balance since there's no previous cash entry to delta from
@@ -2156,7 +2160,9 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
           // - If old entry was found and removed: delta = newCashEffect - oldCashEffect = cashDelta
           // - If old entry was NOT found: delta = newCashEffect only (no old effect to remove)
           const runningDelta = oldEntryFound ? cashDelta : round2(newCashEffect)
-          const affectedDate = oldDate < newDate ? oldDate : newDate
+          // If old entry was found, start propagation from the earlier date
+          // If old entry was NOT found, only propagate from the new date
+          const affectedDate = oldEntryFound ? (oldDate < newDate ? oldDate : newDate) : newDate
           const sortedCashEntries = [...cashFundData.entries].sort((a, b) =>
             new Date(a.date).getTime() - new Date(b.date).getTime()
           )
