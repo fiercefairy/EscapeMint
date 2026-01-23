@@ -1921,8 +1921,9 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
   await writeFund(filePath, fund).catch(next)
 
   // Auto-sync cash fund when editing entries for platforms with auto_sync_cash enabled
-  let cashSyncResult: { action: string; delta: number; cashFundId: string } | null = null
-  if (!isCashFund) {
+  // Use 'amount' field for consistency with POST endpoint (not 'delta')
+  let cashSyncResult: { action: string; amount: number; cashFundId: string } | null = null
+  if (!isCashFund && oldEntry) {
     const platformId = fund.platform.toLowerCase()
     const platformsData = await readPlatformsData()
     const platformConfig = platformsData[platformId]
@@ -1939,13 +1940,13 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
         // SELL: increases amount = more cash deposited (positive delta)
         const round2 = (n: number) => Math.round(n * 100) / 100
 
-        const oldAction = oldEntry?.action?.toUpperCase()
+        const oldAction = oldEntry.action?.toUpperCase()
         const newAction = entry.action?.toUpperCase()
-        const oldAmount = oldEntry?.amount ?? 0
+        const oldAmount = oldEntry.amount ?? 0
         const newAmount = entry.amount ?? 0
-        const oldDividend = oldEntry?.dividend ?? 0
+        const oldDividend = oldEntry.dividend ?? 0
         const newDividend = entry.dividend ?? 0
-        const oldDate = oldEntry?.date ?? entry.date
+        const oldDate = oldEntry.date
         const newDate = entry.date
 
         // Calculate old cash effect (what was applied to cash fund)
@@ -1963,8 +1964,41 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
         // The delta is the difference
         const cashDelta = round2(newCashEffect - oldCashEffect)
 
+        // Helper to remove auto notes for this ticker from a notes string (case-insensitive)
+        const tickerUpper = fund.ticker.toUpperCase()
+        const removeAutoNote = (notes: string | undefined): string => {
+          if (!notes) return ''
+          // Match auto notes at beginning or after pipe, capturing the ticker case-insensitively
+          return notes
+            .replace(
+              new RegExp(
+                `(^\\s*Auto:[^|]*${tickerUpper}[^|]*(\\s*\\|\\s*)?)|(\\s*\\|\\s*Auto:[^|]*${tickerUpper}[^|]*)`,
+                'gi'
+              ),
+              ''
+            )
+            .trim()
+        }
+
+        // Helper to create auto note
+        const createAutoNote = (cashEffect: number): string => {
+          const noteAction = cashEffect > 0 ? 'Sell' : 'Buy'
+          return `Auto: ${noteAction} ${tickerUpper}${entry.shares ? ` (${entry.shares} shares)` : ''}`
+        }
+
+        // Helper to append auto note to existing notes
+        const appendAutoNote = (existingNotes: string | undefined, autoNote: string): string => {
+          const cleaned = removeAutoNote(existingNotes)
+          return cleaned ? `${cleaned} | ${autoNote}` : autoNote
+        }
+
         // Only proceed if there's a cash change
         if (cashDelta !== 0) {
+          // Calculate the running delta before the loop for proper propagation
+          // For date changes: runningDelta = newCashEffect - oldCashEffect = cashDelta
+          // For same-date: runningDelta = cashDelta
+          const runningDelta = cashDelta
+
           // Handle date change - if date changed, need to update old and new date entries
           if (oldDate !== newDate) {
             // Remove effect from old date entry
@@ -1975,16 +2009,14 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
               oldDateEntry.cash = oldDateEntry.value
               oldDateEntry.fund_size = oldDateEntry.value
               oldDateEntry.amount = round2((oldDateEntry.amount ?? 0) - oldCashEffect)
-              // Update notes to reflect removal
-              if (oldDateEntry.notes?.includes(fund.ticker.toUpperCase())) {
-                oldDateEntry.notes = oldDateEntry.notes.replace(
-                  new RegExp(`\\s*\\|?\\s*Auto:.*?${fund.ticker.toUpperCase()}[^|]*`, 'gi'),
-                  ''
-                ).trim()
-              }
+              oldDateEntry.action = 'HOLD'
+              // Remove auto notes for this ticker
+              oldDateEntry.notes = removeAutoNote(oldDateEntry.notes)
             }
+            // Note: If oldDateEntryIndex is -1, the old cash entry doesn't exist (possibly manually deleted)
+            // We can't remove an effect that doesn't exist, so we proceed with adding the new effect
 
-            // Add effect to new date entry (or create one)
+            // Add effect to new date entry (or create one if it doesn't exist)
             const newDateEntryIndex = cashFundData.entries.findIndex(e => e.date === newDate)
             if (newDateEntryIndex >= 0) {
               const newDateEntry = cashFundData.entries[newDateEntryIndex]!
@@ -1992,14 +2024,31 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
               newDateEntry.cash = newDateEntry.value
               newDateEntry.fund_size = newDateEntry.value
               newDateEntry.amount = round2((newDateEntry.amount ?? 0) + newCashEffect)
-              const noteAction = newCashEffect > 0 ? 'Sell' : 'Buy'
-              const autoNote = `Auto: ${noteAction} ${fund.ticker.toUpperCase()}${entry.shares ? ` (${entry.shares} shares)` : ''}`
-              newDateEntry.notes = newDateEntry.notes
-                ? `${newDateEntry.notes} | ${autoNote}`
-                : autoNote
+              newDateEntry.action = 'HOLD'
+              newDateEntry.notes = appendAutoNote(newDateEntry.notes, createAutoNote(newCashEffect))
+            } else {
+              // Create new cash entry for the new date
+              // Get previous cash balance from latest entry before this date
+              const entriesBefore = cashFundData.entries.filter(e => e.date < newDate)
+              const prevEntry = entriesBefore.length > 0
+                ? entriesBefore.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+                : cashFundData.entries[cashFundData.entries.length - 1]
+              const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? 0
+              const newBalance = round2(prevBalance + newCashEffect)
+
+              const newCashEntry: FundEntry = {
+                date: newDate,
+                value: newBalance,
+                cash: newBalance,
+                action: 'HOLD',
+                amount: round2(newCashEffect),
+                fund_size: newBalance,
+                notes: createAutoNote(newCashEffect)
+              }
+              cashFundData.entries.push(newCashEntry)
             }
           } else {
-            // Same date - just apply the delta
+            // Same date - apply the delta and update notes for action changes
             const cashEntryIndex = cashFundData.entries.findIndex(e => e.date === entry.date)
             if (cashEntryIndex >= 0) {
               const cashEntry = cashFundData.entries[cashEntryIndex]!
@@ -2007,6 +2056,28 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
               cashEntry.cash = cashEntry.value
               cashEntry.fund_size = cashEntry.value
               cashEntry.amount = round2((cashEntry.amount ?? 0) + cashDelta)
+              cashEntry.action = 'HOLD'
+              // Update notes to reflect the new action (in case action type changed)
+              cashEntry.notes = appendAutoNote(cashEntry.notes, createAutoNote(newCashEffect))
+            } else {
+              // No existing cash entry for this date - create one
+              const entriesBefore = cashFundData.entries.filter(e => e.date < entry.date)
+              const prevEntry = entriesBefore.length > 0
+                ? entriesBefore.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+                : cashFundData.entries[cashFundData.entries.length - 1]
+              const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? 0
+              const newBalance = round2(prevBalance + cashDelta)
+
+              const newCashEntry: FundEntry = {
+                date: entry.date,
+                value: newBalance,
+                cash: newBalance,
+                action: 'HOLD',
+                amount: round2(cashDelta),
+                fund_size: newBalance,
+                notes: createAutoNote(newCashEffect)
+              }
+              cashFundData.entries.push(newCashEntry)
             }
           }
 
@@ -2016,18 +2087,9 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
             new Date(a.date).getTime() - new Date(b.date).getTime()
           )
 
-          let runningDelta = 0
           for (const cashEntry of sortedCashEntries) {
-            if (cashEntry.date === oldDate && oldDate !== newDate) {
-              runningDelta -= oldCashEffect // Remove old effect
-            }
-            if (cashEntry.date === newDate && oldDate !== newDate) {
-              runningDelta += newCashEffect // Add new effect
-            }
-            if (cashEntry.date === entry.date && oldDate === newDate) {
-              runningDelta = cashDelta // Simple delta for same-date edits
-            }
             // Apply cumulative delta to entries after the affected date
+            // (the affected entries themselves were already updated above)
             if (cashEntry.date > affectedDate) {
               cashEntry.value = round2((cashEntry.value ?? 0) + runningDelta)
               cashEntry.cash = cashEntry.value
@@ -2035,11 +2097,14 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
             }
           }
 
-          await writeFund(cashFundPath, cashFundData)
+          const writeResult = await writeFund(cashFundPath, cashFundData).catch((err: Error) => err)
+          if (writeResult instanceof Error) {
+            return next(writeResult)
+          }
 
           cashSyncResult = {
             action: cashDelta > 0 ? 'DEPOSIT' : 'WITHDRAW',
-            delta: cashDelta,
+            amount: Math.abs(cashDelta),
             cashFundId
           }
         }
