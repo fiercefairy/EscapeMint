@@ -1980,24 +1980,68 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
             .trim()
         }
 
-        // Helper to create auto note
-        const createAutoNote = (cashEffect: number): string => {
-          const noteAction = cashEffect > 0 ? 'Sell' : 'Buy'
-          return `Auto: ${noteAction} ${tickerUpper}${entry.shares ? ` (${entry.shares} shares)` : ''}`
+        // Helper to create auto note - matches POST endpoint format with dividend support
+        const createAutoNote = (cashEffect: number, dividendDelta: number): string => {
+          const parts: string[] = []
+
+          // Trade component (Buy/Sell) - only if there's a non-dividend cash effect
+          const tradeEffect = cashEffect - dividendDelta
+          if (tradeEffect !== 0 && entry.shares) {
+            const noteAction = tradeEffect > 0 ? 'Sell' : 'Buy'
+            parts.push(`${noteAction} ${tickerUpper}${entry.shares ? ` (${entry.shares} shares)` : ''}`)
+          }
+
+          // Dividend component, if dividend changed
+          if (dividendDelta !== 0) {
+            const sign = dividendDelta < 0 ? '-' : ''
+            const amount = Math.abs(dividendDelta).toFixed(2)
+            parts.push(`Dividend ${tickerUpper} ${sign}$${amount}`)
+          }
+
+          return parts.length > 0 ? `Auto: ${parts.join(' | ')}` : ''
         }
 
         // Helper to append auto note to existing notes
         const appendAutoNote = (existingNotes: string | undefined, autoNote: string): string => {
+          // If there's no new auto note content, just return existing notes with old auto notes removed
+          if (!autoNote) {
+            return removeAutoNote(existingNotes)
+          }
           const cleaned = removeAutoNote(existingNotes)
           return cleaned ? `${cleaned} | ${autoNote}` : autoNote
         }
 
+        // Helper to apply margin adjustment for M1 platform when cash goes negative
+        const applyMarginAdjustment = (cashEntry: FundEntry): void => {
+          if (platformId !== 'm1') return
+          const currentCash = cashEntry.cash ?? 0
+          if (currentCash >= 0) return
+
+          const deficit = -currentCash
+          const prevMarginAvailable = cashEntry.margin_available ?? 0
+          const prevMarginBorrowed = cashEntry.margin_borrowed ?? 0
+
+          // Borrow at most the available margin to cover the deficit
+          const borrow = Math.min(deficit, prevMarginAvailable)
+          if (borrow > 0) {
+            cashEntry.cash = round2(currentCash + borrow)
+            cashEntry.value = cashEntry.cash
+            cashEntry.margin_available = round2(prevMarginAvailable - borrow)
+            cashEntry.margin_borrowed = round2(prevMarginBorrowed + borrow)
+          }
+        }
+
+        // Calculate dividend delta for note generation
+        const dividendDelta = round2(newDividend - oldDividend)
+
         // Only proceed if there's a cash change
         if (cashDelta !== 0) {
-          // Calculate the running delta before the loop for proper propagation
-          // For date changes: runningDelta = newCashEffect - oldCashEffect = cashDelta
-          // For same-date: runningDelta = cashDelta
-          const runningDelta = cashDelta
+          // Track whether old entry was found (affects propagation when missing)
+          let oldEntryFound = true
+
+          // Determine which dates need to be excluded from propagation
+          // (they were already directly updated)
+          const excludeFromPropagation = new Set<string>()
 
           // Handle date change - if date changed, need to update old and new date entries
           if (oldDate !== newDate) {
@@ -2009,12 +2053,21 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
               oldDateEntry.cash = oldDateEntry.value
               oldDateEntry.fund_size = oldDateEntry.value
               oldDateEntry.amount = round2((oldDateEntry.amount ?? 0) - oldCashEffect)
-              oldDateEntry.action = 'HOLD'
               // Remove auto notes for this ticker
               oldDateEntry.notes = removeAutoNote(oldDateEntry.notes)
+
+              // If this entry is now effectively empty (no amount and no meaningful notes), remove it
+              const hasNotes = typeof oldDateEntry.notes === 'string' && oldDateEntry.notes.trim().length > 0
+              if ((oldDateEntry.amount ?? 0) === 0 && !hasNotes) {
+                cashFundData.entries.splice(oldDateEntryIndex, 1)
+              } else {
+                applyMarginAdjustment(oldDateEntry)
+              }
+              excludeFromPropagation.add(oldDate)
+            } else {
+              // Old cash entry doesn't exist - track this for propagation adjustment
+              oldEntryFound = false
             }
-            // Note: If oldDateEntryIndex is -1, the old cash entry doesn't exist (possibly manually deleted)
-            // We can't remove an effect that doesn't exist, so we proceed with adding the new effect
 
             // Add effect to new date entry (or create one if it doesn't exist)
             const newDateEntryIndex = cashFundData.entries.findIndex(e => e.date === newDate)
@@ -2024,8 +2077,9 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
               newDateEntry.cash = newDateEntry.value
               newDateEntry.fund_size = newDateEntry.value
               newDateEntry.amount = round2((newDateEntry.amount ?? 0) + newCashEffect)
-              newDateEntry.action = 'HOLD'
-              newDateEntry.notes = appendAutoNote(newDateEntry.notes, createAutoNote(newCashEffect))
+              newDateEntry.notes = appendAutoNote(newDateEntry.notes, createAutoNote(newCashEffect, dividendDelta))
+              applyMarginAdjustment(newDateEntry)
+              excludeFromPropagation.add(newDate)
             } else {
               // Create new cash entry for the new date
               // Get previous cash balance from latest entry before this date
@@ -2034,6 +2088,8 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
                 ? entriesBefore.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
                 : cashFundData.entries[cashFundData.entries.length - 1]
               const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? 0
+              const prevMarginAvailable = prevEntry?.margin_available ?? cashFundData.config.margin_access_usd ?? 0
+              const prevMarginBorrowed = prevEntry?.margin_borrowed ?? 0
               const newBalance = round2(prevBalance + newCashEffect)
 
               const newCashEntry: FundEntry = {
@@ -2043,9 +2099,13 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
                 action: 'HOLD',
                 amount: round2(newCashEffect),
                 fund_size: newBalance,
-                notes: createAutoNote(newCashEffect)
+                margin_available: prevMarginAvailable,
+                margin_borrowed: prevMarginBorrowed,
+                notes: createAutoNote(newCashEffect, dividendDelta)
               }
+              applyMarginAdjustment(newCashEntry)
               cashFundData.entries.push(newCashEntry)
+              excludeFromPropagation.add(newDate)
             }
           } else {
             // Same date - apply the delta and update notes for action changes
@@ -2056,32 +2116,45 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
               cashEntry.cash = cashEntry.value
               cashEntry.fund_size = cashEntry.value
               cashEntry.amount = round2((cashEntry.amount ?? 0) + cashDelta)
-              cashEntry.action = 'HOLD'
               // Update notes to reflect the new action (in case action type changed)
-              cashEntry.notes = appendAutoNote(cashEntry.notes, createAutoNote(newCashEffect))
+              cashEntry.notes = appendAutoNote(cashEntry.notes, createAutoNote(newCashEffect, dividendDelta))
+              applyMarginAdjustment(cashEntry)
+              excludeFromPropagation.add(entry.date)
             } else {
-              // No existing cash entry for this date - create one
+              // No existing cash entry for this date - create one with full newCashEffect
+              // (not cashDelta, since there's no old effect to remove)
               const entriesBefore = cashFundData.entries.filter(e => e.date < entry.date)
               const prevEntry = entriesBefore.length > 0
                 ? entriesBefore.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
                 : cashFundData.entries[cashFundData.entries.length - 1]
               const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? 0
-              const newBalance = round2(prevBalance + cashDelta)
+              const prevMarginAvailable = prevEntry?.margin_available ?? cashFundData.config.margin_access_usd ?? 0
+              const prevMarginBorrowed = prevEntry?.margin_borrowed ?? 0
+              // Use newCashEffect for balance since there's no previous cash entry to delta from
+              const newBalance = round2(prevBalance + newCashEffect)
 
               const newCashEntry: FundEntry = {
                 date: entry.date,
                 value: newBalance,
                 cash: newBalance,
                 action: 'HOLD',
-                amount: round2(cashDelta),
+                amount: round2(newCashEffect),
                 fund_size: newBalance,
-                notes: createAutoNote(newCashEffect)
+                margin_available: prevMarginAvailable,
+                margin_borrowed: prevMarginBorrowed,
+                notes: createAutoNote(newCashEffect, dividendDelta)
               }
+              applyMarginAdjustment(newCashEntry)
               cashFundData.entries.push(newCashEntry)
+              excludeFromPropagation.add(entry.date)
             }
           }
 
           // Propagate cash changes to all subsequent entries
+          // Calculate the effective running delta:
+          // - If old entry was found and removed: delta = newCashEffect - oldCashEffect = cashDelta
+          // - If old entry was NOT found: delta = newCashEffect only (no old effect to remove)
+          const runningDelta = oldEntryFound ? cashDelta : round2(newCashEffect)
           const affectedDate = oldDate < newDate ? oldDate : newDate
           const sortedCashEntries = [...cashFundData.entries].sort((a, b) =>
             new Date(a.date).getTime() - new Date(b.date).getTime()
@@ -2089,11 +2162,12 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
 
           for (const cashEntry of sortedCashEntries) {
             // Apply cumulative delta to entries after the affected date
-            // (the affected entries themselves were already updated above)
-            if (cashEntry.date > affectedDate) {
+            // Skip entries that were directly updated above to avoid double-application
+            if (cashEntry.date > affectedDate && !excludeFromPropagation.has(cashEntry.date)) {
               cashEntry.value = round2((cashEntry.value ?? 0) + runningDelta)
               cashEntry.cash = cashEntry.value
               cashEntry.fund_size = cashEntry.value
+              applyMarginAdjustment(cashEntry)
             }
           }
 
