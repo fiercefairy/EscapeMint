@@ -1946,18 +1946,21 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
         const newAmount = entry.amount ?? 0
         const oldDividend = oldEntry.dividend ?? 0
         const newDividend = entry.dividend ?? 0
+        const oldMarginBorrowed = oldEntry.margin_borrowed ?? 0
+        const newMarginBorrowed = entry.margin_borrowed ?? 0
         const oldDate = oldEntry.date
         const newDate = entry.date
 
         // Calculate old cash effect (what was applied to cash fund)
+        // For BUY: only the non-margin portion affects cash (amount - margin_borrowed)
         let oldCashEffect = 0
-        if (oldAction === 'BUY') oldCashEffect = -oldAmount
+        if (oldAction === 'BUY') oldCashEffect = -(oldAmount - oldMarginBorrowed)
         else if (oldAction === 'SELL') oldCashEffect = oldAmount
         oldCashEffect += oldDividend
 
         // Calculate new cash effect (what should be applied)
         let newCashEffect = 0
-        if (newAction === 'BUY') newCashEffect = -newAmount
+        if (newAction === 'BUY') newCashEffect = -(newAmount - newMarginBorrowed)
         else if (newAction === 'SELL') newCashEffect = newAmount
         newCashEffect += newDividend
 
@@ -2000,7 +2003,7 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
             parts.push(`Dividend ${tickerUpper} ${sign}$${amount}`)
           }
 
-          return parts.length > 0 ? `Auto: ${parts.join(' | ')}` : ''
+          return parts.length > 0 ? `Auto: ${parts.join(', ')}` : ''
         }
 
         // Helper to append auto note to existing notes
