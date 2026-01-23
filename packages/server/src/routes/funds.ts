@@ -1920,13 +1920,289 @@ fundsRouter.put('/:id/entries/:entryIndex', async (req, res, next) => {
   // Write the entire fund with propagated changes
   await writeFund(filePath, fund).catch(next)
 
+  // Auto-sync cash fund when editing entries for platforms with auto_sync_cash enabled
+  // Use 'amount' field for consistency with POST endpoint (not 'delta')
+  let cashSyncResult: { action: string; amount: number; cashFundId: string } | null = null
+  if (!isCashFund && oldEntry) {
+    const platformId = fund.platform.toLowerCase()
+    const platformsData = await readPlatformsData()
+    const platformConfig = platformsData[platformId]
+    const autoSyncCash = platformConfig?.auto_sync_cash ?? (platformId === 'robinhood')
+
+    if (autoSyncCash) {
+      const cashFundId = `${platformId}-cash`
+      const cashFundPath = join(FUNDS_DIR, `${cashFundId}.tsv`)
+      const cashFundData = await readFund(cashFundPath).catch(() => null)
+
+      if (cashFundData) {
+        // Calculate cash delta based on old vs new entry
+        // BUY: increases amount = more cash withdrawn (negative delta)
+        // SELL: increases amount = more cash deposited (positive delta)
+        const round2 = (n: number) => Math.round(n * 100) / 100
+
+        const oldAction = oldEntry.action?.toUpperCase()
+        const newAction = entry.action?.toUpperCase()
+        const oldAmount = oldEntry.amount ?? 0
+        const newAmount = entry.amount ?? 0
+        const oldDividend = oldEntry.dividend ?? 0
+        const newDividend = entry.dividend ?? 0
+        const oldMarginBorrowed = oldEntry.margin_borrowed ?? 0
+        const newMarginBorrowed = entry.margin_borrowed ?? 0
+        const oldDate = oldEntry.date
+        const newDate = entry.date
+
+        // Calculate old cash effect (what was applied to cash fund)
+        // For BUY: only the non-margin portion affects cash (amount - margin_borrowed)
+        let oldCashEffect = 0
+        if (oldAction === 'BUY') oldCashEffect = -(oldAmount - oldMarginBorrowed)
+        else if (oldAction === 'SELL') oldCashEffect = oldAmount
+        oldCashEffect += oldDividend
+
+        // Calculate new cash effect (what should be applied)
+        let newCashEffect = 0
+        if (newAction === 'BUY') newCashEffect = -(newAmount - newMarginBorrowed)
+        else if (newAction === 'SELL') newCashEffect = newAmount
+        newCashEffect += newDividend
+
+        // The delta is the difference
+        const cashDelta = round2(newCashEffect - oldCashEffect)
+
+        // Helper to remove auto notes for this ticker from a notes string (case-insensitive)
+        const tickerUpper = fund.ticker.toUpperCase()
+        // Escape regex metacharacters in ticker so it's treated literally in the pattern
+        const escapedTicker = tickerUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const removeAutoNote = (notes: string | undefined): string => {
+          if (!notes) return ''
+          // Match auto notes at beginning or after pipe, capturing the ticker case-insensitively
+          return notes
+            .replace(
+              new RegExp(
+                `(^\\s*Auto:[^|]*${escapedTicker}[^|]*(\\s*\\|\\s*)?)|(\\s*\\|\\s*Auto:[^|]*${escapedTicker}[^|]*)`,
+                'gi'
+              ),
+              ''
+            )
+            .trim()
+        }
+
+        // Helper to create auto note - matches POST endpoint format with dividend support
+        const createAutoNote = (cashEffect: number, dividendDelta: number): string => {
+          const parts: string[] = []
+
+          // Trade component (Buy/Sell) - only if there's a non-dividend cash effect
+          const tradeEffect = cashEffect - dividendDelta
+          if (tradeEffect !== 0) {
+            const noteAction = tradeEffect > 0 ? 'Sell' : 'Buy'
+            parts.push(`${noteAction} ${tickerUpper}${entry.shares ? ` (${entry.shares} shares)` : ''}`)
+          }
+
+          // Dividend component, if dividend changed
+          if (dividendDelta !== 0) {
+            const sign = dividendDelta < 0 ? '-' : ''
+            const amount = Math.abs(dividendDelta).toFixed(2)
+            parts.push(`Dividend ${tickerUpper} ${sign}$${amount}`)
+          }
+
+          return parts.length > 0 ? `Auto: ${parts.join(', ')}` : ''
+        }
+
+        // Helper to append auto note to existing notes
+        const appendAutoNote = (existingNotes: string | undefined, autoNote: string): string => {
+          // If there's no new auto note content, just return existing notes with old auto notes removed
+          if (!autoNote) {
+            return removeAutoNote(existingNotes)
+          }
+          const cleaned = removeAutoNote(existingNotes)
+          return cleaned ? `${cleaned} | ${autoNote}` : autoNote
+        }
+
+        // Helper to apply margin adjustment for M1 platform when cash goes negative
+        const applyMarginAdjustment = (cashEntry: FundEntry): void => {
+          if (platformId !== 'm1') return
+          const currentCash = cashEntry.cash ?? 0
+          if (currentCash >= 0) return
+
+          const deficit = -currentCash
+          const prevMarginAvailable = cashEntry.margin_available ?? 0
+          const prevMarginBorrowed = cashEntry.margin_borrowed ?? 0
+
+          // Borrow at most the available margin to cover the deficit
+          const borrow = Math.min(deficit, prevMarginAvailable)
+          if (borrow > 0) {
+            cashEntry.cash = round2(currentCash + borrow)
+            cashEntry.value = cashEntry.cash
+            cashEntry.margin_available = round2(prevMarginAvailable - borrow)
+            cashEntry.margin_borrowed = round2(prevMarginBorrowed + borrow)
+          }
+        }
+
+        // Calculate dividend delta for note generation
+        const dividendDelta = round2(newDividend - oldDividend)
+
+        // Only proceed if there's a cash change
+        if (cashDelta !== 0) {
+          // Track whether old entry was found (affects propagation when missing)
+          let oldEntryFound = true
+
+          // Determine which dates need to be excluded from propagation
+          // (they were already directly updated)
+          const excludeFromPropagation = new Set<string>()
+
+          // Handle date change - if date changed, need to update old and new date entries
+          if (oldDate !== newDate) {
+            // Remove effect from old date entry
+            const oldDateEntryIndex = cashFundData.entries.findIndex(e => e.date === oldDate)
+            if (oldDateEntryIndex >= 0) {
+              const oldDateEntry = cashFundData.entries[oldDateEntryIndex]!
+              oldDateEntry.value = round2((oldDateEntry.value ?? 0) - oldCashEffect)
+              oldDateEntry.cash = oldDateEntry.value
+              oldDateEntry.fund_size = oldDateEntry.value
+              oldDateEntry.amount = round2((oldDateEntry.amount ?? 0) - oldCashEffect)
+              // Remove auto notes for this ticker
+              oldDateEntry.notes = removeAutoNote(oldDateEntry.notes)
+
+              // If this entry is now effectively empty (no amount and no meaningful notes), remove it
+              const hasNotes = typeof oldDateEntry.notes === 'string' && oldDateEntry.notes.trim().length > 0
+              if ((oldDateEntry.amount ?? 0) === 0 && !hasNotes) {
+                cashFundData.entries.splice(oldDateEntryIndex, 1)
+              } else {
+                applyMarginAdjustment(oldDateEntry)
+              }
+              excludeFromPropagation.add(oldDate)
+            } else {
+              // Old cash entry doesn't exist - track this for propagation adjustment
+              oldEntryFound = false
+            }
+
+            // Add effect to new date entry (or create one if it doesn't exist)
+            const newDateEntryIndex = cashFundData.entries.findIndex(e => e.date === newDate)
+            if (newDateEntryIndex >= 0) {
+              const newDateEntry = cashFundData.entries[newDateEntryIndex]!
+              // Use cashDelta because existing value already includes cascaded effects from old dates
+              newDateEntry.value = round2((newDateEntry.value ?? 0) + cashDelta)
+              newDateEntry.cash = newDateEntry.value
+              newDateEntry.fund_size = newDateEntry.value
+              newDateEntry.amount = round2((newDateEntry.amount ?? 0) + cashDelta)
+              newDateEntry.notes = appendAutoNote(newDateEntry.notes, createAutoNote(newCashEffect, dividendDelta))
+              applyMarginAdjustment(newDateEntry)
+              excludeFromPropagation.add(newDate)
+            } else {
+              // Create new cash entry for the new date
+              // Get previous cash balance from latest entry before this date
+              // If newDate is before all entries, use config defaults instead
+              const entriesBefore = cashFundData.entries.filter(e => e.date < newDate)
+              const prevEntry = entriesBefore.length > 0
+                ? entriesBefore.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+                : undefined
+              const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? cashFundData.config.fund_size_usd ?? 0
+              const prevMarginAvailable = prevEntry?.margin_available ?? cashFundData.config.margin_access_usd ?? 0
+              const prevMarginBorrowed = prevEntry?.margin_borrowed ?? 0
+              const newBalance = round2(prevBalance + newCashEffect)
+
+              const newCashEntry: FundEntry = {
+                date: newDate,
+                value: newBalance,
+                cash: newBalance,
+                action: 'HOLD',
+                amount: round2(newCashEffect),
+                fund_size: newBalance,
+                margin_available: prevMarginAvailable,
+                margin_borrowed: prevMarginBorrowed,
+                notes: createAutoNote(newCashEffect, dividendDelta)
+              }
+              applyMarginAdjustment(newCashEntry)
+              cashFundData.entries.push(newCashEntry)
+              excludeFromPropagation.add(newDate)
+            }
+          } else {
+            // Same date - apply the delta and update notes for action changes
+            const cashEntryIndex = cashFundData.entries.findIndex(e => e.date === entry.date)
+            if (cashEntryIndex >= 0) {
+              const cashEntry = cashFundData.entries[cashEntryIndex]!
+              cashEntry.value = round2((cashEntry.value ?? 0) + cashDelta)
+              cashEntry.cash = cashEntry.value
+              cashEntry.fund_size = cashEntry.value
+              cashEntry.amount = round2((cashEntry.amount ?? 0) + cashDelta)
+              // Update notes to reflect the new action (in case action type changed)
+              cashEntry.notes = appendAutoNote(cashEntry.notes, createAutoNote(newCashEffect, dividendDelta))
+              applyMarginAdjustment(cashEntry)
+              excludeFromPropagation.add(entry.date)
+            } else {
+              // No existing cash entry for this date - create one with full newCashEffect
+              // (not cashDelta, since there's no old effect to remove)
+              // If entry.date is before all entries, use config defaults instead
+              const entriesBefore = cashFundData.entries.filter(e => e.date < entry.date)
+              const prevEntry = entriesBefore.length > 0
+                ? entriesBefore.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+                : undefined
+              const prevBalance = prevEntry?.cash ?? prevEntry?.value ?? cashFundData.config.fund_size_usd ?? 0
+              const prevMarginAvailable = prevEntry?.margin_available ?? cashFundData.config.margin_access_usd ?? 0
+              const prevMarginBorrowed = prevEntry?.margin_borrowed ?? 0
+              // Use newCashEffect for balance since there's no previous cash entry to delta from
+              const newBalance = round2(prevBalance + newCashEffect)
+
+              const newCashEntry: FundEntry = {
+                date: entry.date,
+                value: newBalance,
+                cash: newBalance,
+                action: 'HOLD',
+                amount: round2(newCashEffect),
+                fund_size: newBalance,
+                margin_available: prevMarginAvailable,
+                margin_borrowed: prevMarginBorrowed,
+                notes: createAutoNote(newCashEffect, dividendDelta)
+              }
+              applyMarginAdjustment(newCashEntry)
+              cashFundData.entries.push(newCashEntry)
+              excludeFromPropagation.add(entry.date)
+            }
+          }
+
+          // Propagate cash changes to all subsequent entries
+          // Calculate the effective running delta:
+          // - If old entry was found and removed: delta = newCashEffect - oldCashEffect = cashDelta
+          // - If old entry was NOT found: delta = newCashEffect only (no old effect to remove)
+          const runningDelta = oldEntryFound ? cashDelta : round2(newCashEffect)
+          // If old entry was found, start propagation from the earlier date
+          // If old entry was NOT found, only propagate from the new date
+          const affectedDate = oldEntryFound ? (oldDate < newDate ? oldDate : newDate) : newDate
+          const sortedCashEntries = [...cashFundData.entries].sort((a, b) =>
+            new Date(a.date).getTime() - new Date(b.date).getTime()
+          )
+
+          for (const cashEntry of sortedCashEntries) {
+            // Apply cumulative delta to entries after the affected date
+            // Skip entries that were directly updated above to avoid double-application
+            if (cashEntry.date > affectedDate && !excludeFromPropagation.has(cashEntry.date)) {
+              cashEntry.value = round2((cashEntry.value ?? 0) + runningDelta)
+              cashEntry.cash = cashEntry.value
+              cashEntry.fund_size = cashEntry.value
+              applyMarginAdjustment(cashEntry)
+            }
+          }
+
+          const writeResult = await writeFund(cashFundPath, cashFundData).catch((err: Error) => err)
+          if (writeResult instanceof Error) {
+            return next(writeResult)
+          }
+
+          cashSyncResult = {
+            action: cashDelta > 0 ? 'DEPOSIT' : 'WITHDRAW',
+            amount: Math.abs(cashDelta),
+            cashFundId
+          }
+        }
+      }
+    }
+  }
+
   // Re-read to get updated fund
   const updated = await readFund(filePath).catch(next)
   if (!updated) {
     return next(notFound('Fund'))
   }
 
-  res.json({ entry, fund: updated })
+  res.json({ entry, fund: updated, cashSync: cashSyncResult })
 })
 
 /**
