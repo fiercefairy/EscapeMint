@@ -39,3 +39,4 @@ packages/web/public/playwright-report/data/
 *.tmp
 .*.tmp
 .browser
+.playwright-mcp/

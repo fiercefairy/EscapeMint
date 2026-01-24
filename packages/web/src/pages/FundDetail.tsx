@@ -204,6 +204,7 @@ export function FundDetail() {
     let costBasis = 0
     let cumExtracted = 0
     let previousCyclesGain = 0 // Realized gains from previous liquidation cycles
+    let totalEverInvested = 0 // Track total invested across all cycles (for APY after liquidation)
 
     // For cash fund TWAB (Time-Weighted Average Balance) calculation
     let twabNumerator = 0 // sum of (balance * days)
@@ -300,6 +301,7 @@ export function FundDetail() {
       if (entry.action === 'BUY' && entry.amount) {
         totalBuys += entry.amount
         costBasis += entry.amount
+        totalEverInvested += entry.amount // Track across all cycles for APY
       } else if (entry.action === 'SELL' && entry.amount) {
         // Check if this is a full liquidation
         // Use cumShares check if fund has share tracking, AND value-based check as fallback
@@ -418,7 +420,10 @@ export function FundDetail() {
         }
       } else {
         // Trading fund APY: based on invested capital
-        const investedDenominator = netInvested > 0 ? netInvested : (costBasis > 0 ? costBasis : denominatorValue)
+        // Since realized gains (cumExtracted) accumulate across all cycles and are never reset,
+        // use totalEverInvested as the denominator to compare apples to apples.
+        // This ensures APY remains meaningful after a fund is liquidated and restarted.
+        const investedDenominator = totalEverInvested > 0 ? totalEverInvested : (netInvested > 0 ? netInvested : denominatorValue)
 
         // Calculate Realized APY (based only on realized gains relative to invested)
         const realizedReturnPct = investedDenominator > 0 ? realized / investedDenominator : 0
