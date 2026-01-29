@@ -28,6 +28,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
   const [preview, setPreview] = useState<{ state: FundState; recommendation: Recommendation | null; margin_available: number; fund_size: number } | null>(null)
   const [showReopenConfirm, setShowReopenConfirm] = useState(false)
   const [pendingEntry, setPendingEntry] = useState<Partial<FundEntry> | null>(null)
+  const [autoDepositToCover, setAutoDepositToCover] = useState(false)
 
   const isClosed = fundStatus === 'closed'
 
@@ -106,6 +107,19 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     ? { type: digitErrorType, priorValue: priorEquity, newValue: newEquityValue }
     : null
 
+  // Calculate cash shortfall for BUY actions on funds that use platform cash
+  const buyAmount = formData.action === 'BUY' ? parseFloat(formData.amount) || 0 : 0
+  const cashAvailable = preview?.state.cash_available_usd ?? 0
+  const cashShortfall = buyAmount > cashAvailable ? buyAmount - cashAvailable : 0
+  const showAutoDepositOption = manageCash === false && cashShortfall > 0
+
+  // Reset auto-deposit checkbox when shortfall disappears
+  useEffect(() => {
+    if (!showAutoDepositOption) {
+      setAutoDepositToCover(false)
+    }
+  }, [showAutoDepositOption])
+
   // Debounced preview fetch
   const fetchPreview = useCallback(async (equityValue: number, date: string) => {
     if (isNaN(equityValue)) return
@@ -166,8 +180,27 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     applyRecommendation(preview.recommendation)
   }, [preview, fundType, applyRecommendation])
 
-  const saveEntry = async (entry: Partial<FundEntry>, shouldReopenFund = false) => {
+  const saveEntry = async (entry: Partial<FundEntry>, shouldReopenFund = false, depositAmount?: number) => {
     setLoading(true)
+
+    // If auto-deposit is enabled and there's a shortfall, first deposit to cash fund
+    if (depositAmount && depositAmount > 0 && platform) {
+      const cashFundId = `${platform.toLowerCase()}-cash`
+      const depositEntry = {
+        date: entry.date ?? formData.date,
+        value: 0, // Will be calculated by server
+        action: 'DEPOSIT' as const,
+        amount: depositAmount,
+        notes: `Auto-deposit to cover ${fundTicker.toUpperCase()} BUY`
+      }
+      const depositResponse = await addFundEntry(cashFundId, depositEntry)
+      if (depositResponse.error) {
+        toast.error(`Failed to deposit to cash fund: ${depositResponse.error}`)
+        setLoading(false)
+        return
+      }
+      toast.success(`Deposited ${formatCurrency(depositAmount)} to ${cashFundId}`)
+    }
 
     const response = await addFundEntry(fundId, entry)
 
@@ -213,13 +246,17 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
       return
     }
 
-    await saveEntry(entry)
+    // Pass deposit amount if auto-deposit is enabled
+    const depositAmount = autoDepositToCover && cashShortfall > 0 ? Math.ceil(cashShortfall) : undefined
+    await saveEntry(entry, false, depositAmount)
   }
 
   const handleReopenAndSave = async () => {
     setShowReopenConfirm(false)
     if (pendingEntry) {
-      await saveEntry(pendingEntry, true)
+      // Pass deposit amount if auto-deposit is enabled
+      const depositAmount = autoDepositToCover && cashShortfall > 0 ? Math.ceil(cashShortfall) : undefined
+      await saveEntry(pendingEntry, true, depositAmount)
       setPendingEntry(null)
     }
   }
@@ -487,6 +524,28 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
             marginEnabled={marginEnabled}
             platform={platform}
           />
+
+          {/* Auto-deposit checkbox - shown when there's insufficient cash in platform cash fund */}
+          {showAutoDepositOption && (
+            <div className="mt-4 p-3 bg-amber-900/30 border border-amber-700 rounded-lg">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoDepositToCover}
+                  onChange={e => setAutoDepositToCover(e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded border-amber-600 bg-slate-700 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-800"
+                />
+                <div>
+                  <span className="text-amber-200 font-medium">
+                    Auto-deposit {formatCurrency(Math.ceil(cashShortfall))} to cover shortfall
+                  </span>
+                  <p className="text-xs text-amber-300/70 mt-1">
+                    This will first record a {formatCurrency(Math.ceil(cashShortfall))} deposit to {platform?.toLowerCase()}-cash before recording your BUY action.
+                  </p>
+                </div>
+              </label>
+            </div>
+          )}
 
           {/* Buttons */}
           <div className="flex gap-3 pt-4">
