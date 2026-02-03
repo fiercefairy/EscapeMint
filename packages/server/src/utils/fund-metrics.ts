@@ -274,9 +274,9 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         liquidApy = realizedApy
       }
     } else {
-      // Trading fund APY: use totalEverInvested as denominator since realized gains are cumulative
-      // across all liquidation cycles, so the denominator must also span all cycles for accurate APY
-      const denominator = totalEverInvested > 0 ? totalEverInvested : (netInvested > 0 ? netInvested : currentValue)
+      // Trading fund APY: based on invested capital
+      // Use totalEverInvested as fallback for fully liquidated funds with realized gains
+      const denominator = netInvested > 0 ? netInvested : (costBasis > 0 ? costBasis : (totalEverInvested > 0 ? totalEverInvested : currentValue))
       if (denominator > 0) {
         const realizedReturnPct = realized / denominator
         const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
