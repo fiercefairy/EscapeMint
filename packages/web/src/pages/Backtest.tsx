@@ -3,7 +3,7 @@ export function Backtest() {
   // In production: redirect to standalone GitHub Pages deployment
   // Port configured in ecosystem.config.cjs (PORTS.PAGES)
   const pagesPort = import.meta.env.VITE_PAGES_PORT || '5561'
-  const devUrl = `http://localhost:${pagesPort}`
+  const devUrl = `${window.location.protocol}//${window.location.hostname}:${pagesPort}`
   const prodUrl = 'https://atomantic.github.io/EscapeMint/'
 
   if (!import.meta.env.DEV) {
