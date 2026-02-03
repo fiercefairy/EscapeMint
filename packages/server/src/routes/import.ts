@@ -6034,90 +6034,80 @@ importRouter.get('/coinbase/transactions/archive', async (_req, res) => {
 })
 
 /**
- * Convert a single Coinbase transaction to fund entries
+ * Group Coinbase transactions by date and consolidate same-type entries.
+ * For REBATE, FUNDING, INTEREST, DEPOSIT, WITHDRAW: combine amounts into single entry per type per day.
+ * For BUY/SELL: keep individual entries since they have distinct contracts/prices.
  */
-const coinbaseTxToFundEntries = (tx: CoinbaseScrapedTransaction): FundEntry[] => {
+const consolidateCoinbaseTransactionsByDate = (transactions: CoinbaseScrapedTransaction[]): FundEntry[] => {
+  const txByDate = new Map<string, {
+    deposits: number
+    withdrawals: number
+    funding: number
+    interest: number
+    rebate: number
+    trades: { type: string; amount: number; contracts?: number; price?: number; fee?: number }[]
+  }>()
+
+  for (const tx of transactions) {
+    if (!txByDate.has(tx.date)) {
+      txByDate.set(tx.date, { deposits: 0, withdrawals: 0, funding: 0, interest: 0, rebate: 0, trades: [] })
+    }
+    const day = txByDate.get(tx.date)!
+
+    if (tx.type === 'DEPOSIT') {
+      day.deposits += tx.amount
+    } else if (tx.type === 'WITHDRAWAL') {
+      day.withdrawals += Math.abs(tx.amount)
+    } else if (tx.type === 'OTHER' && tx.title.toLowerCase().includes('deposited funds')) {
+      day.deposits += tx.amount
+    } else if (tx.type === 'FUNDING_PROFIT' || tx.type === 'FUNDING_LOSS') {
+      day.funding += tx.amount // FUNDING_LOSS is already negative
+    } else if (tx.type === 'USDC_INTEREST') {
+      day.interest += tx.amount
+    } else if (tx.type === 'REBATE') {
+      day.rebate += tx.amount
+    } else if (tx.type === 'BUY' || tx.type === 'SELL') {
+      const tradeEntry: { type: string; amount: number; contracts?: number; price?: number; fee?: number } = {
+        type: tx.type,
+        amount: tx.amount
+      }
+      if (tx.contracts !== undefined) tradeEntry.contracts = tx.contracts
+      if (tx.price !== undefined) tradeEntry.price = tx.price
+      if (tx.fee !== undefined) tradeEntry.fee = tx.fee
+      day.trades.push(tradeEntry)
+    }
+  }
+
+  // Convert to fund entries
   const entries: FundEntry[] = []
 
-  switch (tx.type) {
-    case 'DEPOSIT':
-      entries.push({
-        date: tx.date,
-        value: 0,
-        action: 'DEPOSIT',
-        amount: tx.amount
-      })
-      break
-
-    case 'WITHDRAWAL':
-      entries.push({
-        date: tx.date,
-        value: 0,
-        action: 'WITHDRAW',
-        amount: Math.abs(tx.amount)
-      })
-      break
-
-    case 'OTHER':
-      // Handle "Deposited funds" as margin deposit
-      if (tx.title.toLowerCase().includes('deposited funds')) {
-        entries.push({
-          date: tx.date,
-          value: 0,
-          action: 'DEPOSIT',
-          amount: tx.amount
-        })
-      }
-      break
-
-    case 'FUNDING_PROFIT':
-    case 'FUNDING_LOSS':
-      entries.push({
-        date: tx.date,
-        value: 0,
-        action: 'FUNDING',
-        amount: tx.amount  // Can be positive (profit) or negative (loss)
-      })
-      break
-
-    case 'USDC_INTEREST':
-      entries.push({
-        date: tx.date,
-        value: 0,
-        action: 'INTEREST',
-        amount: tx.amount
-      })
-      break
-
-    case 'REBATE':
-      entries.push({
-        date: tx.date,
-        value: 0,
-        action: 'REBATE',
-        amount: tx.amount
-      })
-      break
-
-    case 'BUY':
-    case 'SELL': {
+  for (const [date, day] of txByDate) {
+    if (day.deposits > 0) {
+      entries.push({ date, value: 0, action: 'DEPOSIT', amount: day.deposits })
+    }
+    if (day.withdrawals > 0) {
+      entries.push({ date, value: 0, action: 'WITHDRAW', amount: day.withdrawals })
+    }
+    if (day.interest !== 0) {
+      entries.push({ date, value: 0, action: 'INTEREST', amount: day.interest })
+    }
+    if (day.rebate !== 0) {
+      entries.push({ date, value: 0, action: 'REBATE', amount: day.rebate })
+    }
+    if (day.funding !== 0) {
+      entries.push({ date, value: 0, action: 'FUNDING', amount: day.funding })
+    }
+    for (const trade of day.trades) {
       const entry: FundEntry = {
-        date: tx.date,
+        date,
         value: 0,
-        action: tx.type,
-        amount: Math.abs(tx.amount)
+        action: trade.type as 'BUY' | 'SELL',
+        amount: Math.abs(trade.amount)
       }
-      if (tx.contracts !== undefined) {
-        entry.contracts = tx.contracts
-      }
-      if (tx.price !== undefined) {
-        entry.price = tx.price
-      }
-      // Add fee directly to the BUY/SELL entry
-      if (tx.fee !== undefined && tx.fee > 0) {
-        entry.fee = tx.fee
-      }
+      if (trade.contracts !== undefined) entry.contracts = trade.contracts
+      if (trade.price !== undefined) entry.price = trade.price
+      if (trade.fee !== undefined && trade.fee > 0) entry.fee = trade.fee
       entries.push(entry)
-      break
     }
   }
 
@@ -6390,10 +6380,9 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
       })
     }
 
-    for (const tx of perpTxns) {
-      const entries = coinbaseTxToFundEntries(tx)
-      allEntries.push(...entries)
-    }
+    // Consolidate transactions by date (combine same-day REBATE, FUNDING, INTEREST into single entries)
+    const consolidatedEntries = consolidateCoinbaseTransactionsByDate(perpTxns)
+    allEntries.push(...consolidatedEntries)
 
     // Re-add preserved HOLD entries with cash balance
     allEntries.push(...existingCashHolds)

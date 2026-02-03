@@ -419,11 +419,11 @@ export function FundDetail() {
           liquidApy = realizedApy
         }
       } else {
-        // Trading fund APY: based on invested capital
-        // Since realized gains (cumExtracted) accumulate across all cycles and are never reset,
-        // use totalEverInvested as the denominator to compare apples to apples.
-        // This ensures APY remains meaningful after a fund is liquidated and restarted.
-        const investedDenominator = totalEverInvested > 0 ? totalEverInvested : (netInvested > 0 ? netInvested : denominatorValue)
+        // Trading fund APY: based on current cycle invested capital
+        // This matches the platform page calculation and reflects actual strategy performance
+        // For harvest mode funds that recycle capital, using netInvested (current cycle) gives
+        // meaningful APY that represents the strategy's return rate on deployed capital
+        const investedDenominator = netInvested > 0 ? netInvested : (costBasis > 0 ? costBasis : (totalEverInvested > 0 ? totalEverInvested : denominatorValue))
 
         // Calculate Realized APY (based only on realized gains relative to invested)
         const realizedReturnPct = investedDenominator > 0 ? realized / investedDenominator : 0
@@ -1612,6 +1612,7 @@ export function FundDetail() {
             fundType={fund.config.fund_type}
             marginEnabled={fund.config.margin_enabled}
             platform={fund.platform}
+            cashFund={fund.config.cash_fund}
             fundStatus={fund.config.status}
             onClose={() => {
               setShowAddEntry(false)

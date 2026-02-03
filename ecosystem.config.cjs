@@ -29,9 +29,10 @@ module.exports = {
     {
       name: 'escapemint-api',
       cwd: './packages/server',
-      script: 'dist/index.js',
+      script: 'npx',
+      args: 'tsx src/index.ts',
       watch: [
-        'packages/server/dist',
+        'packages/server/src',
         'packages/engine/dist',
         'packages/storage/dist'
       ],
