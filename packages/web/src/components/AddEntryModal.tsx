@@ -16,12 +16,13 @@ export interface AddEntryModalProps {
   fundType?: FundType | undefined
   marginEnabled?: boolean | undefined
   platform?: string | undefined
+  cashFund?: string | undefined  // Custom cash fund ID (overrides platform-cash default)
   fundStatus?: FundStatus | undefined
   onClose: () => void
   onAdded: () => void
 }
 
-export function AddEntryModal({ fundId, fundTicker, currentRecommendation, existingEntries = [], targetApy, minProfitUsd, manageCash, fundType = 'stock', marginEnabled = false, platform, fundStatus, onClose, onAdded }: AddEntryModalProps) {
+export function AddEntryModal({ fundId, fundTicker, currentRecommendation, existingEntries = [], targetApy, minProfitUsd, manageCash, fundType = 'stock', marginEnabled = false, platform, cashFund, fundStatus, onClose, onAdded }: AddEntryModalProps) {
   const [loading, setLoading] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [result, setResult] = useState<{ state: FundState; recommendation: Recommendation; margin_available?: number; margin_borrowed?: number } | null>(null)
@@ -185,7 +186,8 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
 
     // If auto-deposit is enabled and there's a shortfall, first deposit to cash fund
     if (depositAmount && depositAmount > 0 && platform) {
-      const cashFundId = `${platform.toLowerCase()}-cash`
+      // Use custom cash_fund if configured, otherwise default to platform-cash
+      const cashFundId = cashFund ?? `${platform.toLowerCase()}-cash`
       const depositEntry = {
         date: entry.date ?? formData.date,
         value: 0, // Will be calculated by server
@@ -540,7 +542,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
                     Auto-deposit {formatCurrency(Math.ceil(cashShortfall))} to cover shortfall
                   </span>
                   <p className="text-xs text-amber-300/70 mt-1">
-                    This will first record a {formatCurrency(Math.ceil(cashShortfall))} deposit to {platform?.toLowerCase()}-cash before recording your BUY action.
+                    This will first record a {formatCurrency(Math.ceil(cashShortfall))} deposit to {cashFund ?? `${platform?.toLowerCase()}-cash`} before recording your BUY action.
                   </p>
                 </div>
               </label>

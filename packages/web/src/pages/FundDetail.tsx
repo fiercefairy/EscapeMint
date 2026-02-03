@@ -1612,6 +1612,7 @@ export function FundDetail() {
             fundType={fund.config.fund_type}
             marginEnabled={fund.config.margin_enabled}
             platform={fund.platform}
+            cashFund={fund.config.cash_fund}
             fundStatus={fund.config.status}
             onClose={() => {
               setShowAddEntry(false)
