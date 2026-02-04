@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate, Link } from 'react-router-dom'
 import * as d3 from 'd3'
 import { toast } from 'sonner'
 import { fetchFund, fetchFundState, updateFundConfig, type FundDetail as FundDetailType, type FundStateResponse, type FundEntry, type ChartBounds } from '../api/funds'
+import { fetchBtcPrice } from '../api/utils'
 import { AddEntryModal } from '../components/AddEntryModal'
 import { EditEntryModal } from '../components/EditEntryModal'
 import { EditFundPanel } from '../components/EditFundPanel'
@@ -133,16 +134,24 @@ export function FundDetail() {
 
     if (showLoading) setLoading(true)
 
-    const [fundResult, stateResult] = await Promise.all([
+    // Fetch fund and BTC price in parallel
+    const [fundResult, btcPrice] = await Promise.all([
       fetchFund(id),
-      fetchFundState(id)
+      fetchBtcPrice()
     ])
 
     if (fundResult.error) {
       toast.error(fundResult.error)
-    } else {
-      setFund(fundResult.data ?? null)
+      if (showLoading) setLoading(false)
+      return
     }
+
+    setFund(fundResult.data ?? null)
+
+    // For derivatives funds, pass the current mark price to get accurate calculations
+    const isDerivatives = checkIsDerivativesFund(fundResult.data?.config.fund_type)
+    const markPrice = isDerivatives && btcPrice ? btcPrice : undefined
+    const stateResult = await fetchFundState(id, markPrice)
 
     if (stateResult.data) {
       setState(stateResult.data)
@@ -158,7 +167,11 @@ export function FundDetail() {
       setFund(updatedFund)
       // Also refresh state for recommendation updates
       if (id) {
-        const stateResult = await fetchFundState(id)
+        // For derivatives funds, fetch and pass current mark price
+        const isDerivatives = checkIsDerivativesFund(updatedFund.config.fund_type)
+        const btcPrice = isDerivatives ? await fetchBtcPrice() : null
+        const markPrice = isDerivatives && btcPrice ? btcPrice : undefined
+        const stateResult = await fetchFundState(id, markPrice)
         if (stateResult.data) {
           setState(stateResult.data)
         }

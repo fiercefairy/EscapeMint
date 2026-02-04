@@ -598,12 +598,14 @@ interface DerivativesFundEntry {
  * @param entries - Fund entries from TSV
  * @param contractMultiplier - Units of underlying asset per contract (default 0.01)
  * @param maintenanceMarginRate - Maintenance margin rate for liquidation (default 0.20)
+ * @param currentMarkPrice - Optional current market price for live calculations (overrides last trade price for final entry)
  * @returns Array of entry states with running calculations
  */
 export const computeDerivativesEntriesState = (
   entries: DerivativesFundEntry[],
   contractMultiplier: number = DEFAULT_CONTRACT_MULTIPLIER,
-  maintenanceMarginRate: number = DEFAULT_MAINTENANCE_MARGIN_RATE
+  maintenanceMarginRate: number = DEFAULT_MAINTENANCE_MARGIN_RATE,
+  currentMarkPrice?: number
 ): DerivativesEntryState[] => {
   // Action priority order within the same date
   const actionOrder: Record<string, number> = {
@@ -646,7 +648,9 @@ export const computeDerivativesEntriesState = (
 
   const results: DerivativesEntryState[] = []
 
-  for (const entry of sortedEntries) {
+  for (let index = 0; index < sortedEntries.length; index++) {
+    const entry = sortedEntries[index]
+    if (!entry) continue
     const action = entry.action ?? 'HOLD'
     const amount = entry.amount ?? 0
     const contracts = entry.contracts ?? 0
@@ -806,26 +810,30 @@ export const computeDerivativesEntriesState = (
     // Calculate actual margin locked from FIFO queue (sum of margin in open lots)
     const marginLocked = costBasisQueue.reduce((sum, lot) => sum + lot.margin, 0)
 
+    // For the final entry, use currentMarkPrice if provided (for live calculations)
+    const isLastEntry = index === sortedEntries.length - 1
+    const effectiveAssetPrice = (isLastEntry && currentMarkPrice) ? currentMarkPrice : currentAssetPrice
+
+    // Unrealized P&L at this snapshot using the asset price at this moment
+    // unrealizedPnl = (position * contractMultiplier * effectiveAssetPrice) - costBasis
+    let unrealizedPnl = 0
+    let currentNotionalValue = 0
+    if (position > 0 && effectiveAssetPrice > 0) {
+      currentNotionalValue = position * contractMultiplier * effectiveAssetPrice
+      if (costBasisTotal > 0) {
+        unrealizedPnl = currentNotionalValue - costBasisTotal
+      }
+    }
+
     // Margin calculations (futures don't spend cash, they lock margin)
-    // marginLocked: Sum of actual margin from cost basis queue
-    // Maintenance margin: typically 20% of notional value for Coinbase BTC perpetuals
-    const maintenanceMargin = notionalValue * maintenanceMarginRate
+    // Maintenance margin: calculated on CURRENT position value (not cost basis)
+    // This matches exchange behavior where MM is based on mark price
+    const maintenanceMargin = currentNotionalValue * maintenanceMarginRate
     const availableFunds = marginBalance - marginLocked  // Use actual margin locked
 
     // Margin ratio = maintenance margin / funds for margin
     // Lower is safer (Coinbase shows this as a percentage)
     const marginRatio = marginBalance > 0 ? maintenanceMargin / marginBalance : 0
-
-    // Unrealized P&L at this snapshot using the asset price at this moment
-    // unrealizedPnl = (position * contractMultiplier * currentAssetPrice) - costBasis
-    let unrealizedPnl = 0
-    let currentNotionalValue = 0
-    if (position > 0 && currentAssetPrice > 0) {
-      currentNotionalValue = position * contractMultiplier * currentAssetPrice
-      if (costBasisTotal > 0) {
-        unrealizedPnl = currentNotionalValue - costBasisTotal
-      }
-    }
 
     // Equity = total account value = marginBalance + unrealizedPnl
     // This is what your account would be worth if you closed all positions
@@ -836,35 +844,39 @@ export const computeDerivativesEntriesState = (
     const leverage = marginLocked > 0 ? currentNotionalValue / marginLocked : 0
 
     // Liquidation price calculation for long positions
-    // At liquidation: equity = maintenanceMargin
-    // equity = marginBalance + (liqPrice - avgEntry) * notionalSize
-    // So: liqPrice = avgEntry - (marginBalance - maintenanceMargin) / notionalSize
-    // For short positions, the formula is: liqPrice = avgEntry + (marginBalance - maintenanceMargin) / notionalSize
+    // At liquidation: equity = maintenanceMargin at liq price
+    // marginBalance + (liqPrice - avgEntry) * notionalSize = mmRate * liqPrice * notionalSize
+    // Solving: liqPrice = (costBasis - marginBalance) / (notionalSize * (1 - mmRate))
     const notionalSize = position * contractMultiplier
     let liquidationPrice = 0
-    if (position > 0 && notionalSize > 0) {
+    if (position > 0 && notionalSize > 0 && maintenanceMarginRate < 1) {
       // Long position: price going down triggers liquidation
-      // Negative values indicate position is over-collateralized (safer than 0)
-      const buffer = marginBalance - maintenanceMargin
-      liquidationPrice = avgEntry - (buffer / notionalSize)
-    } else if (position < 0 && notionalSize < 0) {
+      // Formula: liqPrice = (costBasis - marginBalance) / (notionalSize * (1 - mmRate))
+      // Negative result means over-collateralized (can't be liquidated even at $0)
+      liquidationPrice = (costBasisTotal - marginBalance) / (notionalSize * (1 - maintenanceMarginRate))
+    } else if (position < 0 && notionalSize < 0 && maintenanceMarginRate < 1) {
       // Short position: price going up triggers liquidation
-      const buffer = marginBalance - maintenanceMargin
-      liquidationPrice = avgEntry - (buffer / notionalSize)  // notionalSize is negative, so this adds
+      // Formula: liqPrice = (marginBalance - costBasis) / (|notionalSize| * (1 - mmRate))
+      const absNotionalSize = Math.abs(notionalSize)
+      liquidationPrice = (marginBalance - costBasisTotal) / (absNotionalSize * (1 - maintenanceMarginRate))
     }
 
     // Margin health: how much buffer above liquidation (higher is safer)
     // marginHealth = (equity - maintenanceMargin) / maintenanceMargin
     const marginHealth = maintenanceMargin > 0 ? (equity - maintenanceMargin) / maintenanceMargin : 0
 
-    // Distance to liquidation as percentage from current/avg price
-    // For long: (avgEntry - liquidationPrice) / avgEntry
-    // Negative liq price means over-collateralized; distance > 100% means price can drop past 0
+    // Distance to liquidation as percentage from current price to liquidation
+    // For long: (currentPrice - liquidationPrice) / currentPrice (if liq > 0)
+    // If liqPrice <= 0, distance is > 100% (fully collateralized)
     let distanceToLiquidation = 0
-    if (position > 0 && avgEntry > 0) {
-      distanceToLiquidation = (avgEntry - liquidationPrice) / avgEntry
-    } else if (position < 0 && avgEntry > 0) {
-      distanceToLiquidation = (liquidationPrice - avgEntry) / avgEntry
+    if (position > 0 && effectiveAssetPrice > 0) {
+      if (liquidationPrice <= 0) {
+        distanceToLiquidation = 1.0  // 100% - fully collateralized
+      } else {
+        distanceToLiquidation = (effectiveAssetPrice - liquidationPrice) / effectiveAssetPrice
+      }
+    } else if (position < 0 && effectiveAssetPrice > 0 && liquidationPrice > 0) {
+      distanceToLiquidation = (liquidationPrice - effectiveAssetPrice) / effectiveAssetPrice
     }
 
     const entryState: DerivativesEntryState = {

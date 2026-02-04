@@ -78,3 +78,14 @@ export async function deleteResource<T = void>(
 ): Promise<ApiResult<T>> {
   return fetchJson<T>(endpoint, { method: 'DELETE' }, errorMessage)
 }
+
+/**
+ * Fetch current BTC price from Coinbase public API.
+ * Used for derivatives calculations that need mark price.
+ */
+export async function fetchBtcPrice(): Promise<number | null> {
+  const response = await fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot')
+  if (!response.ok) return null
+  const data = await response.json()
+  return parseFloat(data?.data?.amount) || null
+}
