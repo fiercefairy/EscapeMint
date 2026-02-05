@@ -5628,6 +5628,14 @@ const fetchCoinbasePositionData = async (
     return isNaN(num) ? 0 : num
   }
 
+  // Log all cell values to help debug column alignment issues
+  const allCellTexts: string[] = []
+  for (let i = 0; i < cells.length; i++) {
+    const text = await getText(cells[i])
+    allCellTexts.push(`[${i}]="${text.substring(0, 30)}"`)
+  }
+  log.debug(`[Coinbase Position] All cells (${cells.length}): ${allCellTexts.join(', ')}`)
+
   const nameCell = await getText(cells[0])
   const amountText = await getText(cells[1])
   const valueText = await getText(cells[2])
