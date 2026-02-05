@@ -5542,7 +5542,7 @@ const fetchCoinbasePositionData = async (
   sendEvent?: (event: string, data: Record<string, unknown>) => void
 ): Promise<CoinbasePositionData | null> => {
   const currentUrl = page.url()
-  log.debug(`[Coinbase] Fetching position data, current URL: ${currentUrl}, productId: ${productId}`)
+  log.info(`[Coinbase Position] Fetching position data, current URL: ${currentUrl}, productId: ${productId}`)
 
   // Build target URL based on product ID
   const targetProductId = productId || 'BTC-PERP-INTX'
@@ -5594,14 +5594,14 @@ const fetchCoinbasePositionData = async (
   }
 
   if (!positionRow) {
-    log.debug('[Coinbase] No position row found in positions table')
+    log.info('[Coinbase Position] No position row found in positions table')
     return null
   }
 
   // Extract all cell values from the position row
   const cells = await positionRow.$$('td').catch(() => [])
   if (cells.length < 10) {
-    log.debug(`[Coinbase] Position row has ${cells.length} cells, expected at least 10`)
+    log.info(`[Coinbase Position] Position row has ${cells.length} cells, expected at least 10`)
     return null
   }
 
@@ -5634,7 +5634,7 @@ const fetchCoinbasePositionData = async (
     const text = await getText(cells[i])
     allCellTexts.push(`[${i}]="${text.substring(0, 30)}"`)
   }
-  log.debug(`[Coinbase Position] All cells (${cells.length}): ${allCellTexts.join(', ')}`)
+  log.info(`[Coinbase Position] All cells (${cells.length}): ${allCellTexts.join(', ')}`)
 
   const nameCell = await getText(cells[0])
   const amountText = await getText(cells[1])
@@ -5645,7 +5645,7 @@ const fetchCoinbasePositionData = async (
   const fundingText = await getText(cells[9])
   const pnlText = await getText(cells[10])
 
-  log.debug(`[Coinbase Position] Raw data: name=${nameCell}, amount=${amountText}, value=${valueText}, avgEntry=${avgEntryText}, markPrice=${markPriceText}, estLiqPrice=${estLiqPriceText}, funding=${fundingText}, pnl=${pnlText}`)
+  log.info(`[Coinbase Position] Raw: estLiqPrice="${estLiqPriceText}", markPrice="${markPriceText}", pnl="${pnlText}"`)
 
   // Extract contracts count (e.g., "430 contracts" -> 430)
   const contractsMatch = amountText.match(/([\d,]+)\s*contracts?/i)
@@ -5669,7 +5669,7 @@ const fetchCoinbasePositionData = async (
     funding: parseNumber(fundingText)
   }
 
-  log.debug(`[Coinbase Position] Parsed: contracts=${positionData.contracts}, markPrice=${positionData.markPrice}, estLiqPrice=${positionData.estLiqPrice}, pnl=${positionData.pnl}`)
+  log.info(`[Coinbase Position] Parsed: estLiqPrice=${positionData.estLiqPrice}, markPrice=${positionData.markPrice}, pnl=${positionData.pnl}`)
 
   return positionData
 }
@@ -6578,9 +6578,9 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
   let positionData: CoinbasePositionData | null = null
   if (isDerivativesFund) {
     const productId = (fund?.config as { product_id?: string }).product_id
-    log.debug(`[Coinbase TX] Fetching position data for derivatives fund, productId: ${productId}...`)
+    log.info(`[Coinbase TX] Fetching position data for derivatives fund, productId: ${productId}...`)
     positionData = await fetchCoinbasePositionData(page, productId, sendEvent)
-    log.debug(`[Coinbase TX] Position data result: ${JSON.stringify(positionData)}`)
+    log.info(`[Coinbase TX] Position data result: estLiqPrice=${positionData?.estLiqPrice}, markPrice=${positionData?.markPrice}`)
   }
 
   // Update or create cash entry if we have a fund and cash balance
