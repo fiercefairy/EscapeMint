@@ -5520,21 +5520,40 @@ interface CoinbasePositionData {
 }
 
 /**
+ * Build the Coinbase Advanced Trade URL for a given product ID
+ * Futures contracts (BIP-*) go under /futures/, perpetuals go directly under /advanced-trade/
+ */
+const buildAdvancedTradeUrl = (productId: string): string => {
+  // Futures contracts start with BIP- (Bitcoin Index Price futures)
+  if (productId.startsWith('BIP-')) {
+    return `https://www.coinbase.com/advanced-trade/futures/${productId}`
+  }
+  // Perpetuals like BTC-PERP-INTX go directly under advanced-trade
+  return `https://www.coinbase.com/advanced-trade/${productId}`
+}
+
+/**
  * Fetch position data from Coinbase Advanced Trade positions tab
  * Navigates to advanced-trade and extracts position info including liquidation price
  */
 const fetchCoinbasePositionData = async (
   page: Page,
+  productId?: string,
   sendEvent?: (event: string, data: Record<string, unknown>) => void
 ): Promise<CoinbasePositionData | null> => {
   const currentUrl = page.url()
-  log.debug(`[Coinbase] Fetching position data, current URL: ${currentUrl}`)
+  log.debug(`[Coinbase] Fetching position data, current URL: ${currentUrl}, productId: ${productId}`)
 
-  // Navigate to Advanced Trade if not already there
-  if (!currentUrl.includes('coinbase.com/advanced-trade')) {
+  // Build target URL based on product ID
+  const targetProductId = productId || 'BTC-PERP-INTX'
+  const targetUrl = buildAdvancedTradeUrl(targetProductId)
+
+  // Navigate to Advanced Trade if not already there or on wrong product
+  if (!currentUrl.includes('coinbase.com/advanced-trade') || !currentUrl.includes(targetProductId)) {
     sendEvent?.('status', { message: 'Fetching position data from Advanced Trade...', phase: 'loading' })
+    log.debug(`[Coinbase] Navigating to: ${targetUrl}`)
 
-    const navResult = await page.goto('https://www.coinbase.com/advanced-trade/BTC-PERP-INTX', {
+    const navResult = await page.goto(targetUrl, {
       waitUntil: 'load',
       timeout: 30000
     }).catch((err: Error) => err)
@@ -5555,10 +5574,19 @@ const fetchCoinbasePositionData = async (
     await page.waitForTimeout(1000)
   }
 
-  // Try to find position row - look for BTC PERP text
-  const positionRow = await page.$('tr:has-text("BTC PERP")').catch(() => null)
+  // Wait for positions table to load
+  await page.waitForSelector('[data-testid="positions-table-content"]', { timeout: 5000 }).catch(() => null)
+
+  // Try to find position row using data-testid first, then fallback to text search
+  let positionRow = await page.$('[data-testid="positions-table-content"] tbody tr').catch(() => null)
+
+  // If no row found via testid, try text-based selector
   if (!positionRow) {
-    log.debug('[Coinbase] No BTC PERP position row found')
+    positionRow = await page.$('tr:has-text("BTC PERP")').catch(() => null)
+  }
+
+  if (!positionRow) {
+    log.debug('[Coinbase] No position row found in positions table')
     return null
   }
 
@@ -5577,8 +5605,17 @@ const fetchCoinbasePositionData = async (
   }
 
   const parseNumber = (text: string): number => {
-    // Remove $, commas, and handle negative/positive signs
-    const cleaned = text.replace(/[$,]/g, '').replace(/[↓↑]/g, '-').trim()
+    // Remove $, commas, and handle direction arrows (↓↑↘↗ indicate negative/positive)
+    // ↘ (southeast arrow) means negative/down, ↗ (northeast arrow) means positive/up
+    let cleaned = text.replace(/[$,]/g, '').trim()
+    // Handle arrows - ↘ and ↓ indicate negative values
+    if (cleaned.includes('↘') || cleaned.includes('↓')) {
+      cleaned = cleaned.replace(/[↘↓]/g, '')
+      const num = parseFloat(cleaned)
+      return isNaN(num) ? 0 : -Math.abs(num)
+    }
+    // ↗ and ↑ indicate positive values (just remove the arrow)
+    cleaned = cleaned.replace(/[↗↑]/g, '')
     const num = parseFloat(cleaned)
     return isNaN(num) ? 0 : num
   }
@@ -6524,8 +6561,9 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
   const isDerivativesFund = fund?.config.fund_type === 'derivatives'
   let positionData: CoinbasePositionData | null = null
   if (isDerivativesFund) {
-    log.debug(`[Coinbase TX] Fetching position data for derivatives fund...`)
-    positionData = await fetchCoinbasePositionData(page, sendEvent)
+    const productId = (fund?.config as { product_id?: string }).product_id
+    log.debug(`[Coinbase TX] Fetching position data for derivatives fund, productId: ${productId}...`)
+    positionData = await fetchCoinbasePositionData(page, productId, sendEvent)
     log.debug(`[Coinbase TX] Position data result: ${JSON.stringify(positionData)}`)
   }
 
