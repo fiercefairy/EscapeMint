@@ -589,6 +589,9 @@ interface DerivativesFundEntry {
   fee?: number  // Trading fee associated with BUY/SELL
   margin?: number  // Actual margin locked for this trade
   notes?: string
+  // Fields that can be scraped from exchange (used in HOLD entries)
+  liquidation_price?: number  // Scraped liquidation price from exchange
+  unrealized_pnl?: number     // Scraped unrealized P&L from exchange
 }
 
 /**
@@ -642,6 +645,7 @@ export const computeDerivativesEntriesState = (
   let cumRebates = 0
   let cumFees = 0
   let currentAssetPrice = 0  // Asset price at each snapshot (derived from trade prices)
+  let scrapedLiquidationPrice: number | null = null  // Liquidation price scraped from exchange (via HOLD entries)
 
   // FIFO cost basis queue for realized P&L calculation (includes margin per lot)
   const costBasisQueue: { contracts: number; price: number; cost: number; margin: number }[] = []
@@ -796,6 +800,10 @@ export const computeDerivativesEntriesState = (
         if (entryCash !== undefined && entryCash > 0) {
           marginBalance = entryCash
         }
+        // If liquidation_price is provided (scraped from exchange), store it for use
+        if (entry.liquidation_price !== undefined && entry.liquidation_price > 0) {
+          scrapedLiquidationPrice = entry.liquidation_price
+        }
         break
       }
     }
@@ -849,7 +857,12 @@ export const computeDerivativesEntriesState = (
     // Solving: liqPrice = (costBasis - marginBalance) / (notionalSize * (1 - mmRate))
     const notionalSize = position * contractMultiplier
     let liquidationPrice = 0
-    if (position > 0 && notionalSize > 0 && maintenanceMarginRate < 1) {
+
+    // Prefer scraped liquidation price from exchange (more accurate than our calculation)
+    // Use it for the final entry or when we have a recent scraped value
+    if (scrapedLiquidationPrice !== null && isLastEntry) {
+      liquidationPrice = scrapedLiquidationPrice
+    } else if (position > 0 && notionalSize > 0 && maintenanceMarginRate < 1) {
       // Long position: price going down triggers liquidation
       // Formula: liqPrice = (costBasis - marginBalance) / (notionalSize * (1 - mmRate))
       // Negative result means over-collateralized (can't be liquidated even at $0)

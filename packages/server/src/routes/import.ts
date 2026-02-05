@@ -5506,6 +5506,122 @@ const fetchCoinbaseCashBalance = async (
 }
 
 /**
+ * Position data scraped from Coinbase Advanced Trade
+ */
+interface CoinbasePositionData {
+  symbol: string           // e.g., "BTC PERP"
+  contracts: number        // e.g., 430
+  value: number            // Position value at mark price
+  avgEntry: number         // Average entry price
+  markPrice: number        // Current mark/spot price
+  estLiqPrice: number | null  // Estimated liquidation price (null if not shown)
+  pnl: number              // Unrealized P&L (can be negative)
+  funding: number          // Funding (can be negative)
+}
+
+/**
+ * Fetch position data from Coinbase Advanced Trade positions tab
+ * Navigates to advanced-trade and extracts position info including liquidation price
+ */
+const fetchCoinbasePositionData = async (
+  page: Page,
+  sendEvent?: (event: string, data: Record<string, unknown>) => void
+): Promise<CoinbasePositionData | null> => {
+  const currentUrl = page.url()
+  log.debug(`[Coinbase] Fetching position data, current URL: ${currentUrl}`)
+
+  // Navigate to Advanced Trade if not already there
+  if (!currentUrl.includes('coinbase.com/advanced-trade')) {
+    sendEvent?.('status', { message: 'Fetching position data from Advanced Trade...', phase: 'loading' })
+
+    const navResult = await page.goto('https://www.coinbase.com/advanced-trade/BTC-PERP-INTX', {
+      waitUntil: 'load',
+      timeout: 30000
+    }).catch((err: Error) => err)
+
+    if (navResult instanceof Error) {
+      log.debug(`[Coinbase] Failed to navigate to Advanced Trade: ${navResult.message}`)
+      return null
+    }
+
+    // Wait for page to fully load
+    await page.waitForTimeout(3000)
+  }
+
+  // Click on Positions tab if not already selected
+  const positionsTab = await page.$('button:has-text("Positions")').catch(() => null)
+  if (positionsTab) {
+    await positionsTab.click().catch(() => {})
+    await page.waitForTimeout(1000)
+  }
+
+  // Try to find position row - look for BTC PERP text
+  const positionRow = await page.$('tr:has-text("BTC PERP")').catch(() => null)
+  if (!positionRow) {
+    log.debug('[Coinbase] No BTC PERP position row found')
+    return null
+  }
+
+  // Extract all cell values from the position row
+  const cells = await positionRow.$$('td').catch(() => [])
+  if (cells.length < 10) {
+    log.debug(`[Coinbase] Position row has ${cells.length} cells, expected at least 10`)
+    return null
+  }
+
+  // Parse cell values based on column order in the screenshot:
+  // Name | Amount | Value | Avg Entry | Mark Price | Est Liq Price | TP/SL | Initial Margin | Margin Ratio | Funding | PnL | Actions
+  const getText = async (cell: typeof cells[0]): Promise<string> => {
+    const text = await cell?.innerText().catch(() => '') ?? ''
+    return text.trim()
+  }
+
+  const parseNumber = (text: string): number => {
+    // Remove $, commas, and handle negative/positive signs
+    const cleaned = text.replace(/[$,]/g, '').replace(/[↓↑]/g, '-').trim()
+    const num = parseFloat(cleaned)
+    return isNaN(num) ? 0 : num
+  }
+
+  const nameCell = await getText(cells[0])
+  const amountText = await getText(cells[1])
+  const valueText = await getText(cells[2])
+  const avgEntryText = await getText(cells[3])
+  const markPriceText = await getText(cells[4])
+  const estLiqPriceText = await getText(cells[5])
+  const fundingText = await getText(cells[9])
+  const pnlText = await getText(cells[10])
+
+  log.debug(`[Coinbase Position] Raw data: name=${nameCell}, amount=${amountText}, value=${valueText}, avgEntry=${avgEntryText}, markPrice=${markPriceText}, estLiqPrice=${estLiqPriceText}, funding=${fundingText}, pnl=${pnlText}`)
+
+  // Extract contracts count (e.g., "430 contracts" -> 430)
+  const contractsMatch = amountText.match(/([\d,]+)\s*contracts?/i)
+  const contracts = contractsMatch ? parseNumber(contractsMatch[1] ?? '0') : 0
+
+  // Parse liquidation price (may be "--" or empty)
+  let estLiqPrice: number | null = null
+  if (estLiqPriceText && estLiqPriceText !== '--' && !estLiqPriceText.includes('--')) {
+    estLiqPrice = parseNumber(estLiqPriceText)
+    if (estLiqPrice === 0) estLiqPrice = null
+  }
+
+  const positionData: CoinbasePositionData = {
+    symbol: nameCell,
+    contracts,
+    value: parseNumber(valueText),
+    avgEntry: parseNumber(avgEntryText),
+    markPrice: parseNumber(markPriceText),
+    estLiqPrice,
+    pnl: parseNumber(pnlText),
+    funding: parseNumber(fundingText)
+  }
+
+  log.debug(`[Coinbase Position] Parsed: contracts=${positionData.contracts}, markPrice=${positionData.markPrice}, estLiqPrice=${positionData.estLiqPrice}, pnl=${positionData.pnl}`)
+
+  return positionData
+}
+
+/**
  * Find Coinbase rewards/interest page
  */
 const findCoinbaseRewardsPage = async (browser: Browser): Promise<Page | null> => {
@@ -6404,35 +6520,65 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
   const cashBalance = await fetchCoinbaseCashBalance(page, sendEvent)
   log.debug(`[Coinbase TX] Cash balance result: ${cashBalance}`)
 
+  // For derivatives funds, also fetch position data (liquidation price, mark price, etc.)
+  const isDerivativesFund = fund?.config.fund_type === 'derivatives'
+  let positionData: CoinbasePositionData | null = null
+  if (isDerivativesFund) {
+    log.debug(`[Coinbase TX] Fetching position data for derivatives fund...`)
+    positionData = await fetchCoinbasePositionData(page, sendEvent)
+    log.debug(`[Coinbase TX] Position data result: ${JSON.stringify(positionData)}`)
+  }
+
   // Update or create cash entry if we have a fund and cash balance
   let cashUpdated = false
-  if (cashBalance !== null && fundId && fund && fundPath) {
+  if ((cashBalance !== null || positionData !== null) && fundId && fund && fundPath) {
     // Check if we need to update - compare to latest entry's cash
     const latestEntry = fund.entries[fund.entries.length - 1]
     const latestCash = latestEntry?.cash ?? 0
     const today = new Date().toISOString().slice(0, 10)
 
-    // Only update if cash changed significantly
-    if (Math.abs(cashBalance - latestCash) > CASH_BALANCE_UPDATE_THRESHOLD) {
+    const cashChanged = cashBalance !== null && Math.abs(cashBalance - latestCash) > CASH_BALANCE_UPDATE_THRESHOLD
+    const hasPositionData = positionData !== null && positionData.estLiqPrice !== null
+
+    // Only update if cash changed significantly or we have new position data
+    if (cashChanged || hasPositionData) {
       // Check if latest entry is from today and is HOLD - update it
       if (latestEntry && latestEntry.date === today && latestEntry.action === 'HOLD') {
-        latestEntry.cash = cashBalance
-        log.debug(`[Coinbase TX] Updated today's HOLD entry with cash: ${cashBalance}`)
+        if (cashBalance !== null) latestEntry.cash = cashBalance
+        // Add position data if available
+        if (positionData) {
+          if (positionData.estLiqPrice !== null) latestEntry.liquidation_price = positionData.estLiqPrice
+          if (positionData.pnl !== 0) latestEntry.unrealized_pnl = positionData.pnl
+        }
+        log.debug(`[Coinbase TX] Updated today's HOLD entry with cash: ${cashBalance}, liqPrice: ${positionData?.estLiqPrice}`)
       } else {
-        // Create new HOLD entry with cash update
-        fund.entries.push({
+        // Create new HOLD entry with cash and position data
+        const holdEntry: FundEntry = {
           date: today,
           value: 0,
           action: 'HOLD',
-          cash: cashBalance,
           notes: 'Cash balance update from scrape'
-        })
-        log.debug(`[Coinbase TX] Created new HOLD entry with cash: ${cashBalance}`)
+        }
+        if (cashBalance !== null) holdEntry.cash = cashBalance
+        if (positionData) {
+          if (positionData.estLiqPrice !== null) holdEntry.liquidation_price = positionData.estLiqPrice
+          if (positionData.pnl !== 0) holdEntry.unrealized_pnl = positionData.pnl
+        }
+        fund.entries.push(holdEntry)
+        log.debug(`[Coinbase TX] Created new HOLD entry with cash: ${cashBalance}, liqPrice: ${positionData?.estLiqPrice}`)
       }
 
       await writeFund(fundPath, fund)
       cashUpdated = true
-      sendEvent('cashUpdated', { cashBalance, date: today })
+      sendEvent('cashUpdated', {
+        cashBalance,
+        date: today,
+        positionData: positionData ? {
+          estLiqPrice: positionData.estLiqPrice,
+          markPrice: positionData.markPrice,
+          pnl: positionData.pnl
+        } : null
+      })
     }
   }
 
