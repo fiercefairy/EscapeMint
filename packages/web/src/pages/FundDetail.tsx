@@ -540,14 +540,16 @@ export function FundDetail() {
         const effectiveEquity = effectiveCash + derivState.unrealizedPnl
         const effectiveAvailableFunds = effectiveCash - derivState.marginLocked
 
-        // Recalculate liquidation price using effective cash
-        // Formula for longs:  liqPrice = avgEntry - (cash - maintenanceMargin) / notionalSize
-        // Formula for shorts: liqPrice = avgEntry + (cash - maintenanceMargin) / |notionalSize|
+        // Use liquidation price from server (which prefers scraped exchange value over calculated)
+        // Only recalculate if server didn't provide a meaningful value (liqPrice <= 0 means fully collateralized or error)
         const contractMultiplier = fund.config.contract_multiplier ?? 0.01
         const notionalSize = derivState.position * contractMultiplier
         let effectiveLiqPrice = derivState.liquidationPrice
         let effectiveDistanceToLiq = derivState.distanceToLiquidation
-        if (entry.cash !== undefined && derivState.position !== 0 && notionalSize !== 0) {
+
+        // Only recalculate if we don't have a valid liquidation price from the server
+        // and we have the data needed to calculate one
+        if (effectiveLiqPrice <= 0 && entry.cash !== undefined && derivState.position !== 0 && notionalSize !== 0) {
           const buffer = effectiveCash - derivState.maintenanceMargin
           // For longs (positive position): subtract buffer/notional from entry
           // For shorts (negative position): add buffer/|notional| to entry
