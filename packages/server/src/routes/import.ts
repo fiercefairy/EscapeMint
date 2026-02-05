@@ -5567,6 +5567,14 @@ const fetchCoinbasePositionData = async (
     await page.waitForTimeout(3000)
   }
 
+  // Handle "Turn on Advanced" modal if it appears
+  const turnOnAdvancedBtn = await page.$('[data-testid="advanced-nux-confirm-button"]').catch(() => null)
+  if (turnOnAdvancedBtn) {
+    log.debug('[Coinbase] Found "Turn on Advanced" modal, clicking confirm button...')
+    await turnOnAdvancedBtn.click().catch(() => {})
+    await page.waitForTimeout(2000)
+  }
+
   // Click on Positions tab if not already selected
   const positionsTab = await page.$('button:has-text("Positions")').catch(() => null)
   if (positionsTab) {
