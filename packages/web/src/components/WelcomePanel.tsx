@@ -98,6 +98,15 @@ export function WelcomePanel({ onCreateFund, onImport }: WelcomePanelProps) {
         </p>
       </div>
 
+      {/* Disclaimer */}
+      <div className="border-t border-slate-700 pt-6 mt-6">
+        <div className="bg-amber-900/20 border border-amber-700/30 rounded-lg p-4 max-w-3xl mx-auto">
+          <p className="text-amber-200/80 text-xs leading-relaxed text-center">
+            <span className="font-semibold">Not investment advice.</span> This app is shared publicly so the creator can share it with friends and family. This strategy relies on systematic DCA through market downturns and expects you to be comfortable holding paper losses. Using this strategy with panic selling on losses is likely to result in bad performance.
+          </p>
+        </div>
+      </div>
+
       {/* Getting Started Steps */}
       <div className="border-t border-slate-700 pt-6 mt-6">
         <h3 className="text-lg font-semibold text-white mb-4 text-center">
