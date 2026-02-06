@@ -84,8 +84,8 @@ export async function deleteResource<T = void>(
  * Used for derivatives calculations that need mark price.
  */
 export async function fetchBtcPrice(): Promise<number | null> {
-  const response = await fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot')
-  if (!response.ok) return null
-  const data = await response.json()
+  const response = await fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot').catch(() => null)
+  if (!response?.ok) return null
+  const data = await response.json().catch(() => null)
   return parseFloat(data?.data?.amount) || null
 }

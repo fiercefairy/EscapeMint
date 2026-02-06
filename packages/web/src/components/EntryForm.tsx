@@ -86,6 +86,8 @@ export const parseFormulaValue = (input: string): number => {
   let pos = 0
 
   const parseNumber = (): number => {
+    // Skip leading + (e.g., "=+5+10")
+    if (pos < expr.length && expr[pos] === '+') pos++
     const start = pos
     if (pos < expr.length && expr[pos] === '-') pos++
     while (pos < expr.length && (/[\d.]/).test(expr[pos]!)) pos++
@@ -133,7 +135,7 @@ function FormulaInputInner({ value, ...props }: Omit<React.InputHTMLAttributes<H
         {...props}
       />
       {isFormula && computed !== null && (
-        <p className="text-xs text-mint-400 mt-0.5">= {parseFloat(computed.toFixed(8))}</p>
+        <p className="text-xs text-mint-400 mt-0.5">= {computed.toLocaleString(undefined, { maximumFractionDigits: 8 })}</p>
       )}
     </>
   )

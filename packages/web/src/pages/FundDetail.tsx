@@ -134,11 +134,7 @@ export function FundDetail() {
 
     if (showLoading) setLoading(true)
 
-    // Fetch fund and BTC price in parallel
-    const [fundResult, btcPrice] = await Promise.all([
-      fetchFund(id),
-      fetchBtcPrice()
-    ])
+    const fundResult = await fetchFund(id)
 
     if (fundResult.error) {
       toast.error(fundResult.error)
@@ -148,9 +144,9 @@ export function FundDetail() {
 
     setFund(fundResult.data ?? null)
 
-    // For derivatives funds, pass the current mark price to get accurate calculations
+    // For derivatives funds, fetch BTC price for accurate mark price calculations
     const isDerivatives = checkIsDerivativesFund(fundResult.data?.config.fund_type)
-    const markPrice = isDerivatives && btcPrice ? btcPrice : undefined
+    const markPrice = isDerivatives ? (await fetchBtcPrice()) ?? undefined : undefined
     const stateResult = await fetchFundState(id, markPrice)
 
     if (stateResult.data) {

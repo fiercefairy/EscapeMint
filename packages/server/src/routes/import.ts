@@ -5588,9 +5588,11 @@ const fetchCoinbasePositionData = async (
   // Try to find position row using data-testid first, then fallback to text search
   let positionRow = await page.$('[data-testid="positions-table-content"] tbody tr').catch(() => null)
 
-  // If no row found via testid, try text-based selector
+  // If no row found via testid, try text-based selector using the product name
   if (!positionRow) {
-    positionRow = await page.$('tr:has-text("BTC PERP")').catch(() => null)
+    // Derive display name from productId (e.g., "BTC-PERP-INTX" -> "BTC PERP")
+    const displayName = targetProductId.split('-').slice(0, 2).join(' ')
+    positionRow = await page.$(`tr:has-text("${displayName}")`).catch(() => null)
   }
 
   if (!positionRow) {
@@ -5642,8 +5644,8 @@ const fetchCoinbasePositionData = async (
   const avgEntryText = await getText(cells[3])
   const markPriceText = await getText(cells[4])
   const estLiqPriceText = await getText(cells[5])
-  const fundingText = await getText(cells[9])
-  const pnlText = await getText(cells[10])
+  const fundingText = cells[9] ? await getText(cells[9]) : ''
+  const pnlText = cells[10] ? await getText(cells[10]) : ''
 
   log.info(`[Coinbase Position] Raw: estLiqPrice="${estLiqPriceText}", markPrice="${markPriceText}", pnl="${pnlText}"`)
 
@@ -6602,7 +6604,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
         // Add position data if available
         if (positionData) {
           if (positionData.estLiqPrice !== null) latestEntry.liquidation_price = positionData.estLiqPrice
-          if (positionData.pnl !== 0) latestEntry.unrealized_pnl = positionData.pnl
+          if (positionData.pnl !== null) latestEntry.unrealized_pnl = positionData.pnl
         }
         log.debug(`[Coinbase TX] Updated today's HOLD entry with cash: ${cashBalance}, liqPrice: ${positionData?.estLiqPrice}`)
       } else {
