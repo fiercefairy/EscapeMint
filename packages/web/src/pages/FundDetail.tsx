@@ -157,7 +157,9 @@ export function FundDetail() {
     }
     const stateResult = await fetchFundState(id, markPrice)
 
-    if (stateResult.data) {
+    if (stateResult.error) {
+      toast.error(stateResult.error)
+    } else if (stateResult.data) {
       setState(stateResult.data)
     }
 
@@ -176,7 +178,9 @@ export function FundDetail() {
         const btcPrice = isDerivatives ? await fetchBtcPrice() : null
         const markPrice = isDerivatives && btcPrice ? btcPrice : undefined
         const stateResult = await fetchFundState(id, markPrice)
-        if (stateResult.data) {
+        if (stateResult.error) {
+          toast.error(stateResult.error)
+        } else if (stateResult.data) {
           setState(stateResult.data)
         }
       }
