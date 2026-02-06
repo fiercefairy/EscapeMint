@@ -5506,6 +5506,176 @@ const fetchCoinbaseCashBalance = async (
 }
 
 /**
+ * Position data scraped from Coinbase Advanced Trade
+ */
+interface CoinbasePositionData {
+  symbol: string           // e.g., "BTC PERP"
+  contracts: number        // e.g., 430
+  value: number            // Position value at mark price
+  avgEntry: number         // Average entry price
+  markPrice: number        // Current mark/spot price
+  estLiqPrice: number | null  // Estimated liquidation price (null if not shown)
+  pnl: number              // Unrealized P&L (can be negative)
+  funding: number          // Funding (can be negative)
+}
+
+/**
+ * Build the Coinbase Advanced Trade URL for a given product ID
+ * Futures contracts (BIP-*) go under /futures/, perpetuals go directly under /advanced-trade/
+ */
+const buildAdvancedTradeUrl = (productId: string): string => {
+  // Futures contracts start with BIP- (Bitcoin Index Price futures)
+  if (productId.startsWith('BIP-')) {
+    return `https://www.coinbase.com/advanced-trade/futures/${productId}`
+  }
+  // Perpetuals like BTC-PERP-INTX go directly under advanced-trade
+  return `https://www.coinbase.com/advanced-trade/${productId}`
+}
+
+/**
+ * Fetch position data from Coinbase Advanced Trade positions tab
+ * Navigates to advanced-trade and extracts position info including liquidation price
+ */
+const fetchCoinbasePositionData = async (
+  page: Page,
+  productId?: string,
+  sendEvent?: (event: string, data: Record<string, unknown>) => void
+): Promise<CoinbasePositionData | null> => {
+  const currentUrl = page.url()
+  log.info(`[Coinbase Position] Fetching position data, current URL: ${currentUrl}, productId: ${productId}`)
+
+  // Build target URL based on product ID
+  const targetProductId = productId || 'BTC-PERP-INTX'
+  const targetUrl = buildAdvancedTradeUrl(targetProductId)
+
+  // Navigate to Advanced Trade if not already there or on wrong product
+  if (!currentUrl.includes('coinbase.com/advanced-trade') || !currentUrl.includes(targetProductId)) {
+    sendEvent?.('status', { message: 'Fetching position data from Advanced Trade...', phase: 'loading' })
+    log.debug(`[Coinbase] Navigating to: ${targetUrl}`)
+
+    const navResult = await page.goto(targetUrl, {
+      waitUntil: 'load',
+      timeout: 30000
+    }).catch((err: Error) => err)
+
+    if (navResult instanceof Error) {
+      log.debug(`[Coinbase] Failed to navigate to Advanced Trade: ${navResult.message}`)
+      return null
+    }
+
+    // Wait for page to fully load
+    await page.waitForTimeout(3000)
+  }
+
+  // Handle "Turn on Advanced" modal if it appears
+  const turnOnAdvancedBtn = await page.$('[data-testid="advanced-nux-confirm-button"]').catch(() => null)
+  if (turnOnAdvancedBtn) {
+    log.debug('[Coinbase] Found "Turn on Advanced" modal, clicking confirm button...')
+    await turnOnAdvancedBtn.click().catch(() => {})
+    await page.waitForTimeout(2000)
+  }
+
+  // Click on Positions tab if not already selected
+  const positionsTab = await page.$('button:has-text("Positions")').catch(() => null)
+  if (positionsTab) {
+    await positionsTab.click().catch(() => {})
+    await page.waitForTimeout(1000)
+  }
+
+  // Wait for positions table to load
+  await page.waitForSelector('[data-testid="positions-table-content"]', { timeout: 5000 }).catch(() => null)
+
+  // Try to find position row by product display name first, then fallback to first row
+  const displayName = targetProductId.split('-').slice(0, 2).join(' ')
+  let positionRow = await page.$(`[data-testid="positions-table-content"] tbody tr:has-text("${displayName}")`).catch(() => null)
+
+  // Fallback to first row in positions table
+  if (!positionRow) {
+    positionRow = await page.$('[data-testid="positions-table-content"] tbody tr').catch(() => null)
+  }
+
+  if (!positionRow) {
+    log.info('[Coinbase Position] No position row found in positions table')
+    return null
+  }
+
+  // Extract all cell values from the position row
+  const cells = await positionRow.$$('td').catch(() => [])
+  if (cells.length < 10) {
+    log.info(`[Coinbase Position] Position row has ${cells.length} cells, expected at least 10`)
+    return null
+  }
+
+  // Parse cell values based on column order in the screenshot:
+  // Name | Amount | Value | Avg Entry | Mark Price | Est Liq Price | TP/SL | Initial Margin | Margin Ratio | Funding | PnL | Actions
+  const getText = async (cell: typeof cells[0] | undefined): Promise<string> => {
+    const text = await cell?.innerText().catch(() => '') ?? ''
+    return text.trim()
+  }
+
+  const parseNumber = (text: string): number => {
+    // Remove $, commas, and handle direction arrows (↓↑↘↗ indicate negative/positive)
+    // ↘ (southeast arrow) means negative/down, ↗ (northeast arrow) means positive/up
+    let cleaned = text.replace(/[$,]/g, '').trim()
+    // Handle arrows - ↘ and ↓ indicate negative values
+    if (cleaned.includes('↘') || cleaned.includes('↓')) {
+      cleaned = cleaned.replace(/[↘↓]/g, '')
+      const num = parseFloat(cleaned)
+      return isNaN(num) ? 0 : -Math.abs(num)
+    }
+    // ↗ and ↑ indicate positive values (just remove the arrow)
+    cleaned = cleaned.replace(/[↗↑]/g, '')
+    const num = parseFloat(cleaned)
+    return isNaN(num) ? 0 : num
+  }
+
+  // Log all cell values to help debug column alignment issues
+  const allCellTexts: string[] = []
+  for (let i = 0; i < cells.length; i++) {
+    const text = await getText(cells[i])
+    allCellTexts.push(`[${i}]="${text.substring(0, 30)}"`)
+  }
+  log.info(`[Coinbase Position] All cells (${cells.length}): ${allCellTexts.join(', ')}`)
+
+  const nameCell = await getText(cells[0])
+  const amountText = await getText(cells[1])
+  const valueText = await getText(cells[2])
+  const avgEntryText = await getText(cells[3])
+  const markPriceText = await getText(cells[4])
+  const estLiqPriceText = await getText(cells[5])
+  const fundingText = cells[9] ? await getText(cells[9]) : ''
+  const pnlText = cells[10] ? await getText(cells[10]) : ''
+
+  log.info(`[Coinbase Position] Raw: estLiqPrice="${estLiqPriceText}", markPrice="${markPriceText}", pnl="${pnlText}"`)
+
+  // Extract contracts count (e.g., "430 contracts" -> 430)
+  const contractsMatch = amountText.match(/([\d,]+)\s*contracts?/i)
+  const contracts = contractsMatch ? parseNumber(contractsMatch[1] ?? '0') : 0
+
+  // Parse liquidation price (may be "--" or empty)
+  let estLiqPrice: number | null = null
+  if (estLiqPriceText && estLiqPriceText !== '--' && !estLiqPriceText.includes('--')) {
+    estLiqPrice = parseNumber(estLiqPriceText)
+    if (estLiqPrice === 0) estLiqPrice = null
+  }
+
+  const positionData: CoinbasePositionData = {
+    symbol: nameCell,
+    contracts,
+    value: parseNumber(valueText),
+    avgEntry: parseNumber(avgEntryText),
+    markPrice: parseNumber(markPriceText),
+    estLiqPrice,
+    pnl: parseNumber(pnlText),
+    funding: parseNumber(fundingText)
+  }
+
+  log.info(`[Coinbase Position] Parsed: estLiqPrice=${positionData.estLiqPrice}, markPrice=${positionData.markPrice}, pnl=${positionData.pnl}`)
+
+  return positionData
+}
+
+/**
  * Find Coinbase rewards/interest page
  */
 const findCoinbaseRewardsPage = async (browser: Browser): Promise<Page | null> => {
@@ -6404,35 +6574,66 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
   const cashBalance = await fetchCoinbaseCashBalance(page, sendEvent)
   log.debug(`[Coinbase TX] Cash balance result: ${cashBalance}`)
 
+  // For derivatives funds, also fetch position data (liquidation price, mark price, etc.)
+  const isDerivativesFund = fund?.config.fund_type === 'derivatives'
+  let positionData: CoinbasePositionData | null = null
+  if (isDerivativesFund) {
+    const productId = (fund?.config as { product_id?: string }).product_id
+    log.info(`[Coinbase TX] Fetching position data for derivatives fund, productId: ${productId}...`)
+    positionData = await fetchCoinbasePositionData(page, productId, sendEvent)
+    log.info(`[Coinbase TX] Position data result: estLiqPrice=${positionData?.estLiqPrice}, markPrice=${positionData?.markPrice}`)
+  }
+
   // Update or create cash entry if we have a fund and cash balance
   let cashUpdated = false
-  if (cashBalance !== null && fundId && fund && fundPath) {
+  if ((cashBalance !== null || positionData !== null) && fundId && fund && fundPath) {
     // Check if we need to update - compare to latest entry's cash
     const latestEntry = fund.entries[fund.entries.length - 1]
     const latestCash = latestEntry?.cash ?? 0
     const today = new Date().toISOString().slice(0, 10)
 
-    // Only update if cash changed significantly
-    if (Math.abs(cashBalance - latestCash) > CASH_BALANCE_UPDATE_THRESHOLD) {
+    const cashChanged = cashBalance !== null && Math.abs(cashBalance - latestCash) > CASH_BALANCE_UPDATE_THRESHOLD
+    const hasPositionData = positionData !== null && positionData.estLiqPrice !== null
+
+    // Only update if cash changed significantly or we have new position data
+    if (cashChanged || hasPositionData) {
       // Check if latest entry is from today and is HOLD - update it
       if (latestEntry && latestEntry.date === today && latestEntry.action === 'HOLD') {
-        latestEntry.cash = cashBalance
-        log.debug(`[Coinbase TX] Updated today's HOLD entry with cash: ${cashBalance}`)
+        if (cashBalance !== null) latestEntry.cash = cashBalance
+        // Add position data if available
+        if (positionData) {
+          if (positionData.estLiqPrice !== null) latestEntry.liquidation_price = positionData.estLiqPrice
+          if (positionData.pnl !== null) latestEntry.unrealized_pnl = positionData.pnl
+        }
+        log.debug(`[Coinbase TX] Updated today's HOLD entry with cash: ${cashBalance}, liqPrice: ${positionData?.estLiqPrice}`)
       } else {
-        // Create new HOLD entry with cash update
-        fund.entries.push({
+        // Create new HOLD entry with cash and position data
+        const holdEntry: FundEntry = {
           date: today,
           value: 0,
           action: 'HOLD',
-          cash: cashBalance,
           notes: 'Cash balance update from scrape'
-        })
-        log.debug(`[Coinbase TX] Created new HOLD entry with cash: ${cashBalance}`)
+        }
+        if (cashBalance !== null) holdEntry.cash = cashBalance
+        if (positionData) {
+          if (positionData.estLiqPrice !== null) holdEntry.liquidation_price = positionData.estLiqPrice
+          if (positionData.pnl !== null) holdEntry.unrealized_pnl = positionData.pnl
+        }
+        fund.entries.push(holdEntry)
+        log.debug(`[Coinbase TX] Created new HOLD entry with cash: ${cashBalance}, liqPrice: ${positionData?.estLiqPrice}`)
       }
 
       await writeFund(fundPath, fund)
       cashUpdated = true
-      sendEvent('cashUpdated', { cashBalance, date: today })
+      sendEvent('cashUpdated', {
+        cashBalance,
+        date: today,
+        positionData: positionData ? {
+          estLiqPrice: positionData.estLiqPrice,
+          markPrice: positionData.markPrice,
+          pnl: positionData.pnl
+        } : null
+      })
     }
   }
 

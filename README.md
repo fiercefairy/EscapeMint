@@ -2,7 +2,7 @@
 
 A local-first, open-source capital allocation engine for rules-based fund management.
 
-> **Disclaimer**: This software is provided "as is" without warranty of any kind. Use at your own risk. While I use this tool to manage my own investments, you should thoroughly review and test the code for your own needs. This is not financial advice, and the authors are not responsible for any financial losses that may result from using this software.
+> **Disclaimer**: This software is provided "as is" without warranty of any kind. This is **not investment advice**. I built this tool for myself and made it public so friends and family can use it too. This strategy relies on systematic DCA through market downturns — it expects you to be comfortable holding paper losses without panic selling. If you tend to sell at a loss when markets drop, this approach will likely result in poor performance. You should thoroughly review and test the code for your own needs, and the authors are not responsible for any financial losses that may result from using this software.
 
 ## Overview
 

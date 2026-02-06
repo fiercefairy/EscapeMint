@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate, Link } from 'react-router-dom'
 import * as d3 from 'd3'
 import { toast } from 'sonner'
 import { fetchFund, fetchFundState, updateFundConfig, type FundDetail as FundDetailType, type FundStateResponse, type FundEntry, type ChartBounds } from '../api/funds'
+import { fetchBtcPrice } from '../api/utils'
 import { AddEntryModal } from '../components/AddEntryModal'
 import { EditEntryModal } from '../components/EditEntryModal'
 import { EditFundPanel } from '../components/EditFundPanel'
@@ -133,18 +134,32 @@ export function FundDetail() {
 
     if (showLoading) setLoading(true)
 
-    const [fundResult, stateResult] = await Promise.all([
-      fetchFund(id),
-      fetchFundState(id)
-    ])
+    const fundResult = await fetchFund(id)
 
     if (fundResult.error) {
       toast.error(fundResult.error)
-    } else {
-      setFund(fundResult.data ?? null)
+      if (showLoading) setLoading(false)
+      return
     }
 
-    if (stateResult.data) {
+    setFund(fundResult.data ?? null)
+
+    // For derivatives funds, fetch BTC price for accurate mark price calculations
+    const isDerivatives = checkIsDerivativesFund(fundResult.data?.config.fund_type)
+    let markPrice: number | undefined
+    if (isDerivatives) {
+      const btcPrice = await fetchBtcPrice()
+      if (btcPrice) {
+        markPrice = btcPrice
+      } else {
+        toast.warning('Unable to fetch BTC price. Derivatives metrics may be inaccurate.')
+      }
+    }
+    const stateResult = await fetchFundState(id, markPrice)
+
+    if (stateResult.error) {
+      toast.error(stateResult.error)
+    } else if (stateResult.data) {
       setState(stateResult.data)
     }
 
@@ -158,8 +173,14 @@ export function FundDetail() {
       setFund(updatedFund)
       // Also refresh state for recommendation updates
       if (id) {
-        const stateResult = await fetchFundState(id)
-        if (stateResult.data) {
+        // For derivatives funds, fetch and pass current mark price
+        const isDerivatives = checkIsDerivativesFund(updatedFund.config.fund_type)
+        const btcPrice = isDerivatives ? await fetchBtcPrice() : null
+        const markPrice = isDerivatives && btcPrice ? btcPrice : undefined
+        const stateResult = await fetchFundState(id, markPrice)
+        if (stateResult.error) {
+          toast.error(stateResult.error)
+        } else if (stateResult.data) {
           setState(stateResult.data)
         }
       }
@@ -527,14 +548,16 @@ export function FundDetail() {
         const effectiveEquity = effectiveCash + derivState.unrealizedPnl
         const effectiveAvailableFunds = effectiveCash - derivState.marginLocked
 
-        // Recalculate liquidation price using effective cash
-        // Formula for longs:  liqPrice = avgEntry - (cash - maintenanceMargin) / notionalSize
-        // Formula for shorts: liqPrice = avgEntry + (cash - maintenanceMargin) / |notionalSize|
+        // Use liquidation price from server (which prefers scraped exchange value over calculated)
+        // Only recalculate if server didn't provide a meaningful value (liqPrice <= 0 means fully collateralized or error)
         const contractMultiplier = fund.config.contract_multiplier ?? 0.01
         const notionalSize = derivState.position * contractMultiplier
         let effectiveLiqPrice = derivState.liquidationPrice
         let effectiveDistanceToLiq = derivState.distanceToLiquidation
-        if (entry.cash !== undefined && derivState.position !== 0 && notionalSize !== 0) {
+
+        // Only recalculate if we don't have a valid liquidation price from the server
+        // and we have the data needed to calculate one
+        if (effectiveLiqPrice <= 0 && entry.cash !== undefined && derivState.position !== 0 && notionalSize !== 0) {
           const buffer = effectiveCash - derivState.maintenanceMargin
           // For longs (positive position): subtract buffer/notional from entry
           // For shorts (negative position): add buffer/|notional| to entry

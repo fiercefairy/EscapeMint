@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useCallback, useRef, useState } from 'react'
+import { useMemo, useEffect, useCallback, useRef, useState, forwardRef } from 'react'
 import { toast } from 'sonner'
 import type { FundEntry, FundType } from '../api/funds'
 import {
@@ -73,37 +73,75 @@ export const cleanNotesOfDepositWithdrawal = (notes: string | undefined): string
     .trim()
 }
 
-// Parse formula value (e.g., "=101+102.3" -> 203.3) or plain number
+// Parse formula value (e.g., "=500.97+459.55" -> 960.52) or plain number
+// Supports +, -, *, / with proper operator precedence
 export const parseFormulaValue = (input: string): number => {
   if (!input) return 0
   const trimmed = input.trim()
+  if (!trimmed.startsWith('=')) return parseFloat(trimmed) || 0
 
-  // If starts with =, evaluate the formula
-  if (trimmed.startsWith('=')) {
-    const formula = trimmed.slice(1)
-    // Split by + and - while keeping the operators
-    const parts = formula.split(/([+-])/).filter(p => p.trim())
+  const expr = trimmed.slice(1).replace(/\s/g, '')
+  if (!expr) return 0
 
-    let result = 0
-    let currentOp = '+'
+  let pos = 0
 
-    for (const part of parts) {
-      const trimmedPart = part.trim()
-      if (trimmedPart === '+' || trimmedPart === '-') {
-        currentOp = trimmedPart
-      } else {
-        const num = parseFloat(trimmedPart)
-        if (!isNaN(num)) {
-          result = currentOp === '+' ? result + num : result - num
-        }
-      }
+  const parseNumber = (): number => {
+    // Skip leading + (e.g., "=+5+10")
+    if (pos < expr.length && expr[pos] === '+') pos++
+    const start = pos
+    if (pos < expr.length && expr[pos] === '-') pos++
+    while (pos < expr.length && (/[\d.]/).test(expr[pos]!)) pos++
+    const num = parseFloat(expr.slice(start, pos))
+    return isNaN(num) ? 0 : num
+  }
+
+  const parseTerm = (): number => {
+    let result = parseNumber()
+    while (pos < expr.length && (expr[pos] === '*' || expr[pos] === '/')) {
+      const op = expr[pos++]
+      const right = parseNumber()
+      result = op === '*' ? result * right : (right !== 0 ? result / right : 0)
     }
     return result
   }
 
-  // Plain number
-  return parseFloat(trimmed) || 0
+  const parseExpr = (): number => {
+    let result = parseTerm()
+    while (pos < expr.length && (expr[pos] === '+' || expr[pos] === '-')) {
+      const op = expr[pos++]
+      const right = parseTerm()
+      result = op === '+' ? result + right : result - right
+    }
+    return result
+  }
+
+  const result = parseExpr()
+  return isFinite(result) ? result : 0
 }
+
+// Formula-capable numeric input - shows computed result when formula is entered
+function FormulaInputInner({ value, ...props }: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'>, ref: React.ForwardedRef<HTMLInputElement>) {
+  const strValue = String(value ?? '')
+  // Only show hint when formula contains at least one digit
+  const isFormula = strValue.startsWith('=') && /\d/.test(strValue)
+  const computed = isFormula ? parseFormulaValue(strValue) : null
+
+  return (
+    <>
+      <input
+        ref={ref}
+        type="text"
+        inputMode="decimal"
+        value={value}
+        {...props}
+      />
+      {isFormula && computed !== null && (
+        <p className="text-xs text-mint-400 mt-0.5">= {computed.toLocaleString(undefined, { maximumFractionDigits: 8 })}</p>
+      )}
+    </>
+  )
+}
+const FormulaInput = forwardRef(FormulaInputInner)
 
 // Wizard indicator component - animated arrow pointing to a field
 // Uses absolute positioning to avoid affecting vertical layout
@@ -156,8 +194,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
   // Check for digit errors on blur (when user finishes typing)
   const handleEquityBlur = useCallback(() => {
     if (priorEquity === null) return
-    const newValue = parseFloat(formData.value)
-    if (isNaN(newValue) || newValue === 0) return
+    const newValue = parseFormulaValue(formData.value)
+    if (!newValue) return
 
     // Skip if we've already warned about this exact value
     if (warnedValueRef.current === formData.value) return
@@ -193,8 +231,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
 
   // Calculate price from amount/shares, then equity from prior holdings at that price
   const calculatePriceEquity = () => {
-    const amount = parseFloat(formData.amount) || 0
-    const shares = parseFloat(formData.shares) || 0
+    const amount = parseFormulaValue(formData.amount)
+    const shares = parseFormulaValue(formData.shares)
 
     if (!amount || !shares) {
       toast.error('Enter amount and shares first')
@@ -233,8 +271,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
     const deposit = parseFormulaValue(formData.deposit)
     const withdrawal = parseFormulaValue(formData.withdrawal)
     const dividend = parseFormulaValue(formData.dividend)
-    const expense = parseFloat(formData.expense) || 0
-    const cashInterest = parseFloat(formData.cash_interest) || 0
+    const expense = parseFormulaValue(formData.expense)
+    const cashInterest = parseFormulaValue(formData.cash_interest)
     return deposit - withdrawal + dividend - expense + cashInterest
   }, [formData.deposit, formData.withdrawal, formData.dividend, formData.expense, formData.cash_interest])
 
@@ -256,7 +294,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
         const newFundSize = currentFundSize + adjustment
         setFormData(prev => {
           // Only update if fund_size is empty or was auto-set (avoid overwriting manual entry)
-          const currentVal = parseFloat(prev.fund_size) || 0
+          const currentVal = parseFormulaValue(prev.fund_size)
           const expectedPrev = currentFundSize + parseFormulaValue(prev.deposit) - parseFormulaValue(prev.withdrawal)
           if (prev.fund_size === '' || Math.abs(currentVal - expectedPrev) < 0.01) {
             return { ...prev, fund_size: newFundSize.toFixed(2) }
@@ -271,7 +309,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
   // Captures value on first render - intentionally not updated on formData changes since
   // we want to compare against the original value before any auto-adjustments
   // Note: This component is always remounted fresh when the modal opens (not reused)
-  const initialMarginBorrowedRef = useRef<number>(parseFloat(formData.margin_borrowed) || 0)
+  const initialMarginBorrowedRef = useRef<number>(parseFormulaValue(formData.margin_borrowed))
 
   // Track auto-adjustment amount for display purposes
   const [marginAutoAdjustment, setMarginAutoAdjustment] = useState<number>(0)
@@ -293,7 +331,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
       return
     }
 
-    const amount = parseFloat(formData.amount) || 0
+    const amount = parseFormulaValue(formData.amount)
     const shortfall = amount - cashAvailable
 
     if (shortfall > 0.01) {
@@ -301,7 +339,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
       const expectedNewTotal = initialMarginBorrowedRef.current + shortfall
 
       setFormData(prev => {
-        const currentValue = parseFloat(prev.margin_borrowed) || 0
+        const currentValue = parseFormulaValue(prev.margin_borrowed)
         // Only update if the value would actually change
         if (Math.abs(currentValue - expectedNewTotal) > 0.01) {
           return { ...prev, margin_borrowed: expectedNewTotal.toFixed(2) }
@@ -312,7 +350,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
     } else {
       // No shortfall - reset to initial value if needed
       setFormData(prev => {
-        const currentValue = parseFloat(prev.margin_borrowed) || 0
+        const currentValue = parseFormulaValue(prev.margin_borrowed)
         if (Math.abs(currentValue - initialMarginBorrowedRef.current) > 0.01) {
           return { ...prev, margin_borrowed: initialMarginBorrowedRef.current.toFixed(2) }
         }
@@ -354,9 +392,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 <label className="text-sm text-slate-400">Cash Balance ($)</label>
                 {wizardStep === 1 && <WizardIndicator label="Update first" />}
               </div>
-              <input
+              <FormulaInput
                 ref={equityInputRef}
-                type="number"
                 value={formData.value}
                 onChange={e => {
                   setFormData(prev => ({ ...prev, value: e.target.value }))
@@ -365,18 +402,16 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 onBlur={handleEquityBlur}
                 className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-blue-500 ${wizardStep === 1 ? 'border-mint-500 ring-2 ring-mint-500/30' : 'border-slate-600'}`}
                 placeholder="Current cash balance"
-                step="0.01"
                 required
               />
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Amount ($)</label>
-              <input
-                type="text"
+              <FormulaInput
                 value={formData.amount}
                 onChange={e => setFormData(prev => ({ ...prev, amount: e.target.value }))}
                 className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-blue-500 ${amountColorClass}`}
-                placeholder="+100 deposit, -50 withdraw"
+                placeholder="+100 or =50+75"
               />
               <p className="text-xs text-slate-500 mt-1">
                 {amountValue > 0 ? (
@@ -394,52 +429,41 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           <div className={`grid grid-cols-1 sm:grid-cols-2 ${marginEnabled ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-4`}>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Interest Earned ($)</label>
-              <input
-                type="number"
+              <FormulaInput
                 value={formData.cash_interest}
                 onChange={e => setFormData(prev => ({ ...prev, cash_interest: e.target.value }))}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                placeholder="0"
-                step="0.01"
-                min="0"
+                placeholder="0 or =10+20"
               />
             </div>
             {marginEnabled && (
               <div>
                 <label className="block text-sm text-slate-400 mb-1">Margin Expense ($)</label>
-                <input
-                  type="number"
+                <FormulaInput
                   value={formData.margin_expense}
                   onChange={e => setFormData(prev => ({ ...prev, margin_expense: e.target.value }))}
                   className="w-full px-3 py-2 bg-slate-700 border border-red-600/50 rounded-lg text-white focus:outline-none focus:border-red-500"
-                  placeholder="0"
-                  step="0.01"
-                  min="0"
+                  placeholder="0 or =10+20"
                 />
                 <p className="text-xs text-slate-500 mt-1">Interest charged on margin</p>
               </div>
             )}
             <div>
               <label className="block text-sm text-slate-400 mb-1">Margin Available ($)</label>
-              <input
-                type="number"
+              <FormulaInput
                 value={formData.margin_available}
                 onChange={e => setFormData(prev => ({ ...prev, margin_available: e.target.value }))}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 placeholder="0"
-                step="0.01"
-                min="0"
               />
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Margin Borrowed ($)</label>
-              <input
-                type="number"
+              <FormulaInput
                 value={formData.margin_borrowed}
                 onChange={e => setFormData(prev => ({ ...prev, margin_borrowed: e.target.value }))}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 placeholder="0"
-                step="0.01"
               />
             </div>
             <div>
@@ -486,9 +510,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               </label>
               {wizardStep === 1 && <WizardIndicator label="Update first" />}
             </div>
-            <input
+            <FormulaInput
               ref={equityInputRef}
-              type="number"
               name="value"
               id="value"
               value={formData.value}
@@ -496,8 +519,6 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               onBlur={handleEquityBlur}
               className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-mint-500 ${fundType === 'derivatives' ? 'opacity-60' : ''} ${wizardStep === 1 ? 'border-mint-500 ring-2 ring-mint-500/30' : 'border-slate-600'}`}
               placeholder={fundType === 'derivatives' ? '0 (auto-calculated)' : 'Asset value'}
-              step="0.01"
-              min="0"
               required={fundType !== 'derivatives'}
             />
             {fundType === 'derivatives' && (
@@ -529,19 +550,16 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           </div>
           <div>
             <label className="block text-sm text-slate-400 mb-1">Amount ($)</label>
-            <input
-              type="number"
+            <FormulaInput
               value={formData.amount}
               onChange={e => setFormData(prev => ({ ...prev, amount: e.target.value }))}
               className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500 disabled:opacity-50"
-              placeholder="Trade amount"
-              step="0.01"
-              min="0"
+              placeholder="0 or =500+460"
               disabled={!formData.action || formData.action === 'HOLD'}
             />
             {/* Shortfall helper - show info when amount exceeds cash (skip for M1 - shown on Margin Borrowed field) */}
             {formData.action === 'BUY' && cashAvailable !== undefined && platform?.toLowerCase() !== 'm1' && (() => {
-              const amount = parseFloat(formData.amount) || 0
+              const amount = parseFormulaValue(formData.amount)
               const shortfall = amount - cashAvailable
               if (shortfall > 0.01) {
                 return (
@@ -556,7 +574,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                           const borrowAmount = Math.min(Math.ceil(shortfall), marginAvailable ?? 0)
                           setFormData(prev => ({
                             ...prev,
-                            margin_borrowed: (parseFloat(prev.margin_borrowed || '0') + borrowAmount).toFixed(2)
+                            margin_borrowed: (parseFormulaValue(prev.margin_borrowed || '0') + borrowAmount).toFixed(2)
                           }))
                           toast.success(`Margin borrow ${formatCurrency(borrowAmount)} added`)
                         }}
@@ -578,14 +596,11 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
             <div className="sm:col-span-2">
               <label className="block text-sm text-slate-400 mb-1">Margin Locked ($)</label>
-              <input
-                type="number"
+              <FormulaInput
                 value={formData.margin}
                 onChange={e => setFormData(prev => ({ ...prev, margin: e.target.value }))}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-amber-500"
-                placeholder={`Default: ${((parseFloat(formData.amount) || 0) * 0.20).toFixed(2)} (20%)`}
-                step="0.01"
-                min="0"
+                placeholder={`Default: ${(parseFormulaValue(formData.amount) * 0.20).toFixed(2)} (20%)`}
               />
               <p className="text-xs text-slate-500 mt-1">
                 Actual margin required by exchange (from trade confirmation)
@@ -602,8 +617,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 <label className="text-sm text-slate-400">Margin Available ($)</label>
                 {wizardStep === 2 && <WizardIndicator label="Update next" />}
               </div>
-              <input
-                type="number"
+              <FormulaInput
                 value={formData.margin_available}
                 onChange={e => {
                   setFormData(prev => ({ ...prev, margin_available: e.target.value }))
@@ -611,8 +625,6 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 }}
                 className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-purple-500 ${wizardStep === 2 ? 'border-purple-500 ring-2 ring-purple-500/30' : 'border-slate-600'}`}
                 placeholder="Current margin available"
-                step="0.01"
-                min="0"
               />
               <p className="text-xs text-slate-500 mt-1">
                 Current margin available from platform (changes with equity)
@@ -622,14 +634,11 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
               <div className="relative mb-1 h-5">
                 <label className="text-sm text-slate-400">Margin Borrowed ($)</label>
               </div>
-              <input
-                type="number"
+              <FormulaInput
                 value={formData.margin_borrowed}
                 onChange={e => setFormData(prev => ({ ...prev, margin_borrowed: e.target.value }))}
                 className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-purple-500 ${marginAutoAdjustment > 0 ? 'border-purple-500' : 'border-slate-600'}`}
                 placeholder="0"
-                step="0.01"
-                min="0"
               />
               {marginAutoAdjustment > 0 ? (
                 <p className="text-xs text-purple-400 mt-1">
@@ -657,25 +666,20 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm text-slate-400 mb-1">Shares/Units</label>
-              <input
-                type="number"
+              <FormulaInput
                 value={formData.shares}
                 onChange={e => setFormData(prev => ({ ...prev, shares: e.target.value }))}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
                 placeholder="0"
-                step="any"
               />
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Price ($)</label>
-              <input
-                type="number"
+              <FormulaInput
                 value={formData.price}
                 onChange={e => setFormData(prev => ({ ...prev, price: e.target.value }))}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
                 placeholder="Per unit"
-                step="any"
-                min="0"
               />
             </div>
             <div className="flex items-end">
@@ -704,16 +708,13 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm text-slate-400 mb-1">Fund Size ($)</label>
-              <input
-                type="number"
+              <FormulaInput
                 value={formData.fund_size}
                 onChange={e => setFormData(prev => ({ ...prev, fund_size: e.target.value }))}
                 className={`w-full px-3 py-2 bg-slate-700 border rounded-lg text-white focus:outline-none focus:border-mint-500 ${
                   showFundSizeAdjustment && fundSizeAdjustment !== 0 ? 'border-mint-500' : 'border-slate-600'
                 }`}
                 placeholder="Override"
-                step="0.01"
-                min="0"
               />
               {showFundSizeAdjustment && fundSizeAdjustment !== 0 && (
                 <p className={`text-xs mt-1 ${fundSizeAdjustment > 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -726,14 +727,11 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
             {manageCash ? (
               <div>
                 <label className="block text-sm text-slate-400 mb-1">Cash ($)</label>
-                <input
-                  type="number"
+                <FormulaInput
                   value={formData.cash}
                   onChange={e => setFormData(prev => ({ ...prev, cash: e.target.value }))}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
                   placeholder="Optional"
-                  step="0.01"
-                  min="0"
                 />
               </div>
             ) : (
@@ -748,8 +746,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
             {!isCryptoFund && (
               <div>
                 <label className="block text-sm text-slate-400 mb-1">Dividend ($)</label>
-                <input
-                  type="text"
+                <FormulaInput
                   value={formData.dividend}
                   onChange={e => setFormData(prev => ({ ...prev, dividend: e.target.value }))}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
@@ -764,49 +761,38 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm text-slate-400 mb-1">Expense ($)</label>
-                <input
-                  type="number"
+                <FormulaInput
                   value={formData.expense}
                   onChange={e => setFormData(prev => ({ ...prev, expense: e.target.value }))}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                  placeholder="0"
-                  step="0.01"
-                  min="0"
+                  placeholder="0 or =10+20"
                 />
               </div>
               <div>
                 <label className="block text-sm text-slate-400 mb-1">Interest ($)</label>
-                <input
-                  type="number"
+                <FormulaInput
                   value={formData.cash_interest}
                   onChange={e => setFormData(prev => ({ ...prev, cash_interest: e.target.value }))}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
-                  placeholder="0"
-                  step="0.01"
-                  min="0"
+                  placeholder="0 or =10+20"
                 />
               </div>
               <div>
                 <label className="block text-sm text-slate-400 mb-1">Margin Available ($)</label>
-                <input
-                  type="number"
+                <FormulaInput
                   value={formData.margin_available}
                   onChange={e => setFormData(prev => ({ ...prev, margin_available: e.target.value }))}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
                   placeholder="0"
-                  step="0.01"
-                  min="0"
                 />
               </div>
               <div>
                 <label className="block text-sm text-slate-400 mb-1">Margin Borrowed ($)</label>
-                <input
-                  type="number"
+                <FormulaInput
                   value={formData.margin_borrowed}
                   onChange={e => setFormData(prev => ({ ...prev, margin_borrowed: e.target.value }))}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint-500"
                   placeholder="0"
-                  step="0.01"
                 />
               </div>
             </div>
@@ -821,7 +807,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
 export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType): Partial<FundEntry> {
   const entry: Partial<FundEntry> = {
     date: formData.date,
-    value: parseFloat(formData.value) || 0
+    value: parseFormulaValue(formData.value)
   }
 
   const isCashFund = fundType === 'cash'
@@ -832,7 +818,7 @@ export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType)
   // MARGIN action for margin expense (interest charged on borrowed margin)
   if (isCashFund) {
     const signedAmount = parseFormulaValue(formData.amount)
-    const marginExpense = parseFloat(formData.margin_expense) || 0
+    const marginExpense = parseFormulaValue(formData.margin_expense)
 
     // Store margin expense in a structured field if present
     if (marginExpense > 0) {
@@ -873,7 +859,7 @@ export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType)
       entry.amount = withdrawalVal
     } else if (formData.action && formData.action !== 'HOLD') {
       entry.action = formData.action
-      entry.amount = parseFloat(formData.amount) || 0
+      entry.amount = parseFormulaValue(formData.amount)
       if (depositVal > 0) {
         notes = (notes ? notes + ' | ' : '') + `Deposit: $${depositVal}`
       }
@@ -887,22 +873,22 @@ export function buildEntryFromForm(formData: EntryFormData, fundType?: FundType)
     }
   }
 
-  if (formData.shares) entry.shares = parseFloat(formData.shares)
-  if (formData.price) entry.price = parseFloat(formData.price)
+  if (formData.shares) entry.shares = parseFormulaValue(formData.shares)
+  if (formData.price) entry.price = parseFormulaValue(formData.price)
 
-  const fundSize = parseFloat(formData.fund_size) || 0
+  const fundSize = parseFormulaValue(formData.fund_size)
   if (fundSize > 0) entry.fund_size = fundSize
 
   if (notes) entry.notes = notes
   if (formData.dividend) entry.dividend = parseFormulaValue(formData.dividend)
-  if (formData.expense) entry.expense = parseFloat(formData.expense)
-  if (formData.cash_interest) entry.cash_interest = parseFloat(formData.cash_interest)
-  if (formData.margin_available) entry.margin_available = parseFloat(formData.margin_available)
-  if (formData.margin_borrowed) entry.margin_borrowed = parseFloat(formData.margin_borrowed)
-  if (formData.cash) entry.cash = parseFloat(formData.cash)
+  if (formData.expense) entry.expense = parseFormulaValue(formData.expense)
+  if (formData.cash_interest) entry.cash_interest = parseFormulaValue(formData.cash_interest)
+  if (formData.margin_available) entry.margin_available = parseFormulaValue(formData.margin_available)
+  if (formData.margin_borrowed) entry.margin_borrowed = parseFormulaValue(formData.margin_borrowed)
+  if (formData.cash) entry.cash = parseFormulaValue(formData.cash)
   // Derivatives-specific: actual margin locked for BUY/SELL trades
   if (fundType === 'derivatives' && formData.margin) {
-    entry.margin = parseFloat(formData.margin)
+    entry.margin = parseFormulaValue(formData.margin)
   }
 
   return entry

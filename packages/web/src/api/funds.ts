@@ -195,8 +195,11 @@ export async function fetchFund(id: string): Promise<ApiResult<FundDetail>> {
   return fetchJson<FundDetail>(`${API_BASE}/funds/${id}`, undefined, 'Fund not found')
 }
 
-export async function fetchFundState(id: string): Promise<ApiResult<FundStateResponse>> {
-  return fetchJson<FundStateResponse>(`${API_BASE}/funds/${id}/state`, undefined, 'Failed to fetch fund state')
+export async function fetchFundState(id: string, markPrice?: number): Promise<ApiResult<FundStateResponse>> {
+  const url = markPrice
+    ? `${API_BASE}/funds/${id}/state?markPrice=${markPrice}`
+    : `${API_BASE}/funds/${id}/state`
+  return fetchJson<FundStateResponse>(url, undefined, 'Failed to fetch fund state')
 }
 
 export async function updateFundConfig(id: string, config: Partial<FundConfig>): Promise<ApiResult<FundDetail>> {

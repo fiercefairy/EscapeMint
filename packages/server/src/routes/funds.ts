@@ -770,9 +770,13 @@ fundsRouter.get('/:id', async (req, res, next) => {
 
 /**
  * GET /funds/:id/state - Get computed state and recommendation
+ * Query params:
+ *   - markPrice: Optional current market price for live calculations (derivatives funds)
  */
 fundsRouter.get('/:id/state', async (req, res, next) => {
   const id = req.params['id'] ?? ''
+  const markPriceStr = typeof req.query.markPrice === 'string' ? req.query.markPrice : undefined
+  const markPrice = markPriceStr ? parseFloat(markPriceStr) : undefined
   const filePath = join(FUNDS_DIR, `${id}.tsv`)
 
   const fund = await readFund(filePath).catch(next)
@@ -1062,10 +1066,12 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
 
     // Unrealized P&L is calculated at each entry using the BTC price at that snapshot
     // (derived from the trade price: btcPrice = contractPrice / contractMultiplier)
+    // If markPrice is provided, the final entry will use it for live calculations
     derivativesEntriesState = computeDerivativesEntriesState(
       fund.entries,
       contractMultiplier,
-      maintenanceMarginRate
+      maintenanceMarginRate,
+      markPrice
     )
   }
 

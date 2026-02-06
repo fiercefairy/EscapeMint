@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 import { addFundEntry, previewRecommendation, updateFundConfig, type FundEntry, type FundState, type Recommendation, type FundType, type FundStatus } from '../api/funds'
-import { EntryForm, buildEntryFromForm, createEmptyFormData, detectDigitError, type EntryFormData, type ActionType } from './EntryForm'
+import { EntryForm, buildEntryFromForm, createEmptyFormData, detectDigitError, parseFormulaValue, type EntryFormData, type ActionType } from './EntryForm'
 import { ConfirmDialog } from './ConfirmDialog'
 import { getPriorEquity } from '../utils/format'
 
@@ -100,8 +100,8 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
   const priorEquity = useMemo(() => getPriorEquity(existingEntries), [existingEntries])
 
   // Detect digit errors in equity input (computed on every render for reliability)
-  const newEquityValue = parseFloat(formData.value)
-  const digitErrorType = priorEquity !== null && !isNaN(newEquityValue) && newEquityValue > 0
+  const newEquityValue = parseFormulaValue(formData.value)
+  const digitErrorType = priorEquity !== null && newEquityValue > 0
     ? detectDigitError(newEquityValue, priorEquity)
     : null
   const digitErrorInfo = digitErrorType
@@ -109,7 +109,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
     : null
 
   // Calculate cash shortfall for BUY actions on funds that use platform cash
-  const buyAmount = formData.action === 'BUY' ? parseFloat(formData.amount) || 0 : 0
+  const buyAmount = formData.action === 'BUY' ? parseFormulaValue(formData.amount) : 0
   const cashAvailable = preview?.state.cash_available_usd ?? 0
   const cashShortfall = buyAmount > cashAvailable ? buyAmount - cashAvailable : 0
   const showAutoDepositOption = manageCash === false && cashShortfall > 0
@@ -165,8 +165,8 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
   // Fetch preview when equity value changes (skip for cash funds - no recommendations)
   useEffect(() => {
     if (fundType === 'cash') return
-    const value = parseFloat(formData.value)
-    if (!isNaN(value) && value >= 0) {
+    const value = parseFormulaValue(formData.value)
+    if (value >= 0) {
       const timeoutId = setTimeout(() => {
         fetchPreview(value, formData.date)
       }, 300)
@@ -486,7 +486,7 @@ export function AddEntryModal({ fundId, fundTicker, currentRecommendation, exist
                           onClick={() => {
                             const needed = (displayRec.explanation?.limit_usd ?? displayRec.amount) - (displayState?.cash_available_usd ?? 0)
                             const borrowAmount = Math.min(needed, preview?.margin_available ?? 0)
-                            setFormData(prev => ({ ...prev, margin_borrowed: (parseFloat(prev.margin_borrowed || '0') + borrowAmount).toFixed(2) }))
+                            setFormData(prev => ({ ...prev, margin_borrowed: (parseFormulaValue(prev.margin_borrowed || '0') + borrowAmount).toFixed(2) }))
                             toast.success(`Margin borrow of ${formatCurrency(borrowAmount)} added`)
                           }}
                           className="px-2 py-1 text-xs bg-purple-700 hover:bg-purple-600 text-white rounded transition-colors"
