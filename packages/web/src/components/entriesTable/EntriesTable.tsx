@@ -492,7 +492,12 @@ export function EntriesTable({
                   )
                 }
                 // For cash funds, show "Cash" instead of "Equity"
-                const displayLabel = col.id === 'equity' && fundType === 'cash' ? 'Cash' : col.label
+                const displayLabel = fundType === 'cash'
+                  ? col.id === 'equity' ? 'Cash'
+                    : col.id === 'expense' ? 'Fee'
+                    : col.id === 'cumExpense' ? 'Σ Fees'
+                    : col.label
+                  : col.label
                 return (
                   <th
                     key={col.id}
