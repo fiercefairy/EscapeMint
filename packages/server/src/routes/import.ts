@@ -5607,7 +5607,7 @@ const fetchCoinbasePositionData = async (
 
   // Parse cell values based on column order in the screenshot:
   // Name | Amount | Value | Avg Entry | Mark Price | Est Liq Price | TP/SL | Initial Margin | Margin Ratio | Funding | PnL | Actions
-  const getText = async (cell: typeof cells[0]): Promise<string> => {
+  const getText = async (cell: typeof cells[0] | undefined): Promise<string> => {
     const text = await cell?.innerText().catch(() => '') ?? ''
     return text.trim()
   }
