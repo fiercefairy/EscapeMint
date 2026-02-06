@@ -826,10 +826,15 @@ export const computeDerivativesEntriesState = (
     // unrealizedPnl = (position * contractMultiplier * effectiveAssetPrice) - costBasis
     let unrealizedPnl = 0
     let currentNotionalValue = 0
-    if (position > 0 && effectiveAssetPrice > 0) {
-      currentNotionalValue = position * contractMultiplier * effectiveAssetPrice
+    if (position !== 0 && effectiveAssetPrice > 0) {
+      currentNotionalValue = Math.abs(position) * contractMultiplier * effectiveAssetPrice
       if (costBasisTotal > 0) {
-        unrealizedPnl = currentNotionalValue - costBasisTotal
+        // For longs: profit when price goes up (notional - cost)
+        // For shorts: profit when price goes down (cost - notional)
+        const signedNotional = position * contractMultiplier * effectiveAssetPrice
+        unrealizedPnl = position > 0
+          ? signedNotional - costBasisTotal
+          : costBasisTotal - signedNotional
       }
     }
 

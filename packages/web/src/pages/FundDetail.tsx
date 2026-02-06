@@ -146,7 +146,15 @@ export function FundDetail() {
 
     // For derivatives funds, fetch BTC price for accurate mark price calculations
     const isDerivatives = checkIsDerivativesFund(fundResult.data?.config.fund_type)
-    const markPrice = isDerivatives ? (await fetchBtcPrice()) ?? undefined : undefined
+    let markPrice: number | undefined
+    if (isDerivatives) {
+      const btcPrice = await fetchBtcPrice()
+      if (btcPrice) {
+        markPrice = btcPrice
+      } else {
+        toast.warning('Unable to fetch BTC price. Derivatives metrics may be inaccurate.')
+      }
+    }
     const stateResult = await fetchFundState(id, markPrice)
 
     if (stateResult.data) {

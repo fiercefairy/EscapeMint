@@ -82,10 +82,23 @@ export async function deleteResource<T = void>(
 /**
  * Fetch current BTC price from Coinbase public API.
  * Used for derivatives calculations that need mark price.
+ * Caches the result for 30 seconds to avoid excessive API calls.
  */
+let cachedBtcPrice: number | null = null
+let cachedBtcPriceAt = 0
+
 export async function fetchBtcPrice(): Promise<number | null> {
+  if (cachedBtcPrice !== null && Date.now() - cachedBtcPriceAt < 30_000) {
+    return cachedBtcPrice
+  }
+
   const response = await fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot').catch(() => null)
-  if (!response?.ok) return null
+  if (!response?.ok) return cachedBtcPrice
   const data = await response.json().catch(() => null)
-  return parseFloat(data?.data?.amount) || null
+  const price = parseFloat(data?.data?.amount) || null
+  if (price) {
+    cachedBtcPrice = price
+    cachedBtcPriceAt = Date.now()
+  }
+  return price ?? cachedBtcPrice
 }

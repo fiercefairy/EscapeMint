@@ -122,7 +122,8 @@ export const parseFormulaValue = (input: string): number => {
 // Formula-capable numeric input - shows computed result when formula is entered
 function FormulaInputInner({ value, ...props }: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'>, ref: React.ForwardedRef<HTMLInputElement>) {
   const strValue = String(value ?? '')
-  const isFormula = strValue.startsWith('=') && strValue.length > 1
+  // Only show hint when formula contains at least one digit
+  const isFormula = strValue.startsWith('=') && /\d/.test(strValue)
   const computed = isFormula ? parseFormulaValue(strValue) : null
 
   return (
