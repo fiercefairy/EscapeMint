@@ -425,8 +425,8 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
             </div>
           </div>
 
-          {/* Row 2: Interest, Margin Expense (if margin enabled), Margin Available, Margin Borrowed, Notes */}
-          <div className={`grid grid-cols-1 sm:grid-cols-2 ${marginEnabled ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-4`}>
+          {/* Row 2: Interest, Fee, Margin Expense (if margin enabled), Margin Available, Margin Borrowed, Notes */}
+          <div className={`grid grid-cols-1 sm:grid-cols-2 ${marginEnabled ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-4`}>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Interest Earned ($)</label>
               <FormulaInput
@@ -435,6 +435,16 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 placeholder="0 or =10+20"
               />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Fee ($)</label>
+              <FormulaInput
+                value={formData.expense}
+                onChange={e => setFormData(prev => ({ ...prev, expense: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-700 border border-red-600/50 rounded-lg text-white focus:outline-none focus:border-red-500"
+                placeholder="0 or =10+20"
+              />
+              <p className="text-xs text-slate-500 mt-1">Margin repayment, trading fees, etc.</p>
             </div>
             {marginEnabled && (
               <div>
