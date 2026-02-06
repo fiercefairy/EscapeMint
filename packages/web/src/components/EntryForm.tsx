@@ -444,7 +444,7 @@ export function EntryForm({ formData, setFormData, existingEntries = [], baseFun
                 className="w-full px-3 py-2 bg-slate-700 border border-red-600/50 rounded-lg text-white focus:outline-none focus:border-red-500"
                 placeholder="0 or =10+20"
               />
-              <p className="text-xs text-slate-500 mt-1">Margin repayment, trading fees, etc.</p>
+              <p className="text-xs text-slate-500 mt-1">Trading fees, broker fees, account fees, etc.</p>
             </div>
             {marginEnabled && (
               <div>
