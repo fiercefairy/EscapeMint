@@ -709,13 +709,13 @@ export function EntriesTable({
                     case 'expense':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-red-400">
-                          {entry.expense ? formatCurrency(entry.expense) : '-'}
+                          {entry.expense ? formatCurrency(-entry.expense) : '-'}
                         </td>
                       )
                     case 'cumExpense':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-red-400/70">
-                          {entry.cumExpenses > 0 ? formatCurrency(entry.cumExpenses) : '-'}
+                          {entry.cumExpenses > 0 ? formatCurrency(-entry.cumExpenses) : '-'}
                         </td>
                       )
                     case 'cashInt':
@@ -803,13 +803,13 @@ export function EntriesTable({
                     case 'cumFees':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-red-400">
-                          {entry.derivCumFees !== undefined ? formatCurrency(entry.derivCumFees) : '-'}
+                          {entry.derivCumFees !== undefined ? formatCurrency(-entry.derivCumFees) : '-'}
                         </td>
                       )
                     case 'fee':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-red-400">
-                          {entry.fee !== undefined && entry.fee > 0 ? formatCurrency(entry.fee) : '-'}
+                          {entry.fee !== undefined && entry.fee > 0 ? formatCurrency(-entry.fee) : '-'}
                         </td>
                       )
                     case 'margin':

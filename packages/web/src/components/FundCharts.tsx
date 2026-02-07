@@ -1404,12 +1404,11 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
         fundSize: entry.derivMarginBalance ?? 0,  // Margin balance (cash)
         cashAvailable: (entry.derivMarginBalance ?? 0) - (entry.derivCostBasis ?? 0),  // Available after position
         cumulativeDividends: 0,
-        cumulativeExpenses: entry.derivCumFees ?? 0,
+        cumulativeExpenses: -(entry.derivCumFees ?? 0),
         realizedGains: entry.derivRealized ?? 0,
         cashInterest: entry.derivCumInterest ?? 0,
         unrealizedGain: entry.derivUnrealized ?? 0,
-        capturedProfit: (entry.derivRealized ?? 0) + (entry.derivCumFunding ?? 0) +
-          (entry.derivCumInterest ?? 0) + (entry.derivCumRebates ?? 0) - (entry.derivCumFees ?? 0),
+        capturedProfit: entry.derivRealized ?? 0,
         cashPct: 0,
         assetPct: 0,
         apy: entry.realizedApy ?? 0,

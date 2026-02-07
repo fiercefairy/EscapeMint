@@ -15,7 +15,6 @@ interface ChartDataPoint {
   interest: number
   rebates: number
   fees: number  // Will be shown as negative
-  netProfit: number
 }
 
 // Prepare data from computed entries
@@ -42,8 +41,7 @@ function prepareChartData(entries: ComputedEntry[]): ChartDataPoint[] {
       funding,
       interest,
       rebates,
-      fees,
-      netProfit: realized + funding + interest + rebates - fees
+      fees
     })
   }
 
@@ -87,7 +85,7 @@ export function DerivativesCapturedProfitChart({ entries, resize }: DerivativesC
     let yMax = 0
     for (const d of data) {
       // Positive components
-      yMax = Math.max(yMax, d.realized, d.funding, d.interest, d.rebates, d.netProfit)
+      yMax = Math.max(yMax, d.realized, d.funding, d.interest, d.rebates)
       // Negative components (fees shown as negative)
       yMin = Math.min(yMin, -d.fees, d.funding)  // Funding can be negative too
     }
@@ -142,20 +140,6 @@ export function DerivativesCapturedProfitChart({ entries, resize }: DerivativesC
     drawLine('rebates', '#06b6d4')
     drawLine('fees', '#ef4444', true)  // Negate fees to show as negative
 
-    // Net profit line (thicker, dashed)
-    const netLine = d3.line<ChartDataPoint>()
-      .x(d => x(d.date))
-      .y(d => y(d.netProfit))
-      .curve(d3.curveMonotoneX)
-
-    g.append('path')
-      .datum(data)
-      .attr('fill', 'none')
-      .attr('stroke', '#fbbf24')  // Yellow/gold for net
-      .attr('stroke-width', 2.5)
-      .attr('stroke-dasharray', '6,3')
-      .attr('d', netLine)
-
     // X axis
     g.append('g')
       .attr('transform', `translate(0,${height})`)
@@ -200,9 +184,8 @@ export function DerivativesCapturedProfitChart({ entries, resize }: DerivativesC
       .attr('font-size', '9px')
       .attr('text-anchor', 'middle')
 
-    // Add text for each series + net
-    const allSeries = [...SERIES, { key: 'netProfit' as const, label: 'Net', color: '#fbbf24' }]
-    allSeries.forEach((s, i) => {
+    // Add text for each series
+    SERIES.forEach((s, i) => {
       tooltip.append('text')
         .attr('class', `tooltip-value-${i}`)
         .attr('fill', s.color)
@@ -238,7 +221,7 @@ export function DerivativesCapturedProfitChart({ entries, resize }: DerivativesC
         tooltipGroup.select('.tooltip-date').text(dateStr)
 
         let maxWidth = 0
-        allSeries.forEach((s, idx) => {
+        SERIES.forEach((s, idx) => {
           // Show fees as negative in tooltip
           const value = s.key === 'fees' ? -d.fees : d[s.key]
           const text = `${s.label}: ${formatCurrencyCompact(value)}`
@@ -248,7 +231,7 @@ export function DerivativesCapturedProfitChart({ entries, resize }: DerivativesC
         })
 
         const tooltipWidth = maxWidth + 16
-        const tooltipHeight = 16 + allSeries.length * 14
+        const tooltipHeight = 16 + SERIES.length * 14
         const tooltipY = 10
 
         let tooltipX = xPos
@@ -270,7 +253,7 @@ export function DerivativesCapturedProfitChart({ entries, resize }: DerivativesC
           .attr('x', 0)
           .attr('y', 11)
 
-        allSeries.forEach((_, idx) => {
+        SERIES.forEach((_, idx) => {
           tooltipGroup.select(`.tooltip-value-${idx}`)
             .attr('x', 0)
             .attr('y', 24 + idx * 14)
@@ -283,23 +266,16 @@ export function DerivativesCapturedProfitChart({ entries, resize }: DerivativesC
     return null
   }
 
-  const allSeriesWithNet = [...SERIES, { key: 'netProfit' as const, label: 'Net', color: '#fbbf24' }]
-
   return (
     <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 flex flex-col h-[200px]">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-medium text-white">Captured Profit</h3>
         <div className="flex gap-2 flex-wrap">
-          {allSeriesWithNet.map(s => (
+          {SERIES.map(s => (
             <span key={s.key} className="text-[10px] text-slate-400 flex items-center gap-1">
               <span
                 className="w-2 h-2 rounded-sm"
-                style={{
-                  backgroundColor: s.color,
-                  borderStyle: s.key === 'netProfit' ? 'dashed' : 'solid',
-                  borderWidth: s.key === 'netProfit' ? '1px' : '0',
-                  borderColor: s.key === 'netProfit' ? s.color : 'transparent'
-                }}
+                style={{ backgroundColor: s.color }}
               />
               {s.label}
             </span>

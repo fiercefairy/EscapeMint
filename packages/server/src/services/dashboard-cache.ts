@@ -502,10 +502,7 @@ function computeHistory(funds: FundData[]): DashboardHistory {
         let derivAvailableFunds = 0
         let derivRealizedPnl = 0
         let derivUnrealizedPnl = 0
-        let derivCumFunding = 0
         let derivCumInterest = 0
-        let derivCumRebates = 0
-        let derivCumFees = 0
         if (derivDateMap) {
           for (const entry of sortedEntries) {
             const state = derivDateMap.get(entry.date)
@@ -515,18 +512,15 @@ function computeHistory(funds: FundData[]): DashboardHistory {
               derivAvailableFunds = state.availableFunds
               derivRealizedPnl = state.realizedPnl
               derivUnrealizedPnl = state.unrealizedPnl
-              derivCumFunding = state.cumFunding
               derivCumInterest = state.cumInterest
-              derivCumRebates = state.cumRebates
-              derivCumFees = state.cumFees
             }
           }
         }
         totalValue += derivValue
         totalFundSize += derivValue
         totalStartInput += derivCostBasis
-        // Realized = closed trade P&L + funding + interest + rebates - fees
-        const derivRealized = derivRealizedPnl + derivCumFunding + derivCumInterest + derivCumRebates - derivCumFees
+        // Realized P&L already includes funding + interest + rebates - fees from the engine
+        const derivRealized = derivRealizedPnl
         totalRealizedGain += derivRealized
         totalCashInterest += derivCumInterest
         totalCash += Math.max(0, derivAvailableFunds)
