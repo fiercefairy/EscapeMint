@@ -70,8 +70,8 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
       ))
 
-      // Realized = all cash gains: closed trades + funding + interest + rebates - fees
-      const realized = lastState.realizedPnl + lastState.cumFunding + lastState.cumInterest + lastState.cumRebates - lastState.cumFees
+      // Realized P&L already includes funding + interest + rebates - fees from the engine
+      const realized = lastState.realizedPnl
       const liquidPnl = lastState.unrealizedPnl + realized
       const denominator = lastState.costBasis > 0 ? lastState.costBasis : 1
 

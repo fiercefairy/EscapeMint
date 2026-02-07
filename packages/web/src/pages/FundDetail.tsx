@@ -1332,7 +1332,7 @@ export function FundDetail() {
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-400">Expenses</p>
-                        <p className="font-medium text-red-400">{formatCurrency(state.closedMetrics.total_expenses_usd)}</p>
+                        <p className="font-medium text-red-400">{formatCurrency(-state.closedMetrics.total_expenses_usd)}</p>
                       </div>
                     </div>
                   ) : fund.config.status === 'closed' ? (
@@ -1430,7 +1430,7 @@ export function FundDetail() {
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-400">Expenses</p>
-                        <p className="font-medium text-red-400">{formatCurrency(latestEntry.cumExpenses)}</p>
+                        <p className="font-medium text-red-400">{formatCurrency(-latestEntry.cumExpenses)}</p>
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-400">Net Gain</p>

@@ -277,7 +277,7 @@ export function FundsTable({
           : <span className="text-slate-600">-</span>
       case 'cumFees':
         return fund.cumFees !== undefined
-          ? <span className="text-orange-400">{formatCurrencyPrecise(fund.cumFees)}</span>
+          ? <span className="text-red-400">{formatCurrencyPrecise(-fund.cumFees)}</span>
           : <span className="text-slate-600">-</span>
       default:
         return null

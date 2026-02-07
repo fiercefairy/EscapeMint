@@ -194,7 +194,7 @@ export function AuditTrail() {
         </div>
         <div className="bg-slate-800 rounded-lg p-2 border border-slate-700">
           <p className="text-xs text-slate-400">Expenses</p>
-          <p className="text-base font-bold text-red-400">{formatCurrency(stats.totalExpenses)}</p>
+          <p className="text-base font-bold text-red-400">{formatCurrency(-stats.totalExpenses)}</p>
         </div>
       </div>
 

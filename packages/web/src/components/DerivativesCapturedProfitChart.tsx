@@ -43,7 +43,7 @@ function prepareChartData(entries: ComputedEntry[]): ChartDataPoint[] {
       interest,
       rebates,
       fees,
-      netProfit: realized + funding + interest + rebates - fees
+      netProfit: realized
     })
   }
 
