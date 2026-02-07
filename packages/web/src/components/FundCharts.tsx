@@ -77,7 +77,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
   let cumulativeDeposits = 0
   let cumulativeWithdrawals = 0
   let realizedGains = 0
-  let cumShares = 0
+  let sumShares = 0
 
   // Track buy trades with their dates for expected target calculation
   // Each buy compounds individually from its purchase date
@@ -92,7 +92,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
     // Track shares first - BUY adds, SELL subtracts
     if (entry.shares) {
       const sharesAbs = Math.abs(entry.shares)
-      cumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
+      sumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
     }
 
     // Track DEPOSIT/WITHDRAW for fund_size calculation
@@ -113,7 +113,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
       let extracted = 0
       // Check for full liquidation using multiple detection methods (matches engine)
       const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
-      const sharesLiquidated = hasShareTracking && Math.abs(cumShares) < 0.0001
+      const sharesLiquidated = hasShareTracking && Math.abs(sumShares) < 0.0001
       const valueLiquidated = entry.value <= entry.amount + 0.01
       // In accumulate mode, partial sells don't reduce invested (they're profit extraction)
       // In harvest mode, all sells reduce invested
@@ -133,7 +133,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
         costBasis = 0
         totalSells = 0
         startInput = 0
-        cumShares = 0
+        sumShares = 0
         // Reset expected target tracking
         buyTrades.length = 0
         expectedGainMultiplier = 1
@@ -154,7 +154,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
         if (!isAccumulate) {
           // Use share-based fraction when available, else dollar-based
           if (hasShareTracking) {
-            const sharesBeforeSell = cumShares + Math.abs(entry.shares!)
+            const sharesBeforeSell = sumShares + Math.abs(entry.shares!)
             const sellFraction = sharesBeforeSell > 0
               ? Math.abs(entry.shares!) / sharesBeforeSell
               : 1
@@ -205,7 +205,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
     const unrealizedGain = postActionValue - startInput
 
     // Captured profit calculation differs for cash funds vs trading funds
-    // Matches table "realized" calculation: cumCashInterest + cumDividends + cumExtracted - cumExpenses
+    // Matches table "realized" calculation: sumCashInterest + sumDividends + sumExtracted - sumExpenses
     const capturedProfit = isCashFund
       ? cumulativeCashInterest - cumulativeExpenses  // Cash fund: just interest - expenses
       : realizedGains + cumulativeDividends + cumulativeCashInterest - cumulativeExpenses  // Trading fund: gains + dividends + interest - expenses
@@ -1404,9 +1404,9 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
         fundSize: entry.derivMarginBalance ?? 0,  // Margin balance (cash)
         cashAvailable: (entry.derivMarginBalance ?? 0) - (entry.derivCostBasis ?? 0),  // Available after position
         cumulativeDividends: 0,
-        cumulativeExpenses: -(entry.derivCumFees ?? 0),
+        cumulativeExpenses: -(entry.derivSumFees ?? 0),
         realizedGains: entry.derivRealized ?? 0,
-        cashInterest: entry.derivCumInterest ?? 0,
+        cashInterest: entry.derivSumInterest ?? 0,
         unrealizedGain: entry.derivUnrealized ?? 0,
         capturedProfit: entry.derivRealized ?? 0,
         cashPct: 0,

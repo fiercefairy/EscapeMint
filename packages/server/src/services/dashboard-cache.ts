@@ -430,7 +430,7 @@ function computeHistory(funds: FundData[]): DashboardHistory {
   const timeSeries: TimeSeriesPoint[] = []
 
   // Pre-compute derivatives state for each derivatives fund (matches REST API)
-  type DerivState = { equity: number; costBasis: number; marginBalance: number; availableFunds: number; realizedPnl: number; unrealizedPnl: number; cumFunding: number; cumInterest: number; cumRebates: number; cumFees: number }
+  type DerivState = { equity: number; costBasis: number; marginBalance: number; availableFunds: number; realizedPnl: number; unrealizedPnl: number; sumFunding: number; sumInterest: number; sumRebates: number; sumFees: number }
   const derivativesStateByFund = new Map<string, Map<string, DerivState>>()
   for (const fund of funds) {
     if (fund.config.fund_type === 'derivatives' && fund.entries.length > 0) {
@@ -444,12 +444,12 @@ function computeHistory(funds: FundData[]): DashboardHistory {
           costBasis: entry.costBasis,
           marginBalance: entry.marginBalance,
           unrealizedPnl: entry.unrealizedPnl,
-          cumFunding: entry.cumFunding,
-          cumRebates: entry.cumRebates,
-          cumFees: entry.cumFees,
+          sumFunding: entry.sumFunding,
+          sumRebates: entry.sumRebates,
+          sumFees: entry.sumFees,
           availableFunds: entry.availableFunds,
           realizedPnl: entry.realizedPnl,
-          cumInterest: entry.cumInterest
+          sumInterest: entry.sumInterest
         })
       }
       derivativesStateByFund.set(fund.id, dateMap)
@@ -502,7 +502,7 @@ function computeHistory(funds: FundData[]): DashboardHistory {
         let derivAvailableFunds = 0
         let derivRealizedPnl = 0
         let derivUnrealizedPnl = 0
-        let derivCumInterest = 0
+        let derivSumInterest = 0
         if (derivDateMap) {
           for (const entry of sortedEntries) {
             const state = derivDateMap.get(entry.date)
@@ -512,7 +512,7 @@ function computeHistory(funds: FundData[]): DashboardHistory {
               derivAvailableFunds = state.availableFunds
               derivRealizedPnl = state.realizedPnl
               derivUnrealizedPnl = state.unrealizedPnl
-              derivCumInterest = state.cumInterest
+              derivSumInterest = state.sumInterest
             }
           }
         }
@@ -522,7 +522,7 @@ function computeHistory(funds: FundData[]): DashboardHistory {
         // Realized P&L already includes funding + interest + rebates - fees from the engine
         const derivRealized = derivRealizedPnl
         totalRealizedGain += derivRealized
-        totalCashInterest += derivCumInterest
+        totalCashInterest += derivSumInterest
         totalCash += Math.max(0, derivAvailableFunds)
         fundBreakdown[fund.id] = derivValue
         // Unrealized = actual unrealized P&L on open positions (from state)
@@ -558,7 +558,7 @@ function computeHistory(funds: FundData[]): DashboardHistory {
 
         totalStartInput += metrics.totalInvested
         totalRealizedGain += metrics.realized
-        totalCashInterest += metrics.cumCashInterest
+        totalCashInterest += metrics.sumCashInterest
 
         // Track per-fund realized gains
         realizedGainBreakdown[fund.id] = metrics.realized
@@ -582,8 +582,8 @@ function computeHistory(funds: FundData[]): DashboardHistory {
         }
 
         // Track dividends and expenses
-        totalDividends += metrics.cumDividends
-        totalExpenses += metrics.cumExpenses
+        totalDividends += metrics.sumDividends
+        totalExpenses += metrics.sumExpenses
 
         // Cash - use computed cash from metrics
         totalCash += metrics.cash

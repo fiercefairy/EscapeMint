@@ -16,7 +16,7 @@ export interface StartInputResult {
   /** Total sells in current cycle */
   totalSells: number
   /** Cumulative shares (for share-based liquidation detection) */
-  cumShares: number
+  sumShares: number
 }
 
 /**
@@ -40,7 +40,7 @@ export function calculateStartInputWithLiquidation(
 ): StartInputResult {
   let totalBuys = 0
   let totalSells = 0
-  let cumShares = 0
+  let sumShares = 0
 
   // Check if fund has share tracking
   const hasShareTracking = entries.some(e => e.shares !== undefined && e.shares !== 0)
@@ -57,7 +57,7 @@ export function calculateStartInputWithLiquidation(
     // Track shares for full liquidation detection
     if (entry.shares) {
       const sharesAbs = Math.abs(entry.shares)
-      cumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
+      sumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
     }
 
     if (entry.action === 'BUY' && entry.amount) {
@@ -65,14 +65,14 @@ export function calculateStartInputWithLiquidation(
     } else if (entry.action === 'SELL' && entry.amount) {
       // Check for full liquidation
       const isFullLiquidation = hasShareTracking
-        ? Math.abs(cumShares) < 0.0001
+        ? Math.abs(sumShares) < 0.0001
         : (entry.value ?? 0) <= entry.amount + 0.01
 
       if (isFullLiquidation) {
         // Reset on full liquidation
         totalBuys = 0
         totalSells = 0
-        cumShares = 0
+        sumShares = 0
       } else {
         totalSells += entry.amount
       }
@@ -83,7 +83,7 @@ export function calculateStartInputWithLiquidation(
     startInput: totalBuys - totalSells,
     totalBuys,
     totalSells,
-    cumShares
+    sumShares
   }
 }
 

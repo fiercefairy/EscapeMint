@@ -495,7 +495,7 @@ export function EntriesTable({
                 const displayLabel = fundType === 'cash'
                   ? col.id === 'equity' ? 'Cash'
                     : col.id === 'expense' ? 'Fee'
-                    : col.id === 'cumExpense' ? 'Σ Fees'
+                    : col.id === 'sumExpense' ? 'Σ Fees'
                     : col.label
                   : col.label
                 return (
@@ -546,11 +546,11 @@ export function EntriesTable({
                       )
                     case 'action': {
                       // Show "Close" only when it's a SELL that fully liquidated
-                      // Use cumShares check if fund has share tracking, otherwise fall back to value-based check
+                      // Use sumShares check if fund has share tracking, otherwise fall back to value-based check
                       const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
                       const isClosingEntry = entry.action === 'SELL' && (
                         hasShareTracking
-                          ? entry.cumShares !== undefined && Math.abs(entry.cumShares) < 0.0001
+                          ? entry.sumShares !== undefined && Math.abs(entry.sumShares) < 0.0001
                           : entry.value <= (entry.amount ?? 0) + 0.01
                       )
                       return (
@@ -594,11 +594,11 @@ export function EntriesTable({
                           {entry.shares ? entry.shares.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 }) : '-'}
                         </td>
                       )
-                    case 'cumShares': {
-                      const displayShares = entry.cumShares && Math.abs(entry.cumShares) < 0.00000001 ? 0 : entry.cumShares
+                    case 'sumShares': {
+                      const displayShares = entry.sumShares && Math.abs(entry.sumShares) < 0.00000001 ? 0 : entry.sumShares
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-slate-300">
-                          {displayShares ? displayShares.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 }) : entry.cumShares === 0 || displayShares === 0 ? '0' : '-'}
+                          {displayShares ? displayShares.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 8 }) : entry.sumShares === 0 || displayShares === 0 ? '0' : '-'}
                         </td>
                       )
                     }
@@ -635,11 +635,11 @@ export function EntriesTable({
                     }
                     case 'fundSize': {
                       // Only show "closed" for true closing entries (SELL with full liquidation)
-                      // Use cumShares check if fund has share tracking, otherwise fall back to value-based check
+                      // Use sumShares check if fund has share tracking, otherwise fall back to value-based check
                       const hasShareTrackingForFundSize = entry.shares !== undefined && entry.shares !== 0
                       const isFundClosed = entry.action === 'SELL' && (
                         hasShareTrackingForFundSize
-                          ? entry.cumShares !== undefined && Math.abs(entry.cumShares) < 0.0001
+                          ? entry.sumShares !== undefined && Math.abs(entry.sumShares) < 0.0001
                           : entry.value <= (entry.amount ?? 0) + 0.01
                       )
                       return (
@@ -700,10 +700,10 @@ export function EntriesTable({
                           {entry.dividend ? formatCurrency(entry.dividend) : '-'}
                         </td>
                       )
-                    case 'cumDividends':
+                    case 'sumDividends':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-yellow-400/70">
-                          {entry.cumDividends > 0 ? formatCurrency(entry.cumDividends) : '-'}
+                          {entry.sumDividends > 0 ? formatCurrency(entry.sumDividends) : '-'}
                         </td>
                       )
                     case 'expense':
@@ -712,10 +712,10 @@ export function EntriesTable({
                           {entry.expense ? formatCurrency(-entry.expense) : '-'}
                         </td>
                       )
-                    case 'cumExpense':
+                    case 'sumExpense':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-red-400/70">
-                          {entry.cumExpenses > 0 ? formatCurrency(-entry.cumExpenses) : '-'}
+                          {entry.sumExpenses > 0 ? formatCurrency(-entry.sumExpenses) : '-'}
                         </td>
                       )
                     case 'cashInt':
@@ -724,10 +724,10 @@ export function EntriesTable({
                           {entry.cash_interest ? formatCurrency(entry.cash_interest) : '-'}
                         </td>
                       )
-                    case 'cumCashInt':
+                    case 'sumCashInt':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-cyan-400/70">
-                          {entry.cumCashInterest > 0 ? formatCurrency(entry.cumCashInterest) : '-'}
+                          {entry.sumCashInterest > 0 ? formatCurrency(entry.sumCashInterest) : '-'}
                         </td>
                       )
                     case 'extracted':
@@ -736,10 +736,10 @@ export function EntriesTable({
                           {entry.extracted !== 0 ? formatCurrency(entry.extracted) : '-'}
                         </td>
                       )
-                    case 'cumExtracted':
+                    case 'sumExtracted':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-orange-400/70">
-                          {entry.cumExtracted !== 0 ? formatCurrency(entry.cumExtracted) : '-'}
+                          {entry.sumExtracted !== 0 ? formatCurrency(entry.sumExtracted) : '-'}
                         </td>
                       )
                     case 'notes':
@@ -782,28 +782,28 @@ export function EntriesTable({
                           {entry.derivEquity !== undefined ? formatCurrency(entry.derivEquity) : '-'}
                         </td>
                       )
-                    case 'cumFunding':
+                    case 'sumFunding':
                       return (
-                        <td key={col.id} className={`px-2 py-1.5 text-right ${(entry.derivCumFunding ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {entry.derivCumFunding !== undefined ? formatCurrency(entry.derivCumFunding) : '-'}
+                        <td key={col.id} className={`px-2 py-1.5 text-right ${(entry.derivSumFunding ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {entry.derivSumFunding !== undefined ? formatCurrency(entry.derivSumFunding) : '-'}
                         </td>
                       )
-                    case 'cumInterest':
+                    case 'sumInterest':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-yellow-400">
-                          {entry.derivCumInterest !== undefined ? formatCurrency(entry.derivCumInterest) : '-'}
+                          {entry.derivSumInterest !== undefined ? formatCurrency(entry.derivSumInterest) : '-'}
                         </td>
                       )
-                    case 'cumRebates':
+                    case 'sumRebates':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-purple-400">
-                          {entry.derivCumRebates !== undefined ? formatCurrency(entry.derivCumRebates) : '-'}
+                          {entry.derivSumRebates !== undefined ? formatCurrency(entry.derivSumRebates) : '-'}
                         </td>
                       )
-                    case 'cumFees':
+                    case 'sumFees':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-red-400">
-                          {entry.derivCumFees !== undefined ? formatCurrency(-entry.derivCumFees) : '-'}
+                          {entry.derivSumFees !== undefined ? formatCurrency(-entry.derivSumFees) : '-'}
                         </td>
                       )
                     case 'fee':

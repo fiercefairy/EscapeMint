@@ -58,9 +58,9 @@ export interface PlatformFundMetrics {
   position?: number
   avgEntry?: number
   marginBalance?: number
-  cumFunding?: number
-  cumRebates?: number
-  cumFees?: number
+  sumFunding?: number
+  sumRebates?: number
+  sumFees?: number
 }
 
 export interface CashInterestHistory {

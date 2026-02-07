@@ -213,17 +213,17 @@ export function FundDetail() {
 
     let totalBuys = 0
     let totalSells = 0 // For invested calculation (accumulate mode: only liquidations)
-    let cumSellProceeds = 0 // For APY calculation (all sell amounts)
-    let cumDividends = 0
-    let cumExpenses = 0
-    let cumCashInterest = 0
-    let cumDeposits = 0
-    let cumWithdrawals = 0
-    let cumShares = 0
+    let sumSellProceeds = 0 // For APY calculation (all sell amounts)
+    let sumDividends = 0
+    let sumExpenses = 0
+    let sumCashInterest = 0
+    let sumDeposits = 0
+    let sumWithdrawals = 0
+    let sumShares = 0
     let lastNonZeroValue = 0
     let lastApy = 0
     let costBasis = 0
-    let cumExtracted = 0
+    let sumExtracted = 0
     let previousCyclesGain = 0 // Realized gains from previous liquidation cycles
     let totalEverInvested = 0 // Track total invested across all cycles (for APY after liquidation)
 
@@ -246,20 +246,20 @@ export function FundDetail() {
 
       // Track DEPOSIT/WITHDRAW for fund_size calculation
       if (entry.action === 'DEPOSIT' && entry.amount) {
-        cumDeposits += entry.amount
+        sumDeposits += entry.amount
       } else if (entry.action === 'WITHDRAW' && entry.amount) {
-        cumWithdrawals += entry.amount
+        sumWithdrawals += entry.amount
       }
 
       // Track dividends, expenses, cash interest, shares FIRST (they affect this row's APY and fund_size)
       // All values are positive in data; apply sign based on context
-      if (entry.dividend) cumDividends += Math.abs(entry.dividend)
-      if (entry.expense) cumExpenses += Math.abs(entry.expense)
-      if (entry.cash_interest) cumCashInterest += Math.abs(entry.cash_interest)
+      if (entry.dividend) sumDividends += Math.abs(entry.dividend)
+      if (entry.expense) sumExpenses += Math.abs(entry.expense)
+      if (entry.cash_interest) sumCashInterest += Math.abs(entry.cash_interest)
       // Shares: BUY adds, SELL subtracts
       if (entry.shares) {
         const sharesAbs = Math.abs(entry.shares)
-        cumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
+        sumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
       }
 
       // Calculate fund_size: use manual override if set, otherwise calculate dynamically
@@ -276,15 +276,15 @@ export function FundDetail() {
         // For trading funds with cash management, use the standard formula
         // Non-cash managing funds will be recalculated below after buy/sell processing
         calculatedFundSize = fund.config.fund_size_usd
-          + cumDeposits - cumWithdrawals
-          + cumDividends + cumCashInterest - (expenseFromFund ? cumExpenses : 0)
+          + sumDeposits - sumWithdrawals
+          + sumDividends + sumCashInterest - (expenseFromFund ? sumExpenses : 0)
       }
       // For cash funds, always use calculated fund_size
       let fundSize = isCashFundType ? calculatedFundSize : (entry.fund_size ?? calculatedFundSize)
 
       // Calculate APY BEFORE processing this row's buy/sell action
       // Total return = currentValue + priorSellProceeds + dividends + interest - expenses - totalBuys + previousCyclesGain
-      const totalMoneyOut = entry.value + cumSellProceeds + cumDividends + cumCashInterest - cumExpenses + previousCyclesGain
+      const totalMoneyOut = entry.value + sumSellProceeds + sumDividends + sumCashInterest - sumExpenses + previousCyclesGain
       const totalReturn = totalMoneyOut - totalBuys
 
       const daysElapsed = Math.max(1, (entryDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
@@ -325,15 +325,15 @@ export function FundDetail() {
         totalEverInvested += entry.amount // Track across all cycles for APY
       } else if (entry.action === 'SELL' && entry.amount) {
         // Check if this is a full liquidation
-        // Use cumShares check if fund has share tracking, AND value-based check as fallback
+        // Use sumShares check if fund has share tracking, AND value-based check as fallback
         // Either condition triggers liquidation (share tracking can accumulate errors over time)
         const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
-        const sharesLiquidated = hasShareTracking && Math.abs(cumShares) < 0.0001
+        const sharesLiquidated = hasShareTracking && Math.abs(sumShares) < 0.0001
         const valueLiquidated = entry.value <= entry.amount + 0.01
         const isFullLiquidation = sharesLiquidated || valueLiquidated
 
         // Always track sell proceeds for APY calculation
-        cumSellProceeds += entry.amount
+        sumSellProceeds += entry.amount
 
         // In accumulate mode, sells are profit extraction and don't reduce totalSells
         // unless it's a full position exit. In harvest mode, all sells reduce invested.
@@ -351,7 +351,7 @@ export function FundDetail() {
           // Reset running totals for next investment cycle
           totalBuys = 0
           totalSells = 0
-          cumSellProceeds = 0
+          sumSellProceeds = 0
         } else {
           // Partial sell
           if (isAccumulate) {
@@ -365,7 +365,7 @@ export function FundDetail() {
             costBasis -= costBasisReturned
           }
         }
-        cumExtracted += extracted
+        sumExtracted += extracted
       }
 
       // Net invested = buys - sells (what's still "in" the fund from cash perspective)
@@ -409,8 +409,8 @@ export function FundDetail() {
       // For cash funds: only interest - expenses (no dividends or extractions apply)
       // For trading funds: interest + dividends + extracted profits - expenses
       const realized = localIsCashFund
-        ? cumCashInterest - cumExpenses
-        : cumCashInterest + cumDividends + cumExtracted - cumExpenses
+        ? sumCashInterest - sumExpenses
+        : sumCashInterest + sumDividends + sumExtracted - sumExpenses
 
       // Liquid P&L = unrealized + realized (total paper + real gains)
       const liquidPnl = unrealized + realized
@@ -472,12 +472,12 @@ export function FundDetail() {
         totalInvested: netInvested,
         calculatedCash: cash,
         postActionCash,
-        cumDividends,
-        cumExpenses,
-        cumCashInterest,
+        sumDividends,
+        sumExpenses,
+        sumCashInterest,
         extracted,
-        cumExtracted,
-        cumShares,
+        sumExtracted,
+        sumShares,
         unrealized,
         realized,
         liquidPnl,
@@ -493,10 +493,10 @@ export function FundDetail() {
         derivUnrealized: undefined as number | undefined,
         derivRealized: undefined as number | undefined,
         derivEquity: undefined as number | undefined,
-        derivCumFunding: undefined as number | undefined,
-        derivCumInterest: undefined as number | undefined,
-        derivCumRebates: undefined as number | undefined,
-        derivCumFees: undefined as number | undefined,
+        derivSumFunding: undefined as number | undefined,
+        derivSumInterest: undefined as number | undefined,
+        derivSumRebates: undefined as number | undefined,
+        derivSumFees: undefined as number | undefined,
         derivNotionalValue: undefined as number | undefined,
         derivMarginLocked: undefined as number | undefined,
         derivMaintenanceMargin: undefined as number | undefined,
@@ -514,7 +514,7 @@ export function FundDetail() {
 
         // Derivatives Liquid P&L = Realized + Unrealized + Funding + Interest + Rebates
         const derivLiquidPnl = derivState.realizedPnl + derivState.unrealizedPnl +
-          derivState.cumFunding + derivState.cumInterest + derivState.cumRebates
+          derivState.sumFunding + derivState.sumInterest + derivState.sumRebates
 
         // For derivatives APY, we need to use margin deposits as the denominator
         // marginBalance includes: deposits + all income/expenses + realized P&L - withdrawals
@@ -529,8 +529,8 @@ export function FundDetail() {
         let derivLiquidApy = 0
         if (!isFirstEntry && daysElapsed > 0 && derivDenominator > 0) {
           // Realized APY: based on realized gains relative to capital
-          const realizedPlusFunding = derivState.realizedPnl + derivState.cumFunding +
-            derivState.cumInterest + derivState.cumRebates
+          const realizedPlusFunding = derivState.realizedPnl + derivState.sumFunding +
+            derivState.sumInterest + derivState.sumRebates
           const realizedReturnPct = realizedPlusFunding / derivDenominator
           const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
           derivRealizedApy = Math.pow(1 + clampedRealizedPct, 365 / daysElapsed) - 1
@@ -577,10 +577,10 @@ export function FundDetail() {
           derivUnrealized: derivState.unrealizedPnl,
           derivRealized: derivState.realizedPnl,
           derivEquity: effectiveEquity,  // Use tracked cash for equity calculation
-          derivCumFunding: derivState.cumFunding,
-          derivCumInterest: derivState.cumInterest,
-          derivCumRebates: derivState.cumRebates,
-          derivCumFees: derivState.cumFees,
+          derivSumFunding: derivState.sumFunding,
+          derivSumInterest: derivState.sumInterest,
+          derivSumRebates: derivState.sumRebates,
+          derivSumFees: derivState.sumFees,
           // Margin tracking
           derivNotionalValue: derivState.notionalValue,
           derivMarginLocked: derivState.marginLocked,
@@ -1212,7 +1212,7 @@ export function FundDetail() {
                     </span>
                     <span className="text-slate-600 hidden sm:inline">|</span>
                     <span title="Total Interest Earned" className="whitespace-nowrap">
-                      <span className="text-slate-500 hidden sm:inline">Interest: </span><span className="text-green-400">{formatCurrency(latestEntry?.cumCashInterest ?? 0)}</span>
+                      <span className="text-slate-500 hidden sm:inline">Interest: </span><span className="text-green-400">{formatCurrency(latestEntry?.sumCashInterest ?? 0)}</span>
                     </span>
                   </>
                 ) : (
@@ -1426,11 +1426,11 @@ export function FundDetail() {
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-400">Interest Earned</p>
-                        <p className="font-medium text-green-400">{formatCurrency(latestEntry.cumCashInterest)}</p>
+                        <p className="font-medium text-green-400">{formatCurrency(latestEntry.sumCashInterest)}</p>
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-400">Expenses</p>
-                        <p className="font-medium text-red-400">{formatCurrency(-latestEntry.cumExpenses)}</p>
+                        <p className="font-medium text-red-400">{formatCurrency(-latestEntry.sumExpenses)}</p>
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-400">Net Gain</p>

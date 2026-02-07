@@ -17,7 +17,7 @@ export function EntriesTable({ timeSeries }: Props) {
     const invested = point.invested
     const unrealized = point.equity - Math.max(0, invested)
     // Realized = Cash Interest + Dividends + Extracted from sells
-    const realized = point.cumCashInterest + point.cumDividends + point.totalExtracted
+    const realized = point.sumCashInterest + point.sumDividends + point.totalExtracted
     // Liquid P&L = realized + unrealized (total profit/loss if we liquidated now)
     const liquidPnL = realized + unrealized
 
@@ -91,13 +91,13 @@ export function EntriesTable({ timeSeries }: Props) {
                   {entry.cashInterest > 0.01 ? formatCurrency(entry.cashInterest) : '-'}
                 </td>
                 <td className="px-2 py-1.5 text-right text-cyan-300">
-                  {formatCurrency(entry.cumCashInterest)}
+                  {formatCurrency(entry.sumCashInterest)}
                 </td>
                 <td className="px-2 py-1.5 text-right text-emerald-400">
                   {entry.dividend > 0.01 ? formatCurrency(entry.dividend) : '-'}
                 </td>
                 <td className="px-2 py-1.5 text-right text-emerald-300">
-                  {formatCurrency(entry.cumDividends)}
+                  {formatCurrency(entry.sumDividends)}
                 </td>
                 <td className="px-2 py-1.5 text-right">
                   <span className={

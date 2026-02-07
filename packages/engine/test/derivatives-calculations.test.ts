@@ -601,7 +601,7 @@ describe('computeDerivativesEntriesState', () => {
     ]
 
     const result = computeDerivativesEntriesState(entries)
-    expect(result[1]?.cumFunding).toBe(5.50)
+    expect(result[1]?.sumFunding).toBe(5.50)
     expect(result[1]?.realizedPnl).toBe(5.50)
     expect(result[1]?.marginBalance).toBe(1005.50)
   })
@@ -613,7 +613,7 @@ describe('computeDerivativesEntriesState', () => {
     ]
 
     const result = computeDerivativesEntriesState(entries)
-    expect(result[1]?.cumInterest).toBe(2.00)
+    expect(result[1]?.sumInterest).toBe(2.00)
     expect(result[1]?.realizedPnl).toBe(2.00)
     expect(result[1]?.marginBalance).toBe(1002.00)
   })
@@ -625,7 +625,7 @@ describe('computeDerivativesEntriesState', () => {
     ]
 
     const result = computeDerivativesEntriesState(entries)
-    expect(result[1]?.cumRebates).toBe(1.50)
+    expect(result[1]?.sumRebates).toBe(1.50)
     expect(result[1]?.realizedPnl).toBe(1.50)
   })
 
@@ -636,7 +636,7 @@ describe('computeDerivativesEntriesState', () => {
     ]
 
     const result = computeDerivativesEntriesState(entries)
-    expect(result[1]?.cumFees).toBe(3.00)
+    expect(result[1]?.sumFees).toBe(3.00)
     expect(result[1]?.realizedPnl).toBe(-3.00)
     expect(result[1]?.marginBalance).toBe(997.00)
   })

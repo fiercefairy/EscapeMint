@@ -193,7 +193,7 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
             : 0,
           expected_target_usd: lastState.equity,
           target_diff_usd: 0,
-          cash_interest_usd: lastState.cumInterest,
+          cash_interest_usd: lastState.sumInterest,
           cash_available_usd: lastState.marginBalance - lastState.costBasis
         }
       }
@@ -329,13 +329,13 @@ fundsRouter.get('/history', async (req, res, next) => {
 
   // Pre-compute derivatives state for each derivatives fund
   // This gives us per-entry equity values
-  const derivativesStateByFund = new Map<string, Map<string, { equity: number, costBasis: number, marginBalance: number, availableFunds: number, realizedPnl: number, unrealizedPnl: number, cumInterest: number }>>()
+  const derivativesStateByFund = new Map<string, Map<string, { equity: number, costBasis: number, marginBalance: number, availableFunds: number, realizedPnl: number, unrealizedPnl: number, sumInterest: number }>>()
   for (const fund of funds) {
     if (fund.config.fund_type === 'derivatives' && fund.entries.length > 0) {
       const contractMultiplier = fund.config.contract_multiplier ?? 0.01
       const maintenanceMarginRate = fund.config.maintenance_margin_rate ?? 0.20
       const derivStates = computeDerivativesEntriesState(fund.entries, contractMultiplier, maintenanceMarginRate)
-      const dateMap = new Map<string, { equity: number, costBasis: number, marginBalance: number, availableFunds: number, realizedPnl: number, unrealizedPnl: number, cumInterest: number }>()
+      const dateMap = new Map<string, { equity: number, costBasis: number, marginBalance: number, availableFunds: number, realizedPnl: number, unrealizedPnl: number, sumInterest: number }>()
       for (const entry of derivStates) {
         dateMap.set(entry.date, {
           equity: entry.equity,
@@ -344,7 +344,7 @@ fundsRouter.get('/history', async (req, res, next) => {
           availableFunds: entry.availableFunds,
           realizedPnl: entry.realizedPnl,
           unrealizedPnl: entry.unrealizedPnl,
-          cumInterest: entry.cumInterest
+          sumInterest: entry.sumInterest
         })
       }
       derivativesStateByFund.set(fund.id, dateMap)
@@ -427,7 +427,7 @@ fundsRouter.get('/history', async (req, res, next) => {
         let derivAvailableFunds = 0
         let derivRealizedPnl = 0
         let derivUnrealizedPnl = 0
-        let derivCumInterest = 0
+        let derivSumInterest = 0
         if (derivDateMap) {
           for (const entry of entriesUpToDate) {
             const state = derivDateMap.get(entry.date)
@@ -437,7 +437,7 @@ fundsRouter.get('/history', async (req, res, next) => {
               derivAvailableFunds = state.availableFunds
               derivRealizedPnl = state.realizedPnl
               derivUnrealizedPnl = state.unrealizedPnl
-              derivCumInterest = state.cumInterest
+              derivSumInterest = state.sumInterest
             }
           }
         }
@@ -447,7 +447,7 @@ fundsRouter.get('/history', async (req, res, next) => {
         // realizedPnl already includes funding, interest, rebates, and fees
         totalRealizedGain += derivRealizedPnl
         totalUnrealizedGain += derivUnrealizedPnl
-        totalCashInterest += derivCumInterest
+        totalCashInterest += derivSumInterest
         totalCash += Math.max(0, derivAvailableFunds)
         fundBreakdown[fund.id] = derivValue
         // Derivatives liquid gain = realized P&L + unrealized P&L
@@ -689,7 +689,7 @@ fundsRouter.get('/history', async (req, res, next) => {
               : 0,
             expected_target_usd: lastState.equity,
             target_diff_usd: 0,
-            cash_interest_usd: lastState.cumInterest,
+            cash_interest_usd: lastState.sumInterest,
             cash_available_usd: lastState.marginBalance - lastState.costBasis
           }
         }
@@ -824,7 +824,7 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
   // Calculate invested amount (total buys - total sells, accounting for full liquidations)
   let _totalBuys = 0
   let _totalSells = 0
-  let cumShares = 0
+  let sumShares = 0
   const hasShareTracking = fund.entries.some(e => e.shares !== undefined && e.shares !== 0)
   const sortedEntries = [...fund.entries].sort((a, b) => a.date.localeCompare(b.date))
 
@@ -832,7 +832,7 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
     // Track shares for full liquidation detection
     if (entry.shares) {
       const sharesAbs = Math.abs(entry.shares)
-      cumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
+      sumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
     }
 
     if (entry.action === 'BUY' && entry.amount) {
@@ -840,14 +840,14 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
     } else if (entry.action === 'SELL' && entry.amount) {
       // Check for full liquidation
       const isFullLiquidation = hasShareTracking
-        ? Math.abs(cumShares) < 0.0001
+        ? Math.abs(sumShares) < 0.0001
         : entry.value <= entry.amount + 0.01
 
       if (isFullLiquidation) {
         // Reset on full liquidation
         _totalBuys = 0
         _totalSells = 0
-        cumShares = 0
+        sumShares = 0
       } else {
         _totalSells += entry.amount
       }
@@ -869,7 +869,7 @@ fundsRouter.get('/:id/state', async (req, res, next) => {
       // Add dividends and subtract expenses (funding payments via dividend/expense fields in HOLD entries)
       const totalDividends = dividends.reduce((sum, d) => sum + d.amount_usd, 0)
       const totalExpenses = expenses.reduce((sum, e) => sum + e.amount_usd, 0)
-      // Get actual cash interest from entries (not from cumInterest which is for INTEREST actions)
+      // Get actual cash interest from entries (not from sumInterest which is for INTEREST actions)
       const actualCashInterest = entriesToCashInterest(fund.entries)
 
       // Realized P&L includes: trading P&L + dividends - expenses + cash interest
@@ -1296,12 +1296,12 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
   // Only consider entries up to the snapshot date
   let _totalBuys = 0
   let _totalSells = 0
-  let cumShares = 0
+  let sumShares = 0
   for (const entry of entriesUpToDate) {
     // Track shares first - BUY adds, SELL subtracts
     if (entry.shares) {
       const sharesAbs = Math.abs(entry.shares)
-      cumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
+      sumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
     }
 
     if (entry.action === 'BUY' && entry.amount) {
@@ -1309,15 +1309,15 @@ fundsRouter.post('/:id/preview', async (req, res, next) => {
     } else if (entry.action === 'SELL' && entry.amount) {
       _totalSells += entry.amount
       // Check for full liquidation
-      // Use cumShares check if fund has share tracking, otherwise fall back to value-based check
+      // Use sumShares check if fund has share tracking, otherwise fall back to value-based check
       const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
       const isFullLiquidation = hasShareTracking
-        ? Math.abs(cumShares) < 0.0001
+        ? Math.abs(sumShares) < 0.0001
         : entry.value <= entry.amount + 0.01
       if (isFullLiquidation) {
         _totalBuys = 0
         _totalSells = 0
-        cumShares = 0
+        sumShares = 0
       }
     }
   }
@@ -1437,13 +1437,13 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
         new Date(a.date).getTime() - new Date(b.date).getTime()
       )
       let invested = 0
-      let cumShares = 0
+      let sumShares = 0
       for (const e of allEntries) {
         if (e.date > entry.date) break // Only consider entries up to this one
         // Track shares for liquidation detection
         if (e.shares) {
           const sharesAbs = Math.abs(e.shares)
-          cumShares += e.action === 'SELL' ? -sharesAbs : sharesAbs
+          sumShares += e.action === 'SELL' ? -sharesAbs : sharesAbs
         }
         if (e.action === 'BUY' && e.amount) {
           invested += e.amount
@@ -1452,11 +1452,11 @@ fundsRouter.post('/:id/entries', async (req, res, next) => {
           // Check for full liquidation
           const hasShareTracking = e.shares !== undefined && e.shares !== 0
           const isFullLiquidation = hasShareTracking
-            ? Math.abs(cumShares) < 0.0001
+            ? Math.abs(sumShares) < 0.0001
             : (e.value !== undefined && e.value <= e.amount + 0.01)
           if (isFullLiquidation) {
             invested = 0
-            cumShares = 0
+            sumShares = 0
           }
         }
       }
@@ -2277,14 +2277,14 @@ fundsRouter.post('/:id/recalculate', async (req, res, next) => {
     new Date(a.date).getTime() - new Date(b.date).getTime()
   )
 
-  let cumBuys = 0
-  let cumSells = 0
-  let cumDeposits = 0
-  let cumWithdrawals = 0
-  let cumDividends = 0
-  let cumCashInterest = 0
-  let cumExpenses = 0
-  let cumShares = 0
+  let sumBuys = 0
+  let sumSells = 0
+  let sumDeposits = 0
+  let sumWithdrawals = 0
+  let sumDividends = 0
+  let sumCashInterest = 0
+  let sumExpenses = 0
+  let sumShares = 0
   // For manage_cash=true: fund_size starts from config (target allocation + deposits/withdrawals)
   // For manage_cash=false: fund_size = net invested only (BUYs - SELLs), starts from 0
   let baseFundSize = manageCash ? config.fund_size_usd : 0
@@ -2294,65 +2294,65 @@ fundsRouter.post('/:id/recalculate', async (req, res, next) => {
     // Track shares FIRST - BUY adds, SELL subtracts
     if (entry.shares) {
       const sharesAbs = Math.abs(entry.shares)
-      cumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
+      sumShares += entry.action === 'SELL' ? -sharesAbs : sharesAbs
     }
 
-    // Recalculate equity AFTER updating shares: equity = cumShares × price
+    // Recalculate equity AFTER updating shares: equity = sumShares × price
     // This represents portfolio value after this entry's action
     if (entry.price && entry.price > 0) {
-      entry.value = Math.round(cumShares * entry.price * 100) / 100
+      entry.value = Math.round(sumShares * entry.price * 100) / 100
     }
 
-    // Check for full liquidation (cumShares should be ~0 after a full sell)
-    const isFullLiquidation = entry.action === 'SELL' && Math.abs(cumShares) < 0.0001
+    // Check for full liquidation (sumShares should be ~0 after a full sell)
+    const isFullLiquidation = entry.action === 'SELL' && Math.abs(sumShares) < 0.0001
 
     // Track action amounts
     if (entry.action === 'BUY' && entry.amount) {
-      cumBuys += entry.amount
+      sumBuys += entry.amount
     } else if (entry.action === 'SELL' && entry.amount) {
       if (!isAccumulate || isFullLiquidation) {
-        cumSells += entry.amount
+        sumSells += entry.amount
       }
       // For accumulate mode partial sells, fund_size stays the same (profit extraction)
     } else if (entry.action === 'DEPOSIT' && entry.amount) {
-      cumDeposits += entry.amount
+      sumDeposits += entry.amount
     } else if (entry.action === 'WITHDRAW' && entry.amount) {
-      cumWithdrawals += entry.amount
+      sumWithdrawals += entry.amount
     }
 
     // Track dividends, interest, expenses (all stored as positive values)
     if (entry.dividend) {
-      cumDividends += dividendReinvest ? Math.abs(entry.dividend) : 0
+      sumDividends += dividendReinvest ? Math.abs(entry.dividend) : 0
     }
     if (entry.cash_interest) {
-      cumCashInterest += interestReinvest ? Math.abs(entry.cash_interest) : 0
+      sumCashInterest += interestReinvest ? Math.abs(entry.cash_interest) : 0
     }
     if (entry.expense) {
-      cumExpenses += expenseFromFund ? Math.abs(entry.expense) : 0
+      sumExpenses += expenseFromFund ? Math.abs(entry.expense) : 0
     }
 
     // Calculate new fund_size
     const newFundSize = baseFundSize
-      + cumBuys
-      - cumSells
-      + cumDeposits
-      - cumWithdrawals
-      + cumDividends
-      + cumCashInterest
-      - cumExpenses
+      + sumBuys
+      - sumSells
+      + sumDeposits
+      - sumWithdrawals
+      + sumDividends
+      + sumCashInterest
+      - sumExpenses
 
     entry.fund_size = Math.max(0, newFundSize)
 
     // After full liquidation, reset all cumulative values for fresh start
     if (isFullLiquidation) {
-      cumBuys = 0
-      cumSells = 0
-      cumDeposits = 0
-      cumWithdrawals = 0
-      cumDividends = 0
-      cumCashInterest = 0
-      cumExpenses = 0
-      cumShares = 0
+      sumBuys = 0
+      sumSells = 0
+      sumDeposits = 0
+      sumWithdrawals = 0
+      sumDividends = 0
+      sumCashInterest = 0
+      sumExpenses = 0
+      sumShares = 0
       baseFundSize = 0 // After liquidation, start from 0
     }
   }
