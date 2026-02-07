@@ -251,7 +251,7 @@ export function AuditTrail() {
                     {entry.dividend ? formatCurrency(entry.dividend) : '-'}
                   </td>
                   <td className="px-3 py-1.5 text-right text-red-400 hidden lg:table-cell">
-                    {entry.expense ? formatCurrency(entry.expense) : '-'}
+                    {entry.expense ? formatCurrency(-entry.expense) : '-'}
                   </td>
                   <td className="px-3 py-1.5 text-slate-400 max-w-xs truncate hidden xl:table-cell" title={entry.notes}>
                     {entry.notes || '-'}

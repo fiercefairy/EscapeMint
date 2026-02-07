@@ -803,7 +803,7 @@ export function EntriesTable({
                     case 'cumFees':
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-red-400">
-                          {entry.derivCumFees !== undefined && entry.derivCumFees > 0 ? formatCurrency(-entry.derivCumFees) : '-'}
+                          {entry.derivCumFees !== undefined ? formatCurrency(-entry.derivCumFees) : '-'}
                         </td>
                       )
                     case 'fee':
