@@ -38,12 +38,14 @@ export function DerivativesBreakEvenPanel({
     const avgEntry = latestEntry.derivAvgEntry ?? 0
     const effectiveCash = latestEntry.cash ?? latestEntry.derivMarginBalance ?? 0
     const costBasis = latestEntry.derivCostBasis ?? 0
-    // equityAtPrice(P) = effectiveCash + position * contractMultiplier * P - costBasis
-    // Using avgEntry as proxy since we don't have a live price feed
-    const equityAtCurrent = effectiveCash + (position * contractMultiplier * avgEntry) - costBasis
+
+    // derivEquity already includes unrealized P&L at the latest known price
+    // (computed by engine as: effectiveCash + unrealizedPnl)
+    const currentEquity = latestEntry.derivEquity ?? effectiveCash
 
     // Net break-even: price where equity = totalDeposits
-    // totalDeposits = effectiveCash + position * contractMultiplier * netBE - costBasis
+    // equityAtPrice(P) = effectiveCash + position * contractMultiplier * P - costBasis
+    // Solve for P when equity = totalDeposits:
     // netBE = (totalDeposits - effectiveCash + costBasis) / (position * contractMultiplier)
     const positionNotional = position * contractMultiplier
     const netBreakEven = positionNotional !== 0
@@ -53,7 +55,7 @@ export function DerivativesBreakEvenPanel({
     return {
       positionBreakEven: avgEntry,
       netBreakEven,
-      currentEquity: equityAtCurrent,
+      currentEquity,
       position,
       effectiveCash,
       costBasis
