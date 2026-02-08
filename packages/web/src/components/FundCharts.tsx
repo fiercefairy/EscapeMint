@@ -6,6 +6,7 @@ import { DerivativesCapturedProfitChart } from './DerivativesCapturedProfitChart
 import { DerivativesPriceChart } from './DerivativesPriceChart'
 import { DerivativesMarginChart } from './DerivativesMarginChart'
 import { DerivativesValueChart } from './DerivativesValueChart'
+import { DerivativesBreakEvenPanel } from './DerivativesBreakEvenPanel'
 import type { ComputedEntry } from './entriesTable'
 import {
   isCashFund as checkIsCashFund,
@@ -1542,6 +1543,11 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
           <DerivativesCapturedProfitChart
             entries={computedEntries}
             resize={effectiveResize}
+          />
+          <DerivativesBreakEvenPanel
+            entries={entries}
+            computedEntries={computedEntries}
+            contractMultiplier={config.contract_multiplier ?? 0.01}
           />
         </>
       )}
