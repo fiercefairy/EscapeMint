@@ -1548,6 +1548,7 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
             entries={entries}
             computedEntries={computedEntries}
             contractMultiplier={config.contract_multiplier ?? 0.01}
+            maintenanceMarginRate={config.maintenance_margin_rate ?? 0.20}
           />
         </>
       )}
