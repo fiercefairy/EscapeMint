@@ -271,13 +271,13 @@ export function FundsTable({
         return fund.marginBalance !== undefined
           ? <span className="text-blue-400">{formatCurrency(fund.marginBalance)}</span>
           : <span className="text-slate-600">-</span>
-      case 'cumFunding':
-        return fund.cumFunding !== undefined
-          ? <span className={fund.cumFunding >= 0 ? 'text-green-400' : 'text-red-400'}>{formatCurrencyPrecise(fund.cumFunding)}</span>
+      case 'sumFunding':
+        return fund.sumFunding !== undefined
+          ? <span className={fund.sumFunding >= 0 ? 'text-green-400' : 'text-red-400'}>{formatCurrencyPrecise(fund.sumFunding)}</span>
           : <span className="text-slate-600">-</span>
-      case 'cumFees':
-        return fund.cumFees !== undefined
-          ? <span className="text-red-400">{formatCurrencyPrecise(-fund.cumFees)}</span>
+      case 'sumFees':
+        return fund.sumFees !== undefined
+          ? <span className="text-red-400">{formatCurrencyPrecise(-fund.sumFees)}</span>
           : <span className="text-slate-600">-</span>
       default:
         return null

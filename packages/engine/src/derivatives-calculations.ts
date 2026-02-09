@@ -558,10 +558,10 @@ export interface DerivativesEntryState {
   costBasis: number          // Total cost basis of open position
   unrealizedPnl: number      // Unrealized P&L (0 for historical, calculated for current)
   realizedPnl: number        // Running realized P&L from closed trades
-  cumFunding: number         // Cumulative funding payments
-  cumInterest: number        // Cumulative USDC interest
-  cumRebates: number         // Cumulative rebates
-  cumFees: number            // Cumulative trading fees
+  sumFunding: number         // Cumulative funding payments
+  sumInterest: number        // Cumulative USDC interest
+  sumRebates: number         // Cumulative rebates
+  sumFees: number            // Cumulative trading fees
   equity: number             // Position value at entry price (cost basis)
   // Margin tracking
   notionalValue: number      // Position value at avgEntry price
@@ -602,13 +602,15 @@ interface DerivativesFundEntry {
  * @param contractMultiplier - Units of underlying asset per contract (default 0.01)
  * @param maintenanceMarginRate - Maintenance margin rate for liquidation (default 0.20)
  * @param currentMarkPrice - Optional current market price for live calculations (overrides last trade price for final entry)
+ * @param initialMarginRate - Initial margin rate for margin locked/leverage calculations (default 0.25)
  * @returns Array of entry states with running calculations
  */
 export const computeDerivativesEntriesState = (
   entries: DerivativesFundEntry[],
   contractMultiplier: number = DEFAULT_CONTRACT_MULTIPLIER,
   maintenanceMarginRate: number = DEFAULT_MAINTENANCE_MARGIN_RATE,
-  currentMarkPrice?: number
+  currentMarkPrice?: number,
+  initialMarginRate: number = DEFAULT_INITIAL_MARGIN_RATE
 ): DerivativesEntryState[] => {
   // Action priority order within the same date
   const actionOrder: Record<string, number> = {
@@ -640,10 +642,10 @@ export const computeDerivativesEntriesState = (
   let position = 0  // Net contracts
   let avgEntry = 0
   let realizedPnl = 0
-  let cumFunding = 0
-  let cumInterest = 0
-  let cumRebates = 0
-  let cumFees = 0
+  let sumFunding = 0
+  let sumInterest = 0
+  let sumRebates = 0
+  let sumFees = 0
   let currentAssetPrice = 0  // Asset price at each snapshot (derived from trade prices)
   let scrapedLiquidationPrice: number | null = null  // Liquidation price scraped from exchange (via HOLD entries)
 
@@ -672,25 +674,25 @@ export const computeDerivativesEntriesState = (
         break
 
       case 'FUNDING':
-        cumFunding += amount
+        sumFunding += amount
         marginBalance += amount  // Funding affects margin balance
         realizedPnl += amount    // Funding is realized gain/loss
         break
 
       case 'INTEREST':
-        cumInterest += amount
+        sumInterest += amount
         marginBalance += amount  // Interest adds to margin
         realizedPnl += amount    // Interest is realized gain
         break
 
       case 'REBATE':
-        cumRebates += amount
+        sumRebates += amount
         marginBalance += amount  // Rebates add to margin
         realizedPnl += amount    // Rebates are realized gain
         break
 
       case 'FEE':
-        cumFees += Math.abs(amount)
+        sumFees += Math.abs(amount)
         marginBalance -= Math.abs(amount)  // Fees reduce margin
         realizedPnl -= Math.abs(amount)    // Fees reduce realized P&L
         break
@@ -708,8 +710,8 @@ export const computeDerivativesEntriesState = (
         }
         // Calculate margin for this trade
         const notionalForTrade = price * contracts  // Total dollar cost
-        // Use stored margin if present, otherwise calculate from fixed 20% rate
-        const tradeMargin = entry.margin ?? (notionalForTrade * DEFAULT_INITIAL_MARGIN_RATE)
+        // Use stored margin if present, otherwise calculate from initialMarginRate (default 25%)
+        const tradeMargin = entry.margin ?? (notionalForTrade * initialMarginRate)
         // Add to cost basis queue for FIFO (including actual margin)
         costBasisQueue.push({
           contracts,
@@ -719,7 +721,7 @@ export const computeDerivativesEntriesState = (
         })
         // Process fee if present on entry
         if (fee > 0) {
-          cumFees += fee
+          sumFees += fee
           marginBalance -= fee  // Fees reduce margin
         }
         // Update snapshot asset price from trade price
@@ -773,7 +775,7 @@ export const computeDerivativesEntriesState = (
         }
         // Process fee if present on entry
         if (fee > 0) {
-          cumFees += fee
+          sumFees += fee
           marginBalance -= fee  // Fees reduce margin
         }
         // Update snapshot asset price from trade price
@@ -816,11 +818,18 @@ export const computeDerivativesEntriesState = (
     const notionalValue = costBasisTotal
 
     // Calculate actual margin locked from FIFO queue (sum of margin in open lots)
-    const marginLocked = costBasisQueue.reduce((sum, lot) => sum + lot.margin, 0)
+    let marginLocked = costBasisQueue.reduce((sum, lot) => sum + lot.margin, 0)
 
     // For the final entry, use currentMarkPrice if provided (for live calculations)
     const isLastEntry = index === sortedEntries.length - 1
     const effectiveAssetPrice = (isLastEntry && currentMarkPrice) ? currentMarkPrice : currentAssetPrice
+
+    // For the final entry, recalculate margin locked at current mark price
+    // Exchanges calculate margin on current notional, not entry-time notional
+    if (isLastEntry && effectiveAssetPrice > 0 && position !== 0) {
+      const currentPositionNotional = Math.abs(position) * contractMultiplier * effectiveAssetPrice
+      marginLocked = currentPositionNotional * initialMarginRate
+    }
 
     // Unrealized P&L at this snapshot using the asset price at this moment
     // unrealizedPnl = (position * contractMultiplier * effectiveAssetPrice) - costBasis
@@ -909,10 +918,10 @@ export const computeDerivativesEntriesState = (
       costBasis: costBasisTotal,
       unrealizedPnl,
       realizedPnl,
-      cumFunding,
-      cumInterest,
-      cumRebates,
-      cumFees,
+      sumFunding,
+      sumInterest,
+      sumRebates,
+      sumFees,
       equity,
       notionalValue,
       marginLocked,

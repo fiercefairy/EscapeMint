@@ -24,8 +24,8 @@ export const ALL_FUND_COLUMNS = [
   { id: 'position', label: 'Contracts', defaultVisible: false },
   { id: 'avgEntry', label: 'Avg Entry', defaultVisible: false },
   { id: 'marginBalance', label: 'Margin Bal', defaultVisible: false },
-  { id: 'cumFunding', label: 'Funding', defaultVisible: false },
-  { id: 'cumFees', label: 'Fees', defaultVisible: false }
+  { id: 'sumFunding', label: 'Funding', defaultVisible: false },
+  { id: 'sumFees', label: 'Fees', defaultVisible: false }
 ] as const
 
 export type FundColumnId = typeof ALL_FUND_COLUMNS[number]['id']

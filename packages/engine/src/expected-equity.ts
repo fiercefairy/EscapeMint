@@ -20,7 +20,7 @@ function daysBetween(startDate: string, endDate: string): number {
 export function computeStartInput(trades: Trade[], asOfDate: string, config?: SubFundConfig): number {
   let totalBuys = 0
   let totalSells = 0
-  let cumShares = 0
+  let sumShares = 0
   const isAccumulateMode = config?.accumulate === true
 
   // Sort trades by date to process in chronological order
@@ -32,7 +32,7 @@ export function computeStartInput(trades: Trade[], asOfDate: string, config?: Su
     // Track shares: BUY adds, SELL subtracts
     if (trade.shares !== undefined) {
       const sharesAbs = Math.abs(trade.shares)
-      cumShares += trade.type === 'sell' ? -sharesAbs : sharesAbs
+      sumShares += trade.type === 'sell' ? -sharesAbs : sharesAbs
     }
 
     if (trade.type === 'buy') {
@@ -41,7 +41,7 @@ export function computeStartInput(trades: Trade[], asOfDate: string, config?: Su
       totalSells += trade.amount_usd
       // Check for full liquidation using multiple detection methods
       const hasShareTracking = trade.shares !== undefined && trade.shares !== 0
-      const shareBasedLiquidation = hasShareTracking && Math.abs(cumShares) < 0.0001
+      const shareBasedLiquidation = hasShareTracking && Math.abs(sumShares) < 0.0001
       // Value-based: remaining value is dust compared to sale (value <= sale amount)
       const valueBasedLiquidation = trade.value !== undefined && trade.value <= trade.amount_usd + 0.01
       // Dollar-based fallback: total sells >= total buys
@@ -51,12 +51,12 @@ export function computeStartInput(trades: Trade[], asOfDate: string, config?: Su
       if (isFullLiquidation) {
         totalBuys = 0
         totalSells = 0
-        cumShares = 0
+        sumShares = 0
       } else if (!isAccumulateMode && hasShareTracking && totalBuys > 0) {
         // Harvest mode: reduce cost basis proportionally
         // In accumulate mode, partial sells are profit extraction (cost basis unchanged)
-        // cumShares is AFTER the sell, so add back shares to get pre-sell total
-        const sharesBeforeSell = cumShares + Math.abs(trade.shares!)
+        // sumShares is AFTER the sell, so add back shares to get pre-sell total
+        const sharesBeforeSell = sumShares + Math.abs(trade.shares!)
         const sellFraction = sharesBeforeSell > 0
           ? Math.abs(trade.shares!) / sharesBeforeSell
           : 1
@@ -96,7 +96,7 @@ export function computeExpectedTarget(
   let expectedGain = 0
   let totalBuys = 0
   let totalSells = 0
-  let cumShares = 0
+  let sumShares = 0
 
   // Sort trades by date to process in chronological order
   const sortedTrades = [...trades].sort((a, b) => a.date.localeCompare(b.date))
@@ -108,7 +108,7 @@ export function computeExpectedTarget(
     // Track shares: BUY adds, SELL subtracts
     if (trade.shares !== undefined) {
       const sharesAbs = Math.abs(trade.shares)
-      cumShares += trade.type === 'sell' ? -sharesAbs : sharesAbs
+      sumShares += trade.type === 'sell' ? -sharesAbs : sharesAbs
     }
 
     if (trade.type === 'buy') {
@@ -121,7 +121,7 @@ export function computeExpectedTarget(
       totalSells += trade.amount_usd
       // Check for full liquidation using multiple detection methods
       const hasShareTracking = trade.shares !== undefined && trade.shares !== 0
-      const shareBasedLiquidation = hasShareTracking && Math.abs(cumShares) < 0.0001
+      const shareBasedLiquidation = hasShareTracking && Math.abs(sumShares) < 0.0001
       // Value-based: remaining value is dust compared to sale (value <= sale amount)
       const valueBasedLiquidation = trade.value !== undefined && trade.value <= trade.amount_usd + 0.01
       // Dollar-based fallback: total sells >= total buys
@@ -133,7 +133,7 @@ export function computeExpectedTarget(
         expectedGain = 0
         totalBuys = 0
         totalSells = 0
-        cumShares = 0
+        sumShares = 0
       } else {
         // In accumulate mode, partial sells are profit extraction only -
         // principal remains invested, so don't reduce startInput or expectedGain.
@@ -148,7 +148,7 @@ export function computeExpectedTarget(
           // Harvest mode: reduce expected gain and startInput proportionally
           let sellFraction: number
           if (hasShareTracking) {
-            const sharesBeforeSell = cumShares + Math.abs(trade.shares!)
+            const sharesBeforeSell = sumShares + Math.abs(trade.shares!)
             sellFraction = sharesBeforeSell > 0
               ? Math.abs(trade.shares!) / sharesBeforeSell
               : 1

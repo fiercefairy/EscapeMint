@@ -52,7 +52,7 @@ function toChartTimeSeries(
     soldCostBasis = point.totalInvested - invested
 
     // Realized gain = profit from sales + interest + dividends
-    const realizedGain = (cumulativeExtracted - soldCostBasis) + point.cumCashInterest + point.cumDividends
+    const realizedGain = (cumulativeExtracted - soldCostBasis) + point.sumCashInterest + point.sumDividends
 
     // Liquid gain = total portfolio value - initial cash
     const liquidGain = point.fundSize - initialCash
@@ -73,10 +73,10 @@ function toChartTimeSeries(
       startInput: invested,
       fundSize: point.fundSize,
       cashAvailable: point.cash,
-      cumulativeDividends: point.cumDividends,
+      cumulativeDividends: point.sumDividends,
       cumulativeExpenses: 0,
       realizedGains: cumulativeExtracted - (result.totalInvested - invested),
-      cashInterest: point.cumCashInterest,
+      cashInterest: point.sumCashInterest,
       unrealizedGain,
       capturedProfit: cumulativeExtracted,
       cashPct: point.fundSize > 0 ? point.cash / point.fundSize : 0,

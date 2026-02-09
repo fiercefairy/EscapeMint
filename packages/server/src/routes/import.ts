@@ -3075,7 +3075,7 @@ importRouter.post('/crypto/import-to-fund', async (req, res, next) => {
   }
 
   // Track cumulative shares
-  let cumShares = mode === 'replace' ? 0 : (fund.entries.reduce((sum, e) => {
+  let sumShares = mode === 'replace' ? 0 : (fund.entries.reduce((sum, e) => {
     if (e.action === 'BUY' && e.shares) return sum + e.shares
     if (e.action === 'SELL' && e.shares) return sum - e.shares
     return sum
@@ -3096,14 +3096,14 @@ importRouter.post('/crypto/import-to-fund', async (req, res, next) => {
 
     // Update cumulative shares
     if (action === 'BUY') {
-      cumShares += tx.totalShares
+      sumShares += tx.totalShares
     } else {
-      // Skip sells that would make cumShares negative (selling pre-existing holdings)
-      if (cumShares < tx.totalShares) {
+      // Skip sells that would make sumShares negative (selling pre-existing holdings)
+      if (sumShares < tx.totalShares) {
         skippedSells++
         continue  // Skip this sell - not enough shares accumulated
       }
-      cumShares -= tx.totalShares
+      sumShares -= tx.totalShares
     }
 
     // Generate sub-identifier for multiple entries on same date
@@ -3117,7 +3117,7 @@ importRouter.post('/crypto/import-to-fund', async (req, res, next) => {
 
     const entry: FundEntry = {
       date: tx.date,
-      value: Math.max(0, cumShares * avgPrice),  // Equity can't be negative
+      value: Math.max(0, sumShares * avgPrice),  // Equity can't be negative
       action,
       amount: tx.totalAmount,
       shares: tx.totalShares,
@@ -5655,8 +5655,8 @@ const fetchCoinbasePositionData = async (
   // Parse liquidation price (may be "--" or empty)
   let estLiqPrice: number | null = null
   if (estLiqPriceText && estLiqPriceText !== '--' && !estLiqPriceText.includes('--')) {
-    estLiqPrice = parseNumber(estLiqPriceText)
-    if (estLiqPrice === 0) estLiqPrice = null
+    const parsedLiqPrice = parseNumber(estLiqPriceText)
+    estLiqPrice = parsedLiqPrice === 0 ? null : parsedLiqPrice
   }
 
   const positionData: CoinbasePositionData = {

@@ -8,7 +8,7 @@ export const ALL_COLUMNS = [
   { id: 'action', label: 'Action', defaultVisible: true, excludeFrom: ['cash'] },
   { id: 'amount', label: 'Amount', defaultVisible: true, excludeFrom: [] },
   { id: 'shares', label: 'Shares', defaultVisible: false, excludeFrom: ['cash', 'derivatives'] },
-  { id: 'cumShares', label: 'Σ Shares', defaultVisible: false, excludeFrom: ['cash', 'derivatives'] },
+  { id: 'sumShares', label: 'Σ Shares', defaultVisible: false, excludeFrom: ['cash', 'derivatives'] },
   { id: 'price', label: 'Price', defaultVisible: false, excludeFrom: ['cash'] },
   { id: 'invested', label: 'Invested', defaultVisible: true, excludeFrom: ['cash', 'derivatives'] },
   { id: 'dividend', label: 'Dividend', defaultVisible: true, excludeFrom: ['cash', 'crypto', 'derivatives'] },
@@ -20,10 +20,10 @@ export const ALL_COLUMNS = [
   { id: 'liquidPnl', label: 'Liquid P&L', defaultVisible: true, excludeFrom: ['cash'] },
   { id: 'realizedApy', label: 'Realized APY', defaultVisible: true, excludeFrom: [] },
   { id: 'liquidApy', label: 'Liq APY', defaultVisible: true, excludeFrom: ['cash'] },
-  { id: 'cumExpense', label: 'Σ Exp', defaultVisible: false, excludeFrom: ['derivatives'] },
-  { id: 'cumDividends', label: 'Σ Div', defaultVisible: true, excludeFrom: ['cash', 'crypto', 'derivatives'] },
-  { id: 'cumExtracted', label: 'Σ Extracted', defaultVisible: true, excludeFrom: ['cash', 'derivatives'] },
-  { id: 'cumCashInt', label: 'Σ Int', defaultVisible: false, excludeFrom: ['derivatives'] },
+  { id: 'sumExpense', label: 'Σ Exp', defaultVisible: false, excludeFrom: ['derivatives'] },
+  { id: 'sumDividends', label: 'Σ Div', defaultVisible: true, excludeFrom: ['cash', 'crypto', 'derivatives'] },
+  { id: 'sumExtracted', label: 'Σ Extracted', defaultVisible: true, excludeFrom: ['cash', 'derivatives'] },
+  { id: 'sumCashInt', label: 'Σ Int', defaultVisible: false, excludeFrom: ['derivatives'] },
   { id: 'marginAvail', label: 'Margin Avail', defaultVisible: false, excludeFrom: [] },
   { id: 'marginBorrowed', label: 'Margin Borrowed', defaultVisible: false, excludeFrom: [] },
   { id: 'fundSize', label: 'Fund Size', defaultVisible: true, excludeFrom: ['derivatives'] },
@@ -35,10 +35,10 @@ export const ALL_COLUMNS = [
   { id: 'avgEntry', label: 'Avg Entry', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
   { id: 'marginBalance', label: 'Cash', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
   { id: 'derivEquity', label: 'Equity', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
-  { id: 'cumFunding', label: 'Σ Funding', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
-  { id: 'cumInterest', label: 'Σ Interest', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
-  { id: 'cumRebates', label: 'Σ Rebates', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
-  { id: 'cumFees', label: 'Σ Fees', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
+  { id: 'sumFunding', label: 'Σ Funding', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
+  { id: 'sumInterest', label: 'Σ Interest', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
+  { id: 'sumRebates', label: 'Σ Rebates', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
+  { id: 'sumFees', label: 'Σ Fees', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
   { id: 'fee', label: 'Fee', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
   { id: 'margin', label: 'Margin', defaultVisible: false, excludeFrom: ['stock', 'crypto', 'cash'] },
   { id: 'marginLocked', label: 'Margin Locked', defaultVisible: true, excludeFrom: ['stock', 'crypto', 'cash'] },
@@ -58,25 +58,25 @@ export const getColumnsForFundType = (fundType: FundType = 'stock') => {
 // Action column excluded since cash funds always use HOLD with signed amounts
 const CASH_FUND_DEFAULT_COLUMNS: ColumnId[] = [
   'date', 'equity', 'amount', 'expense', 'cashInt', 'fundSize',
-  'realized', 'realizedApy', 'cumExpense', 'cumCashInt', 'marginAvail', 'marginBorrowed', 'edit'
+  'realized', 'realizedApy', 'sumExpense', 'sumCashInt', 'marginAvail', 'marginBorrowed', 'edit'
 ]
 
 const CASH_FUND_COLUMN_ORDER: ColumnId[] = [
   'date', 'equity', 'amount', 'expense', 'cashInt', 'fundSize',
-  'realized', 'realizedApy', 'cumExpense', 'cumCashInt', 'marginAvail', 'marginBorrowed', 'notes', 'edit'
+  'realized', 'realizedApy', 'sumExpense', 'sumCashInt', 'marginAvail', 'marginBorrowed', 'notes', 'edit'
 ]
 
 // Derivatives fund specific defaults
 const DERIVATIVES_FUND_DEFAULT_COLUMNS: ColumnId[] = [
   'date', 'action', 'amount', 'contracts', 'price', 'fee', 'margin', 'position', 'avgEntry',
   'marginBalance', 'marginLocked', 'leverage', 'derivEquity', 'unrealized', 'realized', 'liquidPnl',
-  'realizedApy', 'cumFunding', 'cumInterest', 'cumRebates', 'cumFees', 'notes', 'edit'
+  'realizedApy', 'sumFunding', 'sumInterest', 'sumRebates', 'sumFees', 'notes', 'edit'
 ]
 
 const DERIVATIVES_FUND_COLUMN_ORDER: ColumnId[] = [
   'date', 'action', 'amount', 'contracts', 'price', 'fee', 'margin', 'position', 'avgEntry',
   'marginBalance', 'marginLocked', 'leverage', 'derivEquity', 'unrealized', 'realized', 'liquidPnl',
-  'realizedApy', 'cumFunding', 'cumInterest', 'cumRebates', 'cumFees', 'notes', 'edit'
+  'realizedApy', 'sumFunding', 'sumInterest', 'sumRebates', 'sumFees', 'notes', 'edit'
 ]
 
 export const getDefaultColumns = (fundType: FundType = 'stock'): Set<ColumnId> => {
@@ -109,12 +109,12 @@ export interface ComputedEntry extends FundEntry {
   fundSize: number
   totalInvested: number
   calculatedCash: number  // Calculated from fundSize - invested (display uses tracked cash ?? calculatedCash)
-  cumDividends: number
-  cumExpenses: number
-  cumCashInterest: number
+  sumDividends: number
+  sumExpenses: number
+  sumCashInterest: number
   extracted: number
-  cumExtracted: number
-  cumShares: number
+  sumExtracted: number
+  sumShares: number
   unrealized: number
   realized: number
   liquidPnl: number
@@ -130,10 +130,10 @@ export interface ComputedEntry extends FundEntry {
   derivUnrealized?: number     // Unrealized P&L
   derivRealized?: number       // Realized P&L
   derivEquity?: number         // Position value at entry price (cost basis)
-  derivCumFunding?: number     // Cumulative funding
-  derivCumInterest?: number    // Cumulative interest
-  derivCumRebates?: number     // Cumulative rebates
-  derivCumFees?: number        // Cumulative fees (trading fees)
+  derivSumFunding?: number     // Cumulative funding
+  derivSumInterest?: number    // Cumulative interest
+  derivSumRebates?: number     // Cumulative rebates
+  derivSumFees?: number        // Cumulative fees (trading fees)
   // Margin tracking
   derivNotionalValue?: number      // Position value at avgEntry price
   derivMarginLocked?: number       // Actual margin locked (sum from FIFO queue)

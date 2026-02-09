@@ -17,10 +17,10 @@ export interface FundComputedMetrics {
   totalInvested: number
 
   // Cumulative totals
-  cumDividends: number
-  cumExpenses: number
-  cumCashInterest: number
-  cumExtracted: number
+  sumDividends: number
+  sumExpenses: number
+  sumCashInterest: number
+  sumExtracted: number
 
   // Gains
   unrealized: number
@@ -39,9 +39,9 @@ export interface FundComputedMetrics {
   position?: number           // Net contracts held
   avgEntry?: number          // Average entry price
   marginBalance?: number     // Total margin balance
-  cumFunding?: number        // Cumulative funding payments
-  cumRebates?: number        // Cumulative rebates
-  cumFees?: number           // Cumulative trading fees
+  sumFunding?: number        // Cumulative funding payments
+  sumRebates?: number        // Cumulative rebates
+  sumFees?: number           // Cumulative trading fees
 }
 
 /**
@@ -60,7 +60,8 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   if (isDerivativesFund && entries.length > 0) {
     const contractMultiplier = config.contract_multiplier ?? 0.01
     const maintenanceMarginRate = config.maintenance_margin_rate ?? 0.20
-    const derivStates = computeDerivativesEntriesState(entries, contractMultiplier, maintenanceMarginRate)
+    const initialMarginRate = config.initial_margin_rate ?? 0.25
+    const derivStates = computeDerivativesEntriesState(entries, contractMultiplier, maintenanceMarginRate, undefined, initialMarginRate)
     const lastState = derivStates[derivStates.length - 1]
 
     if (lastState) {
@@ -93,10 +94,10 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         currentValue: lastState.equity,
         cash: lastState.availableFunds,  // Available funds = marginBalance - marginLocked
         totalInvested: lastState.costBasis,
-        cumDividends: 0,
-        cumExpenses: lastState.cumFees,
-        cumCashInterest: lastState.cumInterest,
-        cumExtracted: lastState.realizedPnl,
+        sumDividends: 0,
+        sumExpenses: lastState.sumFees,
+        sumCashInterest: lastState.sumInterest,
+        sumExtracted: lastState.realizedPnl,
         unrealized: lastState.unrealizedPnl,
         realized,
         liquidPnl,
@@ -108,9 +109,9 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         position: lastState.position,
         avgEntry: lastState.avgEntry,
         marginBalance: lastState.marginBalance,
-        cumFunding: lastState.cumFunding,
-        cumRebates: lastState.cumRebates,
-        cumFees: lastState.cumFees
+        sumFunding: lastState.sumFunding,
+        sumRebates: lastState.sumRebates,
+        sumFees: lastState.sumFees
       }
     }
   }
@@ -118,12 +119,12 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   // Initialize tracking variables
   let totalBuys = 0
   let totalSells = 0
-  let cumShares = 0
+  let sumShares = 0
   let costBasis = 0
-  let cumDividends = 0
-  let cumExpenses = 0
-  let cumCashInterest = 0
-  let cumExtracted = 0
+  let sumDividends = 0
+  let sumExpenses = 0
+  let sumCashInterest = 0
+  let sumExtracted = 0
   let _previousCyclesGain = 0  // Accumulated gains from previous cycles; tracked for future multi-cycle reporting
   // Track total ever invested across all cycles (for APY calculation on fully liquidated funds)
   let totalEverInvested = 0
@@ -145,14 +146,14 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
 
     // Track shares
     if (entry.shares !== undefined) {
-      if (entry.action === 'BUY') cumShares += entry.shares
-      else if (entry.action === 'SELL') cumShares -= entry.shares
+      if (entry.action === 'BUY') sumShares += entry.shares
+      else if (entry.action === 'SELL') sumShares -= entry.shares
     }
 
     // Track cumulative income/expenses
-    if (entry.dividend) cumDividends += entry.dividend
-    if (entry.expense) cumExpenses += entry.expense
-    if (entry.cash_interest) cumCashInterest += entry.cash_interest
+    if (entry.dividend) sumDividends += entry.dividend
+    if (entry.expense) sumExpenses += entry.expense
+    if (entry.cash_interest) sumCashInterest += entry.cash_interest
 
     // Process buys and sells
     if (entry.action === 'BUY' && entry.amount) {
@@ -162,7 +163,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
     } else if (entry.action === 'SELL' && entry.amount) {
       // Check for full liquidation
       const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
-      const sharesLiquidated = hasShareTracking && Math.abs(cumShares) < 0.0001
+      const sharesLiquidated = hasShareTracking && Math.abs(sumShares) < 0.0001
       const valueLiquidated = (entry.value ?? 0) <= entry.amount + 0.01
       const isFullLiquidation = sharesLiquidated || valueLiquidated
 
@@ -185,7 +186,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         costBasis -= costBasisReturned
         totalSells += entry.amount
       }
-      cumExtracted += extracted
+      sumExtracted += extracted
 
       // In accumulate mode, partial sells don't reduce totalSells
       if (!isAccumulate || isFullLiquidation) {
@@ -252,8 +253,8 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   const unrealized = isCashFund ? 0 : (currentValue - costBasis)
 
   const realized = isCashFund
-    ? cumCashInterest - cumExpenses
-    : cumCashInterest + cumDividends + cumExtracted - cumExpenses
+    ? sumCashInterest - sumExpenses
+    : sumCashInterest + sumDividends + sumExtracted - sumExpenses
 
   const liquidPnl = unrealized + realized
 
@@ -294,10 +295,10 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
     currentValue,
     cash,
     totalInvested: isCashFund ? cash : netInvested,
-    cumDividends,
-    cumExpenses,
-    cumCashInterest,
-    cumExtracted,
+    sumDividends,
+    sumExpenses,
+    sumCashInterest,
+    sumExtracted,
     unrealized,
     realized,
     liquidPnl,

@@ -322,9 +322,9 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
     position?: number
     avgEntry?: number
     marginBalance?: number
-    cumFunding?: number
-    cumRebates?: number
-    cumFees?: number
+    sumFunding?: number
+    sumRebates?: number
+    sumFees?: number
   }> = []
 
   for (const fund of platformFunds) {
@@ -355,9 +355,9 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
       totalCash += metrics.cash
       totalInvested += metrics.totalInvested
     }
-    totalDividends += metrics.cumDividends
-    totalExpenses += metrics.cumExpenses
-    totalCashInterest += metrics.cumCashInterest
+    totalDividends += metrics.sumDividends
+    totalExpenses += metrics.sumExpenses
+    totalCashInterest += metrics.sumCashInterest
     totalRealized += metrics.realized
     totalUnrealized += metrics.unrealized
 
@@ -372,9 +372,9 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
       cash: metrics.cash,
       startInput: metrics.totalInvested,
       daysActive: metrics.daysActive,
-      dividends: metrics.cumDividends,
-      expenses: metrics.cumExpenses,
-      cashInterest: metrics.cumCashInterest,
+      dividends: metrics.sumDividends,
+      expenses: metrics.sumExpenses,
+      cashInterest: metrics.sumCashInterest,
       unrealized: metrics.unrealized,
       realized: metrics.realized,
       liquidPnl: metrics.liquidPnl,
@@ -386,9 +386,9 @@ platformsRouter.get('/:id/metrics', async (req, res, next) => {
       ...(metrics.position !== undefined && { position: metrics.position }),
       ...(metrics.avgEntry !== undefined && { avgEntry: metrics.avgEntry }),
       ...(metrics.marginBalance !== undefined && { marginBalance: metrics.marginBalance }),
-      ...(metrics.cumFunding !== undefined && { cumFunding: metrics.cumFunding }),
-      ...(metrics.cumRebates !== undefined && { cumRebates: metrics.cumRebates }),
-      ...(metrics.cumFees !== undefined && { cumFees: metrics.cumFees })
+      ...(metrics.sumFunding !== undefined && { sumFunding: metrics.sumFunding }),
+      ...(metrics.sumRebates !== undefined && { sumRebates: metrics.sumRebates }),
+      ...(metrics.sumFees !== undefined && { sumFees: metrics.sumFees })
     })
   }
 
@@ -864,7 +864,7 @@ platformsRouter.post('/:id/enable-cash-tracking', async (req, res, next) => {
 
   // Create the cash fund config
   // fund_size_usd = 0 for cash funds since balance is computed from DEPOSIT/WITHDRAW entries
-  // The UI calculates: fund_size_usd + cumDeposits - cumWithdrawals + cumInterest - cumExpenses
+  // The UI calculates: fund_size_usd + sumDeposits - sumWithdrawals + sumInterest - sumExpenses
   const cashFundConfig: SubFundConfig = {
     fund_type: 'cash',
     status: 'active',

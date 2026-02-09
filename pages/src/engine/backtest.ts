@@ -46,9 +46,9 @@ export interface TimeSeriesPoint {
   action: 'BUY' | 'SELL' | 'HOLD'
   amount: number
   cashInterest: number
-  cumCashInterest: number
+  sumCashInterest: number
   dividend: number
-  cumDividends: number
+  sumDividends: number
 }
 
 export interface TradeRecord {
@@ -75,8 +75,8 @@ export interface BacktestResult {
   totalSells: number
   maxDrawdown: number
   daysElapsed: number
-  cumDividends: number
-  cumCashInterest: number
+  sumDividends: number
+  sumCashInterest: number
 }
 
 function daysBetween(start: string, end: string): number {
@@ -144,8 +144,8 @@ export function runBacktest(
       totalSells: 0,
       maxDrawdown: 0,
       daysElapsed: 0,
-      cumDividends: 0,
-      cumCashInterest: 0
+      sumDividends: 0,
+      sumCashInterest: 0
     }
   }
 
@@ -158,8 +158,8 @@ export function runBacktest(
   let totalInvested = 0
   let totalExtracted = 0
   let costBasis = 0
-  let cumCashInterest = 0
-  let cumDividends = 0
+  let sumCashInterest = 0
+  let sumDividends = 0
 
   // Track equivalent shares of underlying assets (for dividend calculation)
   // When we buy $X of the blended fund, we're buying:
@@ -212,7 +212,7 @@ export function runBacktest(
 
     // Calculate weekly cash interest (skip first week - no interest on day 1)
     const weeklyInterest = i > 0 ? cash * weeklyInterestRate : 0
-    cumCashInterest += weeklyInterest
+    sumCashInterest += weeklyInterest
     cash += weeklyInterest
 
     // Calculate dividends for this period (based on equivalent shares held)
@@ -269,7 +269,7 @@ export function runBacktest(
 
       // Add dividends to cash (simulates receiving dividend payment)
       cash += weeklyDividend
-      cumDividends += weeklyDividend
+      sumDividends += weeklyDividend
     }
 
     // Build trade history for engine (tracks cost basis)
@@ -424,9 +424,9 @@ export function runBacktest(
       action,
       amount,
       cashInterest: weeklyInterest,
-      cumCashInterest,
+      sumCashInterest,
       dividend: weeklyDividend,
-      cumDividends
+      sumDividends
     })
   }
 
@@ -444,7 +444,7 @@ export function runBacktest(
 
   // Realized gain: profit from sales + interest + dividends
   // = (what we got from selling) - (what those shares cost) + passive income
-  const realizedGain = (totalExtracted - soldCostBasis) + cumCashInterest + cumDividends
+  const realizedGain = (totalExtracted - soldCostBasis) + sumCashInterest + sumDividends
 
   // Liquid gain: total portfolio value minus initial cash
   const liquidGain = finalValue - scenario.initialCash
@@ -474,8 +474,8 @@ export function runBacktest(
 
   // Debug: Summary
   console.log('=== BACKTEST SUMMARY ===')
-  console.log('Dividends earned:', cumDividends.toFixed(2))
-  console.log('Interest earned:', cumCashInterest.toFixed(2))
+  console.log('Dividends earned:', sumDividends.toFixed(2))
+  console.log('Interest earned:', sumCashInterest.toFixed(2))
   console.log('Buys/Sells:', totalBuys, '/', totalSells)
   console.log('Final value:', finalValue.toFixed(2))
 
@@ -494,7 +494,7 @@ export function runBacktest(
     totalSells,
     maxDrawdown,
     daysElapsed,
-    cumDividends,
-    cumCashInterest
+    sumDividends,
+    sumCashInterest
   }
 }
