@@ -24,7 +24,7 @@ export function DerivativesBreakEvenPanel({
     return computedEntries[computedEntries.length - 1]
   }, [computedEntries])
 
-  const totalDeposits = useMemo(() => {
+  const netDeposits = useMemo(() => {
     let sum = 0
     for (const e of entries) {
       if (e.action === 'DEPOSIT') sum += Math.abs(e.amount ?? 0)
@@ -46,13 +46,13 @@ export function DerivativesBreakEvenPanel({
     // (computed by engine as: effectiveCash + unrealizedPnl)
     const currentEquity = latestEntry.derivEquity ?? effectiveCash
 
-    // Net break-even: price where equity = totalDeposits
+    // Net break-even: price where equity = netDeposits
     // equityAtPrice(P) = effectiveCash + position * contractMultiplier * P - costBasis
-    // Solve for P when equity = totalDeposits:
-    // netBE = (totalDeposits - effectiveCash + costBasis) / (position * contractMultiplier)
+    // Solve for P when equity = netDeposits:
+    // netBE = (netDeposits - effectiveCash + costBasis) / (position * contractMultiplier)
     const positionNotional = position * contractMultiplier
     const netBreakEven = positionNotional !== 0
-      ? (totalDeposits - effectiveCash + costBasis) / positionNotional
+      ? (netDeposits - effectiveCash + costBasis) / positionNotional
       : 0
 
     return {
@@ -63,7 +63,7 @@ export function DerivativesBreakEvenPanel({
       effectiveCash,
       costBasis
     }
-  }, [latestEntry, totalDeposits, contractMultiplier])
+  }, [latestEntry, netDeposits, contractMultiplier])
 
   const scenario = useMemo(() => {
     if (!metrics) return null
@@ -72,11 +72,12 @@ export function DerivativesBreakEvenPanel({
 
     const positionNotional = metrics.position * contractMultiplier
     const equityAtPrice = metrics.effectiveCash + (positionNotional * price) - metrics.costBasis
-    const profitAtPrice = equityAtPrice - totalDeposits
-    const profitPct = totalDeposits !== 0 ? profitAtPrice / totalDeposits : 0
+    const profitAtPrice = equityAtPrice - netDeposits
+    const absDeposits = Math.abs(netDeposits)
+    const profitPct = absDeposits > 0 ? profitAtPrice / absDeposits : null
 
     return { equityAtPrice, profitAtPrice, profitPct }
-  }, [targetPrice, metrics, contractMultiplier, totalDeposits])
+  }, [targetPrice, metrics, contractMultiplier, netDeposits])
 
   // Position sizing: max contracts to buy at targetPrice while keeping liq ≤ targetLiq
   // Only supported for long positions; short position sizing requires different algebra.
@@ -115,14 +116,14 @@ export function DerivativesBreakEvenPanel({
 
     const newPositionBE = newCostBasis / newNotionalSize
     const newNetBE = newNotionalSize !== 0
-      ? (totalDeposits - effectiveCash + newCostBasis) / newNotionalSize
+      ? (netDeposits - effectiveCash + newCostBasis) / newNotionalSize
       : 0
 
     // Verify liquidation price
     const newLiq = (newCostBasis - effectiveCash) / (newNotionalSize * mmFactor)
 
     return { maxContracts, newNetBE, newPositionBE, newPosition, newLiq }
-  }, [targetPrice, targetLiq, metrics, contractMultiplier, maintenanceMarginRate, totalDeposits])
+  }, [targetPrice, targetLiq, metrics, contractMultiplier, maintenanceMarginRate, netDeposits])
 
   if (!latestEntry || !metrics) return null
 
@@ -148,9 +149,9 @@ export function DerivativesBreakEvenPanel({
           </div>
         </div>
         <div>
-          <span className="text-slate-500 text-xs">Total Deposits</span>
+          <span className="text-slate-500 text-xs">Net Deposits</span>
           <div className="text-slate-200 font-mono">
-            {formatCurrency(totalDeposits)}
+            {formatCurrency(netDeposits)}
           </div>
         </div>
         <div>
@@ -173,7 +174,7 @@ export function DerivativesBreakEvenPanel({
           <span className="text-slate-500 text-xs">Modeled P&L</span>
           {scenario ? (
             <div className={`font-mono ${profitColor(scenario.profitAtPrice)}`}>
-              {formatCurrency(scenario.profitAtPrice)} ({formatPercent(scenario.profitPct)})
+              {formatCurrency(scenario.profitAtPrice)}{scenario.profitPct !== null ? ` (${formatPercent(scenario.profitPct)})` : ''}
             </div>
           ) : (
             <div className="text-slate-500 font-mono">--</div>

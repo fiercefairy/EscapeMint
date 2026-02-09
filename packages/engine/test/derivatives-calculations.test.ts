@@ -686,6 +686,39 @@ describe('computeDerivativesEntriesState', () => {
     expect(buyEntry?.marginLocked).toBe(25000)
     expect(buyEntry?.leverage).toBe(4) // $100,000 / $25,000
   })
+
+  it('recalculates marginLocked at mark price on final entry', () => {
+    const entries = [
+      { date: '2024-01-01', action: 'DEPOSIT', amount: 50000 },
+      { date: '2024-01-02', action: 'BUY', contracts: 100, price: 1000 } // entry at $100k BTC
+    ]
+
+    // With currentMarkPrice of $120,000 (i.e., 1200 per contract at 0.01 multiplier)
+    const result = computeDerivativesEntriesState(entries, 0.01, 0.20, 120000)
+
+    const buyEntry = result[1]
+    // Final entry marginLocked = abs(100) * 0.01 * 120000 * 0.25 = $30,000
+    expect(buyEntry?.marginLocked).toBe(30000)
+    // Notional at mark = 100 * 0.01 * 120000 = $120,000
+    // Leverage = $120,000 / $30,000 = 4
+    expect(buyEntry?.leverage).toBe(4)
+  })
+
+  it('uses custom initialMarginRate for marginLocked', () => {
+    const entries = [
+      { date: '2024-01-01', action: 'DEPOSIT', amount: 50000 },
+      { date: '2024-01-02', action: 'BUY', contracts: 100, price: 1000 }
+    ]
+
+    // Pass custom initialMarginRate of 0.10 (10%)
+    const result = computeDerivativesEntriesState(entries, 0.01, 0.20, undefined, 0.10)
+
+    const buyEntry = result[1]
+    // marginLocked = abs(100) * 0.01 * 100000 * 0.10 = $10,000
+    expect(buyEntry?.marginLocked).toBe(10000)
+    // Leverage = $100,000 / $10,000 = 10
+    expect(buyEntry?.leverage).toBe(10)
+  })
 })
 
 describe('calculateSafeLimitOrders', () => {

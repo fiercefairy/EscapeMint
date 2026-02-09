@@ -1403,7 +1403,7 @@ export function FundCharts({ entries, config, fundId, computedEntries, resize: e
         value: entry.derivEquity ?? 0,  // Equity = marginBalance + unrealized
         startInput: entry.derivCostBasis ?? 0,  // Cost basis (invested in position)
         fundSize: entry.derivMarginBalance ?? 0,  // Margin balance (cash)
-        cashAvailable: (entry.derivMarginBalance ?? 0) - (entry.derivCostBasis ?? 0),  // Available after position
+        cashAvailable: entry.derivAvailableFunds ?? ((entry.derivMarginBalance ?? 0) - (entry.derivMarginLocked ?? 0)),  // marginBalance - marginLocked
         cumulativeDividends: 0,
         cumulativeExpenses: -(entry.derivSumFees ?? 0),
         realizedGains: entry.derivRealized ?? 0,
