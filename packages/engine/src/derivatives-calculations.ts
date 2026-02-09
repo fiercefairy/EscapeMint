@@ -608,7 +608,8 @@ export const computeDerivativesEntriesState = (
   entries: DerivativesFundEntry[],
   contractMultiplier: number = DEFAULT_CONTRACT_MULTIPLIER,
   maintenanceMarginRate: number = DEFAULT_MAINTENANCE_MARGIN_RATE,
-  currentMarkPrice?: number
+  currentMarkPrice?: number,
+  initialMarginRate: number = DEFAULT_INITIAL_MARGIN_RATE
 ): DerivativesEntryState[] => {
   // Action priority order within the same date
   const actionOrder: Record<string, number> = {
@@ -709,7 +710,7 @@ export const computeDerivativesEntriesState = (
         // Calculate margin for this trade
         const notionalForTrade = price * contracts  // Total dollar cost
         // Use stored margin if present, otherwise calculate from fixed 20% rate
-        const tradeMargin = entry.margin ?? (notionalForTrade * DEFAULT_INITIAL_MARGIN_RATE)
+        const tradeMargin = entry.margin ?? (notionalForTrade * initialMarginRate)
         // Add to cost basis queue for FIFO (including actual margin)
         costBasisQueue.push({
           contracts,
@@ -801,7 +802,7 @@ export const computeDerivativesEntriesState = (
           marginBalance = entryCash
         }
         // If liquidation_price is provided (scraped from exchange), store it for use
-        if (entry.liquidation_price !== undefined && entry.liquidation_price > 0) {
+        if (entry.liquidation_price !== undefined && entry.liquidation_price >= 0) {
           scrapedLiquidationPrice = entry.liquidation_price
         }
         break
@@ -816,11 +817,18 @@ export const computeDerivativesEntriesState = (
     const notionalValue = costBasisTotal
 
     // Calculate actual margin locked from FIFO queue (sum of margin in open lots)
-    const marginLocked = costBasisQueue.reduce((sum, lot) => sum + lot.margin, 0)
+    let marginLocked = costBasisQueue.reduce((sum, lot) => sum + lot.margin, 0)
 
     // For the final entry, use currentMarkPrice if provided (for live calculations)
     const isLastEntry = index === sortedEntries.length - 1
     const effectiveAssetPrice = (isLastEntry && currentMarkPrice) ? currentMarkPrice : currentAssetPrice
+
+    // For the final entry, recalculate margin locked at current mark price
+    // Exchanges calculate margin on current notional, not entry-time notional
+    if (isLastEntry && effectiveAssetPrice > 0 && position !== 0) {
+      const currentPositionNotional = Math.abs(position) * contractMultiplier * effectiveAssetPrice
+      marginLocked = currentPositionNotional * initialMarginRate
+    }
 
     // Unrealized P&L at this snapshot using the asset price at this moment
     // unrealizedPnl = (position * contractMultiplier * effectiveAssetPrice) - costBasis

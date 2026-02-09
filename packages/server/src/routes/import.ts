@@ -5656,7 +5656,6 @@ const fetchCoinbasePositionData = async (
   let estLiqPrice: number | null = null
   if (estLiqPriceText && estLiqPriceText !== '--' && !estLiqPriceText.includes('--')) {
     estLiqPrice = parseNumber(estLiqPriceText)
-    if (estLiqPrice === 0) estLiqPrice = null
   }
 
   const positionData: CoinbasePositionData = {
