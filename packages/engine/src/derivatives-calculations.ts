@@ -802,7 +802,7 @@ export const computeDerivativesEntriesState = (
           marginBalance = entryCash
         }
         // If liquidation_price is provided (scraped from exchange), store it for use
-        if (entry.liquidation_price !== undefined && entry.liquidation_price >= 0) {
+        if (entry.liquidation_price !== undefined && entry.liquidation_price > 0) {
           scrapedLiquidationPrice = entry.liquidation_price
         }
         break

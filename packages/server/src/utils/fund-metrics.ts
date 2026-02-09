@@ -60,7 +60,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   if (isDerivativesFund && entries.length > 0) {
     const contractMultiplier = config.contract_multiplier ?? 0.01
     const maintenanceMarginRate = config.maintenance_margin_rate ?? 0.20
-    const initialMarginRate = config.initial_margin_rate ?? 0.20
+    const initialMarginRate = config.initial_margin_rate ?? 0.25
     const derivStates = computeDerivativesEntriesState(entries, contractMultiplier, maintenanceMarginRate, undefined, initialMarginRate)
     const lastState = derivStates[derivStates.length - 1]
 
