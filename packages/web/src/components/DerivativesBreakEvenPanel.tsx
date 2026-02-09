@@ -79,6 +79,7 @@ export function DerivativesBreakEvenPanel({
   }, [targetPrice, metrics, contractMultiplier, totalDeposits])
 
   // Position sizing: max contracts to buy at targetPrice while keeping liq ≤ targetLiq
+  // Only supported for long positions; short position sizing requires different algebra.
   // Liquidation formula for longs:
   //   liqPrice = (costBasis - marginBalance) / (notionalSize * (1 - mmRate))
   // After buying N contracts at buyPrice:
@@ -87,8 +88,9 @@ export function DerivativesBreakEvenPanel({
   // Solve for N when liqPrice = targetLiq:
   //   N = (targetLiq * position * cm * (1 - mmRate) - costBasis + marginBalance) /
   //       (cm * (buyPrice - targetLiq * (1 - mmRate)))
+  const isLongPosition = metrics ? metrics.position > 0 : false
   const sizing = useMemo(() => {
-    if (!metrics) return null
+    if (!metrics || !isLongPosition) return null
     const buyPrice = parseFloat(targetPrice)
     const maxLiq = parseFloat(targetLiq)
     if (!buyPrice || buyPrice <= 0 || !maxLiq || maxLiq <= 0) return null
@@ -179,9 +181,12 @@ export function DerivativesBreakEvenPanel({
         </div>
       </div>
 
-      {/* Position Sizing Calculator */}
+      {/* Position Sizing Calculator (long positions only) */}
       <div className="border-t border-slate-700 mt-2.5 pt-2.5">
         <h4 className="text-xs font-medium text-slate-400 mb-1.5">Position Sizing</h4>
+        {!isLongPosition ? (
+          <div className="text-slate-500 text-xs italic">Position sizing is only available for long positions.</div>
+        ) : (
         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
           <div>
             <span className="text-slate-500 text-xs">Max Liq Price</span>
@@ -237,6 +242,7 @@ export function DerivativesBreakEvenPanel({
             </>
           )}
         </div>
+        )}
       </div>
     </div>
   )

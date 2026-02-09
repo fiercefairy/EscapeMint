@@ -602,6 +602,7 @@ interface DerivativesFundEntry {
  * @param contractMultiplier - Units of underlying asset per contract (default 0.01)
  * @param maintenanceMarginRate - Maintenance margin rate for liquidation (default 0.20)
  * @param currentMarkPrice - Optional current market price for live calculations (overrides last trade price for final entry)
+ * @param initialMarginRate - Initial margin rate for margin locked/leverage calculations (default 0.25)
  * @returns Array of entry states with running calculations
  */
 export const computeDerivativesEntriesState = (
@@ -709,7 +710,7 @@ export const computeDerivativesEntriesState = (
         }
         // Calculate margin for this trade
         const notionalForTrade = price * contracts  // Total dollar cost
-        // Use stored margin if present, otherwise calculate from fixed 20% rate
+        // Use stored margin if present, otherwise calculate from initialMarginRate (default 25%)
         const tradeMargin = entry.margin ?? (notionalForTrade * initialMarginRate)
         // Add to cost basis queue for FIFO (including actual margin)
         costBasisQueue.push({
