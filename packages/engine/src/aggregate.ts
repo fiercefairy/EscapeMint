@@ -9,8 +9,12 @@ const DAYS_PER_YEAR = 365
  * Falls back to today if no entries exist.
  */
 export function getFundStartDate(entries: { date: string }[]): string {
-  if (entries.length > 0) return entries[0]!.date
-  return new Date().toISOString().slice(0, 10)
+  if (entries.length === 0) return new Date().toISOString().slice(0, 10)
+  let earliest = entries[0]!.date
+  for (let i = 1; i < entries.length; i++) {
+    if (entries[i]!.date < earliest) earliest = entries[i]!.date
+  }
+  return earliest
 }
 
 function daysBetween(startDate: string, endDate: string): number {

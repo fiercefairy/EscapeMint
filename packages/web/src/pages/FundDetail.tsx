@@ -1655,8 +1655,8 @@ export function FundDetail() {
           onAddEntry={() => setShowAddEntry(true)}
           onReload={loadData}
           showCoinbaseUpdate={isDerivativesFund}
-          lastEntryDate={fund.entries.length > 0 ? fund.entries[fund.entries.length - 1]?.date : undefined}
-          fundStartDate={fund.entries.length > 0 ? fund.entries[0]?.date : undefined}
+          lastEntryDate={fund.entries.length > 0 ? fund.entries.reduce((max, e) => e.date > max ? e.date : max, fund.entries[0]!.date) : undefined}
+          fundStartDate={fund.entries.length > 0 ? fund.entries.reduce((min, e) => e.date < min ? e.date : min, fund.entries[0]!.date) : undefined}
         />
 
         {/* Take Action Modal */}

@@ -6435,7 +6435,7 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
   if (fundId && !stopDate) {
     sendEvent('status', { message: 'Loading fund data...', phase: 'loading' })
 
-    const fundData = await readFund(fundId).catch(() => null)
+    const fundData = await readFund(join(FUNDS_DIR, `${fundId}.tsv`)).catch(() => null)
     if (fundData?.entries?.length) {
       // Use first entry date (entries are chronological)
       const sorted = [...fundData.entries].sort((a, b) => a.date.localeCompare(b.date))

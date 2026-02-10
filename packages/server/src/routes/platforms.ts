@@ -67,10 +67,10 @@ async function writePlatformsData(data: PlatformsData): Promise<void> {
 }
 
 /**
- * Check if a platform is a test platform
+ * Check if a platform is a test platform (matches global-setup/teardown cleanup)
  */
 function isTestPlatform(platformId: string): boolean {
-  return platformId === 'test' || platformId.endsWith('test')
+  return platformId.startsWith('test')
 }
 
 /**

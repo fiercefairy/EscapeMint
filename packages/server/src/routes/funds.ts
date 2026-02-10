@@ -362,10 +362,12 @@ fundsRouter.get('/history', async (req, res, next) => {
   }
   const sortedDates = Array.from(allDates).sort()
 
-  // Find the earliest fund start date for APY calculations (from first entry)
+  // Find the earliest fund start date for APY calculations (minimum entry date across all funds)
   const earliestStartDate = funds.reduce((earliest, fund) => {
-    const startDate = fund.entries[0]?.date
-    return startDate && (!earliest || startDate < earliest) ? startDate : earliest
+    for (const entry of fund.entries) {
+      if (!earliest || entry.date < earliest) earliest = entry.date
+    }
+    return earliest
   }, '' as string)
 
   // Build time series data

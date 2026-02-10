@@ -49,7 +49,8 @@ export interface FundComputedMetrics {
  * This matches the calculation logic in FundDetail.tsx.
  */
 export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
-  const entries = fund.entries
+  // Sort entries chronologically (API allows out-of-order entries)
+  const entries = [...fund.entries].sort((a, b) => a.date.localeCompare(b.date))
   const config = fund.config
   const isCashFund = checkIsCashFund(config.fund_type)
   const isDerivativesFund = checkIsDerivativesFund(config.fund_type)
@@ -308,31 +309,30 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   let realizedApy = 0
   let liquidApy = 0
 
-  if (daysActive > 0) {
-    if (isCashFund) {
-      // Cash fund APY: based on TWAB
-      const twab = daysActive > 0 ? twabNumerator / daysActive : lastCashBalance
-      const denominator = twab > 0 ? twab : (fundSize > 0 ? fundSize : 1)
-      if (Math.abs(realized) >= 0.01) {
-        const returnPct = realized / denominator
-        const clampedPct = Math.max(-0.99, Math.min(returnPct, 1))
-        realizedApy = Math.pow(1 + clampedPct, 365 / daysActive) - 1
-        realizedApy = Math.max(-0.99, Math.min(realizedApy, 10))
-        liquidApy = realizedApy
-      }
-    } else {
-      // Trading fund APY: use TWAP (time-weighted average position) as denominator
-      const twap = daysActive > 0 ? twapNumerator / daysActive : costBasis
-      const denominator = twap > 0 ? twap : (costBasis > 0 ? costBasis : 1)
-      if (denominator > 0) {
-        const realizedReturnPct = realized / denominator
-        const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
-        realizedApy = Math.pow(1 + clampedRealizedPct, 365 / daysActive) - 1
+  // daysActive is always >= 1 (clamped above), so APY is always calculable
+  if (isCashFund) {
+    // Cash fund APY: based on TWAB
+    const twab = twabNumerator / daysActive
+    const denominator = twab > 0 ? twab : (fundSize > 0 ? fundSize : 1)
+    if (Math.abs(realized) >= 0.01) {
+      const returnPct = realized / denominator
+      const clampedPct = Math.max(-0.99, Math.min(returnPct, 1))
+      realizedApy = Math.pow(1 + clampedPct, 365 / daysActive) - 1
+      realizedApy = Math.max(-0.99, Math.min(realizedApy, 10))
+      liquidApy = realizedApy
+    }
+  } else {
+    // Trading fund APY: use TWAP (time-weighted average position) as denominator
+    const twap = twapNumerator / daysActive
+    const denominator = twap > 0 ? twap : (costBasis > 0 ? costBasis : 1)
+    if (denominator > 0) {
+      const realizedReturnPct = realized / denominator
+      const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
+      realizedApy = Math.pow(1 + clampedRealizedPct, 365 / daysActive) - 1
 
-        const liquidReturnPct = liquidPnl / denominator
-        const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
-        liquidApy = Math.pow(1 + clampedLiquidPct, 365 / daysActive) - 1
-      }
+      const liquidReturnPct = liquidPnl / denominator
+      const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
+      liquidApy = Math.pow(1 + clampedLiquidPct, 365 / daysActive) - 1
     }
   }
 
