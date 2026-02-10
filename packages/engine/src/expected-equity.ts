@@ -260,10 +260,10 @@ export function computeCashInterest(
 
   let totalInterest = 0
   let currentCash = fund_size_usd
-  // Use config start_date if available, otherwise first event date
+  // Use config start_date if available, otherwise first event date (or asOfDate if no events)
   // Cash interest accrues from fund start (when cash was deployed), not first trade
   let lastDate: string = config.start_date
-    ?? (events.length > 0 ? events[0]!.date : new Date().toISOString().slice(0, 10))
+    ?? (events.length > 0 ? events[0]!.date : asOfDate)
 
   for (const event of events) {
     if (daysBetween(event.date, asOfDate) < 0) continue

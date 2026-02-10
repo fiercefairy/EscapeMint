@@ -336,7 +336,7 @@ export function FundDetail() {
 
       // Accumulate TWAP before processing this entry's action (use costBasis from before this entry)
       if (!isCashFundType && twapLastDate && cycleStartDate) {
-        const daysBetween = Math.max(0, Math.floor((entryDate.getTime() - twapLastDate.getTime()) / (1000 * 60 * 60 * 24)))
+        const daysBetween = Math.max(0, (entryDate.getTime() - twapLastDate.getTime()) / (1000 * 60 * 60 * 24))
         twapNumerator += costBasis * daysBetween
       }
       if (cycleStartDate) twapLastDate = entryDate

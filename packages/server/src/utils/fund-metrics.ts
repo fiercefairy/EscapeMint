@@ -142,11 +142,11 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
 
   // Process all entries
   for (const entry of entries) {
-    // Track days between entries for TWAB
+    // Track days between entries for TWAB (fractional to match client precision)
     if (lastDate && isCashFund) {
-      const daysBetween = Math.max(1, Math.floor(
+      const daysBetween = Math.max(0,
         (new Date(entry.date).getTime() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24)
-      ))
+      )
       twabNumerator += lastCashBalance * daysBetween
     }
 
@@ -163,9 +163,9 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
 
     // Accumulate TWAP before processing this entry's action (use costBasis from before this entry)
     if (!isCashFund && twapLastDate && cycleStartDate) {
-      const daysBetween = Math.max(0, Math.floor(
+      const daysBetween = Math.max(0,
         (new Date(entry.date).getTime() - new Date(twapLastDate).getTime()) / (1000 * 60 * 60 * 24)
-      ))
+      )
       twapNumerator += costBasis * daysBetween
     }
     if (cycleStartDate) twapLastDate = entry.date
@@ -196,7 +196,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         totalSells = 0
         // Freeze active days on full liquidation
         if (cycleStartDate) {
-          const cycleDays = Math.floor(
+          const cycleDays = Math.max(0,
             (new Date(entry.date).getTime() - new Date(cycleStartDate).getTime()) / (1000 * 60 * 60 * 24)
           )
           cumulativeActiveDays += cycleDays
@@ -235,9 +235,9 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
 
   // Add final TWAP period (from last entry to endDate)
   if (!isCashFund && twapLastDate && cycleStartDate) {
-    const finalDays = Math.max(0, Math.floor(
+    const finalDays = Math.max(0,
       (new Date(endDate).getTime() - new Date(twapLastDate).getTime()) / (1000 * 60 * 60 * 24)
-    ))
+    )
     twapNumerator += costBasis * finalDays
   }
 
@@ -246,15 +246,15 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   let daysActive: number
   if (hadFirstBuy) {
     const currentCycleDays = cycleStartDate
-      ? Math.floor((new Date(endDate).getTime() - new Date(cycleStartDate).getTime()) / (1000 * 60 * 60 * 24))
+      ? Math.max(0, (new Date(endDate).getTime() - new Date(cycleStartDate).getTime()) / (1000 * 60 * 60 * 24))
       : 0
     daysActive = Math.max(1, cumulativeActiveDays + currentCycleDays)
   } else {
     // Cash funds, derivatives, or funds with no BUYs: use first entry to last entry
     const startDate = entries.length > 0 ? entries[0]!.date : today
-    daysActive = Math.max(1, Math.floor(
+    daysActive = Math.max(1,
       (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
-    ))
+    )
   }
 
   // Calculate final values
