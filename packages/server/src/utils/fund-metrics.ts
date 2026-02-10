@@ -125,9 +125,9 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   let sumExpenses = 0
   let sumCashInterest = 0
   let sumExtracted = 0
-  let _previousCyclesGain = 0  // Accumulated gains from previous cycles; tracked for future multi-cycle reporting
-  // Track total ever invested across all cycles (for APY calculation on fully liquidated funds)
-  let totalEverInvested = 0
+  // For TWAP calculation (trading funds - time-weighted average position)
+  let twapNumerator = 0
+  let twapLastDate: string | null = null
 
   // For TWAB calculation (cash funds)
   let twabNumerator = 0
@@ -160,14 +160,23 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
     if (entry.expense) sumExpenses += entry.expense
     if (entry.cash_interest) sumCashInterest += entry.cash_interest
 
+    // Accumulate TWAP before processing this entry's action (use costBasis from before this entry)
+    if (!isCashFund && twapLastDate && cycleStartDate) {
+      const daysBetween = Math.max(1, Math.floor(
+        (new Date(entry.date).getTime() - new Date(twapLastDate).getTime()) / (1000 * 60 * 60 * 24)
+      ))
+      twapNumerator += costBasis * daysBetween
+    }
+    if (cycleStartDate) twapLastDate = entry.date
+
     // Process buys and sells
     if (entry.action === 'BUY' && entry.amount) {
       totalBuys += entry.amount
       costBasis += entry.amount
-      totalEverInvested += entry.amount  // Track across all cycles for APY
       // Start active cycle on first BUY (or restart after liquidation)
       if (!cycleStartDate) {
         cycleStartDate = entry.date
+        twapLastDate = entry.date
         hadFirstBuy = true
       }
     } else if (entry.action === 'SELL' && entry.amount) {
@@ -181,7 +190,6 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
       let extracted = 0
       if (isFullLiquidation) {
         extracted = entry.amount - costBasis
-        _previousCyclesGain += extracted
         costBasis = 0
         totalBuys = 0
         totalSells = 0
@@ -223,6 +231,14 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   const latestEntry = entries[entries.length - 1]
   const today = new Date().toISOString().slice(0, 10)
   const endDate = latestEntry?.date ?? today
+
+  // Add final TWAP period (from last entry to endDate)
+  if (!isCashFund && twapLastDate && cycleStartDate) {
+    const finalDays = Math.max(0, Math.floor(
+      (new Date(endDate).getTime() - new Date(twapLastDate).getTime()) / (1000 * 60 * 60 * 24)
+    ))
+    twapNumerator += costBasis * finalDays
+  }
 
   // Compute active days: cumulative completed cycles + current cycle (if active)
   // For cash/derivatives funds or funds that never had a BUY, fall back to calendar days
@@ -305,13 +321,9 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         liquidApy = realizedApy
       }
     } else {
-      // Trading fund APY: based on invested capital
-      // Use totalEverInvested as fallback for fully liquidated funds with realized gains
-      // After full liquidation, use totalEverInvested so realized gains from previous cycles
-      // are measured against cumulative capital deployed, not just the new cycle's investment
-      const denominator = _previousCyclesGain !== 0
-        ? (totalEverInvested > 0 ? totalEverInvested : currentValue)
-        : (netInvested > 0 ? netInvested : (costBasis > 0 ? costBasis : (totalEverInvested > 0 ? totalEverInvested : currentValue)))
+      // Trading fund APY: use TWAP (time-weighted average position) as denominator
+      const twap = daysActive > 0 ? twapNumerator / daysActive : costBasis
+      const denominator = twap > 0 ? twap : (costBasis > 0 ? costBasis : 1)
       if (denominator > 0) {
         const realizedReturnPct = realized / denominator
         const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)

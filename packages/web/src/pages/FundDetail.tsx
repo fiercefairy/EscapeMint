@@ -227,7 +227,6 @@ export function FundDetail() {
     let costBasis = 0
     let sumExtracted = 0
     let previousCyclesGain = 0 // Realized gains from previous liquidation cycles
-    let totalEverInvested = 0 // Track total invested across all cycles (for APY after liquidation)
 
     // Active days tracking: only count time with capital deployed
     let cycleStartDate: Date | null = null
@@ -237,6 +236,10 @@ export function FundDetail() {
     let twabNumerator = 0 // sum of (balance * days)
     let lastCashBalance = 0
     let lastEntryDate = firstEntryDate
+
+    // For trading fund TWAP (Time-Weighted Average Position) calculation
+    let twapNumerator = 0
+    let twapLastDate: Date | null = null
 
     return sorted.map((entry, index) => {
       const entryDate = new Date(entry.date)
@@ -329,6 +332,13 @@ export function FundDetail() {
       const netInvestedBefore = totalBuys - totalSells
       const cash = !manageCash ? 0 : (fundSize === 0 ? 0 : Math.max(0, fundSize - netInvestedBefore))
 
+      // Accumulate TWAP before processing this entry's action (use costBasis from before this entry)
+      if (!isCashFundType && twapLastDate && cycleStartDate) {
+        const daysBetween = Math.max(1, Math.floor((entryDate.getTime() - twapLastDate.getTime()) / (1000 * 60 * 60 * 24)))
+        twapNumerator += costBasis * daysBetween
+      }
+      if (cycleStartDate) twapLastDate = entryDate
+
       // NOW process this row's buy/sell action (for next iteration and display)
       let extracted = 0
       const isAccumulate = fund.config.accumulate
@@ -336,10 +346,10 @@ export function FundDetail() {
       if (entry.action === 'BUY' && entry.amount) {
         totalBuys += entry.amount
         costBasis += entry.amount
-        totalEverInvested += entry.amount // Track across all cycles for APY
         // Start active cycle on first BUY (or restart after liquidation)
         if (!cycleStartDate) {
           cycleStartDate = entryDate
+          twapLastDate = entryDate
         }
       } else if (entry.action === 'SELL' && entry.amount) {
         // Check if this is a full liquidation
@@ -469,9 +479,8 @@ export function FundDetail() {
         // meaningful APY that represents the strategy's return rate on deployed capital
         // After full liquidation, use totalEverInvested so realized gains from previous cycles
         // are measured against cumulative capital deployed, not just the new cycle's investment
-        const investedDenominator = previousCyclesGain !== 0
-          ? (totalEverInvested > 0 ? totalEverInvested : denominatorValue)
-          : (netInvested > 0 ? netInvested : (costBasis > 0 ? costBasis : (totalEverInvested > 0 ? totalEverInvested : denominatorValue)))
+        const twap = activeDays > 0 ? twapNumerator / activeDays : costBasis
+        const investedDenominator = twap > 0 ? twap : (costBasis > 0 ? costBasis : 1)
 
         // Calculate Realized APY (based only on realized gains relative to invested)
         const realizedReturnPct = investedDenominator > 0 ? realized / investedDenominator : 0

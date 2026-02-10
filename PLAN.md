@@ -21,6 +21,9 @@ See the [docs/](./docs/) folder for detailed documentation:
 
 ## Recently Completed
 
+### TWAP Denominator for Trading Fund APY
+Replaced snapshot-based denominator (netInvested/totalEverInvested) with Time-Weighted Average Position (TWAP) for trading fund APY. Tracks `costBasis * days` during active periods so multi-cycle funds reflect actual average capital deployed. Matches existing TWAB pattern for cash funds.
+
 ### Remove start_date from Config + Active Days APY Tracking
 Removed redundant `start_date` from fund config (derived from first entry instead). APY now calculated using **active days** (time with capital deployed) rather than calendar days, so idle gaps after full liquidation don't dilute APY.
 
