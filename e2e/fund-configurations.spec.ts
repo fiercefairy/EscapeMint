@@ -21,7 +21,6 @@ test.describe('Fund Configurations', () => {
         fund_size_usd: 10000,
         cash_apy: 0, // Disable interest to test pure cash management
         interest_reinvest: false,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -58,7 +57,6 @@ test.describe('Fund Configurations', () => {
       const config = generateTestConfig({
         manage_cash: false,
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -95,7 +93,6 @@ test.describe('Fund Configurations', () => {
         fund_size_usd: 5000,
         cash_apy: 0, // Disable interest to test pure deposits/withdrawals
         interest_reinvest: false,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -147,7 +144,6 @@ test.describe('Fund Configurations', () => {
         target_apy: 0.10, // 10% target
         min_profit_usd: 50,
         input_min_usd: 100,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -187,7 +183,6 @@ test.describe('Fund Configurations', () => {
         fund_size_usd: 10000,
         target_apy: 0.10,
         min_profit_usd: 50,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -226,7 +221,6 @@ test.describe('Fund Configurations', () => {
         margin_access_usd: 5000,
         margin_apr: 0.0725,
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -267,7 +261,6 @@ test.describe('Fund Configurations', () => {
         margin_enabled: false,
         margin_access_usd: 0,
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -297,7 +290,6 @@ test.describe('Fund Configurations', () => {
         interest_reinvest: false, // Disable to isolate dividend behavior
         fund_size_usd: 10000,
         cash_apy: 0, // No interest to isolate dividend behavior
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -332,7 +324,6 @@ test.describe('Fund Configurations', () => {
       const config = generateTestConfig({
         dividend_reinvest: false,
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -370,7 +361,6 @@ test.describe('Fund Configurations', () => {
         dividend_reinvest: false, // Disable to isolate interest behavior
         cash_apy: 0.05, // 5%
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -408,7 +398,6 @@ test.describe('Fund Configurations', () => {
         interest_reinvest: false,
         cash_apy: 0.05,
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -447,7 +436,6 @@ test.describe('Fund Configurations', () => {
         dividend_reinvest: false,
         cash_apy: 0,
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -485,7 +473,6 @@ test.describe('Fund Configurations', () => {
         dividend_reinvest: false,
         cash_apy: 0,
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -526,7 +513,6 @@ test.describe('Fund Configurations', () => {
         max_at_pct: -0.25,
         target_apy: 0.30,
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -565,7 +551,6 @@ test.describe('Fund Configurations', () => {
         max_at_pct: -0.25,
         target_apy: 0.30,
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -604,7 +589,6 @@ test.describe('Fund Configurations', () => {
         max_at_pct: -0.25,
         target_apy: 0.30,
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -641,7 +625,6 @@ test.describe('Fund Configurations', () => {
       const config = generateTestConfig({
         fund_size_usd: 0,
         status: 'closed',
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -659,7 +642,6 @@ test.describe('Fund Configurations', () => {
       const config = generateTestConfig({
         fund_size_usd: 10000,
         target_apy: 0.25,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)

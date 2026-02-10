@@ -32,7 +32,6 @@ test.describe('Yearly Fund Simulations', () => {
         input_min_usd: 200,
         input_mid_usd: 400,
         input_max_usd: 800,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -88,7 +87,7 @@ test.describe('Yearly Fund Simulations', () => {
       const finalState = await getFundStateViaAPI(page, fund.id)
 
       // Verify start_input matches our tracked trades
-      const expectedStartInput = computeStartInput(trades, currentDate)
+      const expectedStartInput = computeStartInput(trades, currentDate, config.accumulate)
       expect(finalState.state!.start_input_usd).toBeCloseTo(expectedStartInput, 0)
 
       // In a bull market, if we still have a position, we should have positive gains
@@ -117,7 +116,6 @@ test.describe('Yearly Fund Simulations', () => {
         input_mid_usd: 300,
         input_max_usd: 600,
         max_at_pct: -0.25,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -184,7 +182,6 @@ test.describe('Yearly Fund Simulations', () => {
         input_min_usd: 100,
         min_profit_usd: 50,
         accumulate: true,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -265,7 +262,6 @@ test.describe('Yearly Fund Simulations', () => {
         input_mid_usd: 500,
         input_max_usd: 1000,
         max_at_pct: -0.30,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -355,7 +351,6 @@ test.describe('Yearly Fund Simulations', () => {
         dividend_reinvest: true,
         interest_reinvest: true,
         interval_days: 7,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -449,7 +444,6 @@ test.describe('Yearly Fund Simulations', () => {
         input_min_usd: 100,
         min_profit_usd: 200,
         accumulate: true,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -547,7 +541,7 @@ test.describe('Yearly Fund Simulations', () => {
         }
       }
       const finalEntry = fundData.entries[fundData.entries.length - 1]
-      const expectedStartInput = computeStartInput(trades, finalEntry.date)
+      const expectedStartInput = computeStartInput(trades, finalEntry.date, config.accumulate)
       expect(finalState.state!.start_input_usd).toBeCloseTo(expectedStartInput, 0)
 
       // Verify entry count
@@ -571,7 +565,6 @@ test.describe('Yearly Fund Simulations', () => {
         cash_apy: 0, // Disable interest to test pure invariant
         interest_reinvest: false, // No interest accumulation
         dividend_reinvest: false, // No dividend accumulation
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -618,7 +611,6 @@ test.describe('Yearly Fund Simulations', () => {
       const ticker = TEST_TICKERS.SIMULATION.INVARIANT_GAIN
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -657,7 +649,6 @@ test.describe('Yearly Fund Simulations', () => {
         fund_size_usd: 10000,
         min_profit_usd: 10,
         accumulate: false, // Full liquidation
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)

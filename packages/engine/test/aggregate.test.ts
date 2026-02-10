@@ -208,7 +208,6 @@ describe('computeFundMetrics', () => {
     margin_apr: 0.0725,
     margin_access_usd: 0,
     accumulate: false,
-    start_date: '2024-01-01',
     status: 'active',
     fund_type: 'stock'
   }

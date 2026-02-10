@@ -4,6 +4,15 @@ import { isCashFund as checkIsCashFund } from './fund-type-config.js'
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 const DAYS_PER_YEAR = 365
 
+/**
+ * Derives fund start date from the first entry.
+ * Falls back to today if no entries exist.
+ */
+export function getFundStartDate(entries: { date: string }[]): string {
+  if (entries.length > 0) return entries[0]!.date
+  return new Date().toISOString().slice(0, 10)
+}
+
 function daysBetween(startDate: string, endDate: string): number {
   const start = new Date(startDate)
   const end = new Date(endDate)
@@ -222,13 +231,25 @@ export function computeFundMetrics(
   asOfDate: string,
   cashFlows?: CashFlow[]
 ): FundMetrics {
-  const daysActive = daysBetween(config.start_date, asOfDate)
   const isCashFund = checkIsCashFund(config.fund_type)
+
+  // Derive start date from first trade/cashflow, not config
+  const today = new Date().toISOString().slice(0, 10)
+  let startDate: string
+  if (isCashFund && cashFlows && cashFlows.length > 0) {
+    startDate = getFundStartDate(cashFlows)
+  } else if (trades.length > 0) {
+    startDate = getFundStartDate(trades)
+  } else {
+    startDate = today
+  }
+
+  const daysActive = daysBetween(startDate, asOfDate)
 
   // For cash funds, use cash flows for TWFS; for trading funds, use trades
   const timeWeightedFundSize = isCashFund && cashFlows
-    ? computeCashFundTimeWeightedSize(cashFlows, config.start_date, asOfDate)
-    : computeTimeWeightedFundSize(trades, config.start_date, asOfDate)
+    ? computeCashFundTimeWeightedSize(cashFlows, startDate, asOfDate)
+    : computeTimeWeightedFundSize(trades, startDate, asOfDate)
 
   const realizedGains = state?.realized_gains_usd ?? 0
   const realizedAPY = computeRealizedAPY(realizedGains, timeWeightedFundSize, daysActive)

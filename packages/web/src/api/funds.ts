@@ -48,7 +48,7 @@ export interface FundConfig {
   interest_reinvest?: boolean
   expense_from_fund?: boolean
   cash_fund?: string  // ID of cash fund to use when manage_cash=false
-  start_date: string
+  start_date?: string
   chart_bounds?: Record<string, ChartBounds>
   charts_collapsed?: boolean
   entries_column_order?: string[]

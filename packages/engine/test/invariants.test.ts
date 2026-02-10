@@ -26,7 +26,6 @@ const baseConfig: SubFundConfig = {
   margin_apr: 0.0725,
   margin_access_usd: 0,
   accumulate: false,
-  start_date: '2024-01-01'
 }
 
 // Helper to generate random trades

@@ -65,7 +65,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
     const lastState = derivStates[derivStates.length - 1]
 
     if (lastState) {
-      const startDate = config.start_date ?? entries[0]?.date ?? new Date().toISOString().split('T')[0]
+      const startDate = entries.length > 0 ? entries[0]!.date : new Date().toISOString().slice(0, 10)
       const endDate = lastState.date
       const daysActive = Math.max(1, Math.floor(
         (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
@@ -134,6 +134,11 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
   let lastCashBalance = 0
   let lastDate: string | null = null
 
+  // Active days tracking: only count time when capital is deployed
+  let cycleStartDate: string | null = null
+  let cumulativeActiveDays = 0
+  let hadFirstBuy = false
+
   // Process all entries
   for (const entry of entries) {
     // Track days between entries for TWAB
@@ -160,6 +165,11 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
       totalBuys += entry.amount
       costBasis += entry.amount
       totalEverInvested += entry.amount  // Track across all cycles for APY
+      // Start active cycle on first BUY (or restart after liquidation)
+      if (!cycleStartDate) {
+        cycleStartDate = entry.date
+        hadFirstBuy = true
+      }
     } else if (entry.action === 'SELL' && entry.amount) {
       // Check for full liquidation
       const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
@@ -175,6 +185,14 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         costBasis = 0
         totalBuys = 0
         totalSells = 0
+        // Freeze active days on full liquidation
+        if (cycleStartDate) {
+          const cycleDays = Math.floor(
+            (new Date(entry.date).getTime() - new Date(cycleStartDate).getTime()) / (1000 * 60 * 60 * 24)
+          )
+          cumulativeActiveDays += cycleDays
+          cycleStartDate = null
+        }
       } else if (isAccumulate) {
         // Accumulate mode: entire sell is profit extraction
         extracted = entry.amount
@@ -203,12 +221,24 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
 
   // Get latest entry for final values
   const latestEntry = entries[entries.length - 1]
-  const today = new Date().toISOString().split('T')[0] as string
-  const startDate = config.start_date ?? entries[0]?.date ?? today
+  const today = new Date().toISOString().slice(0, 10)
   const endDate = latestEntry?.date ?? today
-  const daysActive = Math.max(1, Math.floor(
-    (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
-  ))
+
+  // Compute active days: cumulative completed cycles + current cycle (if active)
+  // For cash/derivatives funds or funds that never had a BUY, fall back to calendar days
+  let daysActive: number
+  if (hadFirstBuy) {
+    const currentCycleDays = cycleStartDate
+      ? Math.floor((new Date(endDate).getTime() - new Date(cycleStartDate).getTime()) / (1000 * 60 * 60 * 24))
+      : 0
+    daysActive = Math.max(1, cumulativeActiveDays + currentCycleDays)
+  } else {
+    // Cash funds, derivatives, or funds with no BUYs: use first entry to last entry
+    const startDate = entries.length > 0 ? entries[0]!.date : today
+    daysActive = Math.max(1, Math.floor(
+      (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
+    ))
+  }
 
   // Calculate final values
   const netInvested = Math.max(0, totalBuys - totalSells)
@@ -277,7 +307,11 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
     } else {
       // Trading fund APY: based on invested capital
       // Use totalEverInvested as fallback for fully liquidated funds with realized gains
-      const denominator = netInvested > 0 ? netInvested : (costBasis > 0 ? costBasis : (totalEverInvested > 0 ? totalEverInvested : currentValue))
+      // After full liquidation, use totalEverInvested so realized gains from previous cycles
+      // are measured against cumulative capital deployed, not just the new cycle's investment
+      const denominator = _previousCyclesGain !== 0
+        ? (totalEverInvested > 0 ? totalEverInvested : currentValue)
+        : (netInvested > 0 ? netInvested : (costBasis > 0 ? costBasis : (totalEverInvested > 0 ? totalEverInvested : currentValue)))
       if (denominator > 0) {
         const realizedReturnPct = realized / denominator
         const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)

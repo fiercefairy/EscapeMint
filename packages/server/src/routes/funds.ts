@@ -363,10 +363,10 @@ fundsRouter.get('/history', async (req, res, next) => {
   }
   const sortedDates = Array.from(allDates).sort()
 
-  // Find the earliest fund start date for APY calculations
+  // Find the earliest fund start date for APY calculations (from first entry)
   const earliestStartDate = funds.reduce((earliest, fund) => {
-    const startDate = fund.config.start_date
-    return !earliest || startDate < earliest ? startDate : earliest
+    const startDate = fund.entries[0]?.date
+    return startDate && (!earliest || startDate < earliest) ? startDate : earliest
   }, '' as string)
 
   // Build time series data
@@ -1145,7 +1145,6 @@ fundsRouter.post('/', async (req, res, next) => {
       await writePlatformsData(platformsData)
 
       // Create the cash fund
-      const today = new Date().toISOString().split('T')[0] as string
       const cashFundConfig: FundData['config'] = {
         fund_type: 'cash',
         status: 'active',
@@ -1161,8 +1160,7 @@ fundsRouter.post('/', async (req, res, next) => {
         margin_apr: 0,
         margin_access_usd: 0,
         accumulate: true,
-        manage_cash: true,
-        start_date: today
+        manage_cash: true
       }
 
       const cashFundData: FundData = {

@@ -169,9 +169,10 @@ export interface SubFundConfig {
   cash_fund?: string
 
   /**
-   * Date when the fund tracking begins (ISO 8601 date: YYYY-MM-DD).
+   * @deprecated No longer used - start date is derived from first entry date.
+   * Kept optional for backward compatibility with existing JSON configs.
    */
-  start_date: string
+  start_date?: string
 
   /**
    * Optional chart display settings for Y-axis bounds.

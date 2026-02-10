@@ -197,7 +197,6 @@ export function FundDetail() {
   const computedEntries = useMemo(() => {
     if (!fund) return []
 
-    const startDate = new Date(fund.config.start_date)
     // Track original index before sorting
     const entriesWithOriginalIndex = fund.entries.map((entry, originalIndex) => ({
       ...entry,
@@ -206,6 +205,9 @@ export function FundDetail() {
     const sorted = entriesWithOriginalIndex.sort((a, b) =>
       new Date(a.date).getTime() - new Date(b.date).getTime()
     )
+
+    // Start date derived from first entry (no config dependency)
+    const firstEntryDate = sorted.length > 0 ? new Date(sorted[0].date) : new Date()
 
     // For derivatives funds, use server-computed state if available
     const isDerivativesFund = checkIsDerivativesFund(fund.config.fund_type)
@@ -227,10 +229,14 @@ export function FundDetail() {
     let previousCyclesGain = 0 // Realized gains from previous liquidation cycles
     let totalEverInvested = 0 // Track total invested across all cycles (for APY after liquidation)
 
+    // Active days tracking: only count time with capital deployed
+    let cycleStartDate: Date | null = null
+    let cumulativeActiveDays = 0
+
     // For cash fund TWAB (Time-Weighted Average Balance) calculation
     let twabNumerator = 0 // sum of (balance * days)
     let lastCashBalance = 0
-    let lastEntryDate = startDate
+    let lastEntryDate = firstEntryDate
 
     return sorted.map((entry, index) => {
       const entryDate = new Date(entry.date)
@@ -287,7 +293,15 @@ export function FundDetail() {
       const totalMoneyOut = entry.value + sumSellProceeds + sumDividends + sumCashInterest - sumExpenses + previousCyclesGain
       const totalReturn = totalMoneyOut - totalBuys
 
-      const daysElapsed = Math.max(1, (entryDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+      // Active days: cumulative completed cycles + current cycle (if active)
+      // For cash funds or entries before first BUY, fall back to calendar days from first entry
+      const calendarDays = (entryDate.getTime() - firstEntryDate.getTime()) / (1000 * 60 * 60 * 24)
+      const currentCycleDays = cycleStartDate
+        ? (entryDate.getTime() - cycleStartDate.getTime()) / (1000 * 60 * 60 * 24)
+        : 0
+      const activeDays = Math.max(1, cycleStartDate || cumulativeActiveDays > 0
+        ? cumulativeActiveDays + currentCycleDays
+        : calendarDays)
       const isFirstEntry = index === 0
 
       // For APY calculation, use current value if > 0, otherwise use last non-zero value
@@ -296,7 +310,7 @@ export function FundDetail() {
       // Annualize: APY = (1 + returnPct)^(365/days) - 1
       // Clamp returnPct to avoid NaN from Math.pow with negative base
       const clampedReturnPct = Math.max(-0.99, returnPct)
-      let apy = isFirstEntry ? 0 : (daysElapsed > 0 ? Math.pow(1 + clampedReturnPct, 365 / daysElapsed) - 1 : 0)
+      let apy = isFirstEntry ? 0 : (activeDays > 0 ? Math.pow(1 + clampedReturnPct, 365 / activeDays) - 1 : 0)
 
       // If value is 0 (closed fund), preserve the last valid APY
       if (entry.value === 0 && lastApy !== 0) {
@@ -323,6 +337,10 @@ export function FundDetail() {
         totalBuys += entry.amount
         costBasis += entry.amount
         totalEverInvested += entry.amount // Track across all cycles for APY
+        // Start active cycle on first BUY (or restart after liquidation)
+        if (!cycleStartDate) {
+          cycleStartDate = entryDate
+        }
       } else if (entry.action === 'SELL' && entry.amount) {
         // Check if this is a full liquidation
         // Use sumShares check if fund has share tracking, AND value-based check as fallback
@@ -352,6 +370,11 @@ export function FundDetail() {
           totalBuys = 0
           totalSells = 0
           sumSellProceeds = 0
+          // Freeze active days on full liquidation
+          if (cycleStartDate) {
+            cumulativeActiveDays += Math.max(0, (entryDate.getTime() - cycleStartDate.getTime()) / (1000 * 60 * 60 * 24))
+            cycleStartDate = null
+          }
         } else {
           // Partial sell
           if (isAccumulate) {
@@ -426,7 +449,7 @@ export function FundDetail() {
         } else {
           // Calculate TWAB: sum(balance * days) / total_days
           // twabNumerator already accumulated up to this entry
-          const twab = daysElapsed > 0 ? twabNumerator / daysElapsed : lastCashBalance
+          const twab = activeDays > 0 ? twabNumerator / activeDays : lastCashBalance
 
           // Use TWAB as denominator, fall back to current balance if TWAB is 0
           const cashDenominator = twab > 0 ? twab : (fundSize > 0 ? fundSize : 1)
@@ -434,7 +457,7 @@ export function FundDetail() {
           const cashReturnPct = realized / cashDenominator
           // APY = (1 + return)^(365/days) - 1
           const clampedCashPct = Math.max(-0.99, Math.min(cashReturnPct, 1))
-          realizedApy = daysElapsed > 0 ? Math.pow(1 + clampedCashPct, 365 / daysElapsed) - 1 : 0
+          realizedApy = activeDays > 0 ? Math.pow(1 + clampedCashPct, 365 / activeDays) - 1 : 0
           // Cap APY at reasonable bounds (-99% to 1000%)
           realizedApy = Math.max(-0.99, Math.min(realizedApy, 10))
           liquidApy = realizedApy
@@ -444,23 +467,28 @@ export function FundDetail() {
         // This matches the platform page calculation and reflects actual strategy performance
         // For harvest mode funds that recycle capital, using netInvested (current cycle) gives
         // meaningful APY that represents the strategy's return rate on deployed capital
-        const investedDenominator = netInvested > 0 ? netInvested : (costBasis > 0 ? costBasis : (totalEverInvested > 0 ? totalEverInvested : denominatorValue))
+        // After full liquidation, use totalEverInvested so realized gains from previous cycles
+        // are measured against cumulative capital deployed, not just the new cycle's investment
+        const investedDenominator = previousCyclesGain !== 0
+          ? (totalEverInvested > 0 ? totalEverInvested : denominatorValue)
+          : (netInvested > 0 ? netInvested : (costBasis > 0 ? costBasis : (totalEverInvested > 0 ? totalEverInvested : denominatorValue)))
 
         // Calculate Realized APY (based only on realized gains relative to invested)
         const realizedReturnPct = investedDenominator > 0 ? realized / investedDenominator : 0
         const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
-        realizedApy = isFirstEntry ? 0 : (daysElapsed > 0 ? Math.pow(1 + clampedRealizedPct, 365 / daysElapsed) - 1 : 0)
+        realizedApy = isFirstEntry ? 0 : (activeDays > 0 ? Math.pow(1 + clampedRealizedPct, 365 / activeDays) - 1 : 0)
 
         // Liquid APY = based on liquid P&L relative to invested capital
         const liquidReturnPct = investedDenominator > 0 ? liquidPnl / investedDenominator : 0
         const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
-        liquidApy = isFirstEntry ? 0 : (daysElapsed > 0 ? Math.pow(1 + clampedLiquidPct, 365 / daysElapsed) - 1 : 0)
+        liquidApy = isFirstEntry ? 0 : (activeDays > 0 ? Math.pow(1 + clampedLiquidPct, 365 / activeDays) - 1 : 0)
       }
 
       // If value is 0 (closed fund), preserve the last valid APYs
       // But NOT for cash funds - a $0 pre-action value before DEPOSIT is normal
-      if (!localIsCashFund && entry.value === 0 && lastApy !== 0) {
-        realizedApy = lastApy // For closed funds, realized = liquid
+      // Preserve last APY for closed funds (value=0), but NOT for new cycle BUYs after liquidation
+      if (!localIsCashFund && entry.value === 0 && lastApy !== 0 && entry.action !== 'BUY') {
+        realizedApy = lastApy
         liquidApy = lastApy
       }
 
@@ -527,19 +555,19 @@ export function FundDetail() {
         // Calculate derivatives-specific APY
         let derivRealizedApy = 0
         let derivLiquidApy = 0
-        if (!isFirstEntry && daysElapsed > 0 && derivDenominator > 0) {
+        if (!isFirstEntry && activeDays > 0 && derivDenominator > 0) {
           // Realized APY: based on realized gains relative to capital
           const realizedPlusFunding = derivState.realizedPnl + derivState.sumFunding +
             derivState.sumInterest + derivState.sumRebates
           const realizedReturnPct = realizedPlusFunding / derivDenominator
           const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
-          derivRealizedApy = Math.pow(1 + clampedRealizedPct, 365 / daysElapsed) - 1
+          derivRealizedApy = Math.pow(1 + clampedRealizedPct, 365 / activeDays) - 1
           derivRealizedApy = Math.max(-0.99, Math.min(derivRealizedApy, 10))
 
           // Liquid APY: based on total P&L (including unrealized) relative to capital
           const liquidReturnPct = derivLiquidPnl / derivDenominator
           const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
-          derivLiquidApy = Math.pow(1 + clampedLiquidPct, 365 / daysElapsed) - 1
+          derivLiquidApy = Math.pow(1 + clampedLiquidPct, 365 / activeDays) - 1
           derivLiquidApy = Math.max(-0.99, Math.min(derivLiquidApy, 10))
         }
 
@@ -1619,7 +1647,7 @@ export function FundDetail() {
           onReload={loadData}
           showCoinbaseUpdate={isDerivativesFund}
           lastEntryDate={fund.entries.length > 0 ? fund.entries[fund.entries.length - 1]?.date : undefined}
-          fundStartDate={fund.config.start_date}
+          fundStartDate={fund.entries.length > 0 ? fund.entries[0]?.date : undefined}
         />
 
         {/* Take Action Modal */}

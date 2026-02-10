@@ -19,7 +19,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.EDIT_BUY
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -71,7 +70,6 @@ test.describe('Fund Data Integrity Tests', () => {
         manage_cash: true,
         cash_apy: 0, // Disable interest to test pure fund_size propagation
         interest_reinvest: false,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -130,7 +128,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.EDIT_VALUE
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -167,7 +164,7 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.CHANGE_ACTION
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
+        accumulate: false, // Harvest mode: sells reduce cost basis
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -176,14 +173,16 @@ test.describe('Fund Data Integrity Tests', () => {
         date: '2024-01-01',
         value: 1000,
         action: 'BUY',
-        amount: 1000
+        amount: 1000,
+        shares: 10
       })
 
       await addEntryViaAPI(page, fund.id, {
         date: '2024-01-08',
         value: 1200,
         action: 'BUY',
-        amount: 200
+        amount: 200,
+        shares: 2
       })
 
       // Initial state: start_input = 1200
@@ -195,10 +194,12 @@ test.describe('Fund Data Integrity Tests', () => {
         date: '2024-01-08',
         value: 800, // Value after selling
         action: 'SELL',
-        amount: 200
+        amount: 200,
+        shares: 2
       })
 
-      // Now start_input should be 1000 - 200 = 800
+      // Harvest mode: sell 2 of 10 shares = 1/5 of cost basis
+      // Cost basis sold = 1000 * (2/10) = 200, remaining = 800
       stateResult = await getFundStateViaAPI(page, fund.id)
       expect(stateResult.state!.start_input_usd).toBe(800)
 
@@ -211,7 +212,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.DELETE_MIDDLE
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -259,7 +259,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.DELETE_FIRST
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -292,7 +291,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.DELETE_LAST
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -327,7 +325,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.DATE_ORDER
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -367,7 +364,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const config = generateTestConfig({
         fund_size_usd: 10000,
         target_apy: 0.25,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -410,7 +406,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const config = generateTestConfig({
         fund_size_usd: 10000,
         dividend_reinvest: true,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -453,7 +448,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const config = generateTestConfig({
         fund_size_usd: 10000,
         expense_from_fund: true,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -496,7 +490,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.FUND_SIZE_PROP
       const config = generateTestConfig({
         fund_size_usd: 5000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -554,7 +547,6 @@ test.describe('Fund Data Integrity Tests', () => {
         fund_size_usd: 10000,
         cash_apy: 0, // Disable interest to test pure deposit/withdrawal netting
         interest_reinvest: false,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -608,7 +600,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.ZERO_VALUE
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -644,7 +635,6 @@ test.describe('Fund Data Integrity Tests', () => {
         input_min_usd: 0.01,
         input_mid_usd: 0.02,
         input_max_usd: 0.05,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -678,7 +668,6 @@ test.describe('Fund Data Integrity Tests', () => {
         input_min_usd: 50000,
         input_mid_usd: 100000,
         input_max_usd: 250000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -709,7 +698,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.NEGATIVE_VALUES
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -744,7 +732,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.FULL_LIQUIDATION
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -797,7 +784,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.SHARES_ACCUM
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -835,7 +821,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.SHARES_EDIT
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -874,7 +859,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.NOTES
       const config = generateTestConfig({
         fund_size_usd: 10000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)
@@ -906,7 +890,6 @@ test.describe('Fund Data Integrity Tests', () => {
       const ticker = TEST_TICKERS.INTEGRITY.DEPOSIT_NOTES
       const config = generateTestConfig({
         fund_size_usd: 5000,
-        start_date: '2024-01-01'
       })
 
       const fund = await createFundViaAPI(page, TEST_PLATFORM, ticker, config)

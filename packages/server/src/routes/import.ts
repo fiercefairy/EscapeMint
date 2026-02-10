@@ -6431,19 +6431,16 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
   // Determine stop date
   let stopDate = stopDateParam
 
-  // If fundId provided, try to get fund start date
+  // If fundId provided, try to get first entry date as stop date
   if (fundId && !stopDate) {
-    sendEvent('status', { message: 'Loading fund configuration...', phase: 'loading' })
+    sendEvent('status', { message: 'Loading fund data...', phase: 'loading' })
 
-    // Try to get fund start date from fund config
-    const fundConfigPath = join(process.cwd(), '..', '..', 'data', 'funds', fundId, 'fund.json')
-    const fundContent = await readFile(fundConfigPath, 'utf-8').catch(() => null)
-    if (fundContent) {
-      const fundConfig = JSON.parse(fundContent)
-      if (fundConfig.start_date) {
-        stopDate = fundConfig.start_date
-        log.debug(`[Coinbase TX] Using fund start date as stop date: ${stopDate}`)
-      }
+    const fundData = await readFund(fundId).catch(() => null)
+    if (fundData?.entries?.length) {
+      // Use first entry date (entries are chronological)
+      const sorted = [...fundData.entries].sort((a, b) => a.date.localeCompare(b.date))
+      stopDate = sorted[0]!.date
+      log.debug(`[Coinbase TX] Using first entry date as stop date: ${stopDate}`)
     }
   }
 
@@ -6538,20 +6535,25 @@ importRouter.get('/coinbase/transactions/scrape-stream', async (req, res) => {
     const perpTxns = archive.transactions.filter(t => t.isPerpRelated)
     const allEntries: FundEntry[] = []
 
+    // Consolidate transactions by date (combine same-day REBATE, FUNDING, INTEREST into single entries)
+    const consolidatedEntries = consolidateCoinbaseTransactionsByDate(perpTxns)
+
     // Add initial deposit from config if set (for derivatives funds)
+    // Use earliest transaction date as the deposit date
     const initialDeposit = (fund.config as { initial_deposit?: number }).initial_deposit
     if (initialDeposit && initialDeposit > 0) {
+      const sortedConsolidated = [...consolidatedEntries].sort((a, b) => a.date.localeCompare(b.date))
+      const earliestTxDate = sortedConsolidated.length > 0
+        ? sortedConsolidated[0]!.date
+        : new Date().toISOString().slice(0, 10)
       allEntries.push({
-        date: fund.config.start_date,
+        date: earliestTxDate,
         value: 0,
         action: 'DEPOSIT',
         amount: initialDeposit,
         notes: 'Initial margin deposit'
       })
     }
-
-    // Consolidate transactions by date (combine same-day REBATE, FUNDING, INTEREST into single entries)
-    const consolidatedEntries = consolidateCoinbaseTransactionsByDate(perpTxns)
     allEntries.push(...consolidatedEntries)
 
     // Re-add preserved HOLD entries with cash balance
@@ -6740,8 +6742,11 @@ importRouter.post('/coinbase/transactions/apply', async (req, res) => {
     // Add initial deposit from config if set (for derivatives funds)
     const initialDeposit = (fund.config as { initial_deposit?: number }).initial_deposit
     if (initialDeposit && initialDeposit > 0) {
+      // Use earliest selected transaction date as deposit date
+      const sortedTxs = [...selectedTxs].sort((a, b) => a.date.localeCompare(b.date))
+      const earliestTxDate = sortedTxs.length > 0 ? sortedTxs[0]!.date : new Date().toISOString().slice(0, 10)
       fund.entries.push({
-        date: fund.config.start_date,
+        date: earliestTxDate,
         value: 0,
         action: 'DEPOSIT',
         amount: initialDeposit,

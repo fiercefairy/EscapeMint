@@ -880,8 +880,7 @@ platformsRouter.post('/:id/enable-cash-tracking', async (req, res, next) => {
     margin_apr: 0,
     margin_access_usd: latestMarginAvailable,
     accumulate: true,
-    manage_cash: true,
-    start_date: earliestDate
+    manage_cash: true
   }
 
   const cashFundData: FundData = {

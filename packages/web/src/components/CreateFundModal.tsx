@@ -48,8 +48,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     margin_enabled: false,
     dividend_reinvest: true,
     interest_reinvest: true,
-    expense_from_fund: true,
-    start_date: new Date().toISOString().slice(0, 10)
+    expense_from_fund: true
   })
 
   const features = getFundTypeFeatures(fundType)
@@ -137,8 +136,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
       margin_enabled: features.allowsTrading ? formData.margin_enabled : (defaults.margin_enabled ?? false),
       dividend_reinvest: formData.dividend_reinvest,
       interest_reinvest: formData.interest_reinvest,
-      expense_from_fund: formData.expense_from_fund,
-      start_date: formData.start_date || new Date().toISOString().slice(0, 10)
+      expense_from_fund: formData.expense_from_fund
     }
 
     const result = await createFund({
@@ -362,16 +360,6 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                 />
               </div>
             )}
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Start Date</label>
-              <input
-                type="date"
-                value={formData.start_date}
-                onChange={e => setFormData({ ...formData, start_date: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                required
-              />
-            </div>
           </div>
 
           {/* Trading Fund: Target APY and Interval */}
