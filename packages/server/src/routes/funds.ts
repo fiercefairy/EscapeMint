@@ -81,9 +81,8 @@ async function writePlatformsData(data: Record<string, PlatformConfig>): Promise
  * Query params:
  *   - include_test: 'true' to include test platform funds (default: false)
  */
-// Test platforms: 'test' or any platform ending in 'test' (with or without dash)
-const isTestPlatform = (platform: string) =>
-  platform === 'test' || platform.endsWith('test')
+// Test platforms: any platform starting with 'test' (matches global-setup/teardown cleanup)
+const isTestPlatform = (platform: string) => platform.startsWith('test')
 
 fundsRouter.get('/', async (req, res, next) => {
   const allFunds = await readAllFunds(FUNDS_DIR).catch(next)
