@@ -237,18 +237,21 @@ export function computeFundMetrics(
 ): FundMetrics {
   const isCashFund = checkIsCashFund(config.fund_type)
 
-  // Derive start date from first trade/cashflow, not config
-  const today = new Date().toISOString().slice(0, 10)
-  let startDate: string
-  if (isCashFund && cashFlows && cashFlows.length > 0) {
-    startDate = getFundStartDate(cashFlows)
-  } else if (trades.length > 0) {
-    startDate = getFundStartDate(trades)
-  } else {
-    startDate = today
+  // Derive start date from earliest of trades, cashFlows, and config fallback
+  const candidateDates: string[] = []
+  if (cashFlows && cashFlows.length > 0) {
+    candidateDates.push(getFundStartDate(cashFlows))
   }
+  if (trades.length > 0) {
+    candidateDates.push(getFundStartDate(trades))
+  }
+  if (config.start_date) {
+    candidateDates.push(config.start_date)
+  }
+  candidateDates.push(asOfDate)
+  const startDate = candidateDates.reduce((earliest, d) => (d < earliest ? d : earliest))
 
-  const daysActive = daysBetween(startDate, asOfDate)
+  const daysActive = Math.max(1, daysBetween(startDate, asOfDate))
 
   // For cash funds, use cash flows for TWFS; for trading funds, use trades
   const timeWeightedFundSize = isCashFund && cashFlows

@@ -13,6 +13,7 @@ import {
   entriesToDividends,
   entriesToExpenses,
   entriesToCashInterest,
+  entriesToCashFlows,
   getLatestEquity,
   type FundData,
   type FundEntry
@@ -227,6 +228,7 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
       }
     }
 
+    const cashFlows = isCashFund ? entriesToCashFlows(fund.entries) : undefined
     const metrics = computeFundMetrics(
       fund.id,
       fund.platform,
@@ -234,7 +236,8 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
       configWithActualFundSize,
       trades,
       state,
-      today
+      today,
+      cashFlows
     )
 
     // Override APY with values from computeFundFinalMetrics which uses
@@ -726,6 +729,7 @@ fundsRouter.get('/history', async (req, res, next) => {
       }
     }
 
+    const cashFlowsForMetrics = isCashFund ? entriesToCashFlows(fund.entries) : undefined
     const metrics = computeFundMetrics(
       fund.id,
       fund.platform,
@@ -733,7 +737,8 @@ fundsRouter.get('/history', async (req, res, next) => {
       configWithActualFundSize,
       trades,
       state,
-      today
+      today,
+      cashFlowsForMetrics
     )
     fundMetricsForAggregate.push(metrics)
   }

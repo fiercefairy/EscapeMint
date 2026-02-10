@@ -302,7 +302,9 @@ export function FundDetail() {
       const currentCycleDays = cycleStartDate
         ? (entryDate.getTime() - cycleStartDate.getTime()) / (1000 * 60 * 60 * 24)
         : 0
-      const activeDays = Math.max(1, cycleStartDate || cumulativeActiveDays > 0
+      const hasActiveCycle = cycleStartDate !== null
+      const hasAnyActiveHistory = hasActiveCycle || cumulativeActiveDays > 0
+      const activeDays = Math.max(1, hasAnyActiveHistory
         ? cumulativeActiveDays + currentCycleDays
         : calendarDays)
       const isFirstEntry = index === 0
@@ -334,7 +336,7 @@ export function FundDetail() {
 
       // Accumulate TWAP before processing this entry's action (use costBasis from before this entry)
       if (!isCashFundType && twapLastDate && cycleStartDate) {
-        const daysBetween = Math.max(1, Math.floor((entryDate.getTime() - twapLastDate.getTime()) / (1000 * 60 * 60 * 24)))
+        const daysBetween = Math.max(0, Math.floor((entryDate.getTime() - twapLastDate.getTime()) / (1000 * 60 * 60 * 24)))
         twapNumerator += costBasis * daysBetween
       }
       if (cycleStartDate) twapLastDate = entryDate

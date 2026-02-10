@@ -163,7 +163,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
 
     // Accumulate TWAP before processing this entry's action (use costBasis from before this entry)
     if (!isCashFund && twapLastDate && cycleStartDate) {
-      const daysBetween = Math.max(1, Math.floor(
+      const daysBetween = Math.max(0, Math.floor(
         (new Date(entry.date).getTime() - new Date(twapLastDate).getTime()) / (1000 * 60 * 60 * 24)
       ))
       twapNumerator += costBasis * daysBetween
