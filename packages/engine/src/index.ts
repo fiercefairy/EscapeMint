@@ -23,6 +23,7 @@ export type { DerivativesEntryState } from './derivatives-calculations.js'
 export { computeLimit, computeRecommendation } from './recommendation.js'
 export { formatCurrency, formatPercent, summarizeFundState } from './explainer.js'
 export {
+  getFundStartDate,
   computeTimeWeightedFundSize,
   computeRealizedAPY,
   computeProjectedAnnualReturn,

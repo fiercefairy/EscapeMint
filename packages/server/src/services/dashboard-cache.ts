@@ -18,9 +18,8 @@ import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
 
 const FUNDS_DIR = join(process.env['DATA_DIR'] ?? './data', 'funds')
 
-// Test platforms: 'test' or any platform ending in 'test' (e.g., coinbasetest, robinhoodtest)
-const isTestPlatform = (platform: string) =>
-  platform === 'test' || platform.endsWith('test')
+// Test platforms: any platform starting with 'test' (matches global-setup/teardown cleanup)
+const isTestPlatform = (platform: string) => platform.startsWith('test')
 
 // Cache entry with timestamp
 interface CacheEntry<T> {

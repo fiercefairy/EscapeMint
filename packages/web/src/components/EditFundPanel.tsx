@@ -62,8 +62,7 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
     margin_enabled: config.margin_enabled ?? false,
     dividend_reinvest: config.dividend_reinvest ?? true,
     interest_reinvest: config.interest_reinvest ?? true,
-    expense_from_fund: config.expense_from_fund ?? true,
-    start_date: config.start_date
+    expense_from_fund: config.expense_from_fund ?? true
   })
 
   const isCashFund = checkIsCashFund(fundType)
@@ -109,8 +108,7 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
       margin_enabled: features.allowsTrading ? formData.margin_enabled : (defaults.margin_enabled ?? false),
       dividend_reinvest: formData.dividend_reinvest,
       interest_reinvest: formData.interest_reinvest,
-      expense_from_fund: formData.expense_from_fund,
-      start_date: formData.start_date
+      expense_from_fund: formData.expense_from_fund
     }
 
     const platformChanged = selectedPlatform !== fundPlatform.toLowerCase()
@@ -381,16 +379,6 @@ export function EditFundPanel({ fundId, fundPlatform, fundTicker, config, onUpda
                 <option value="active">Active</option>
                 <option value="closed">Closed</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Start Date</label>
-              <input
-                type="date"
-                value={formData.start_date}
-                onChange={e => setFormData({ ...formData, start_date: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                required
-              />
             </div>
           </div>
 

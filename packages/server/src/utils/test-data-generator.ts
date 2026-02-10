@@ -59,7 +59,7 @@ function loadPriceData(filename: string): PriceDataPoint[] {
 /**
  * Create a cash fund config
  */
-function createCashFundConfig(startDate: string): SubFundConfig {
+function createCashFundConfig(_startDate: string): SubFundConfig {
   return {
     fund_type: 'cash',
     status: 'active',
@@ -75,8 +75,7 @@ function createCashFundConfig(startDate: string): SubFundConfig {
     margin_apr: 0,
     margin_access_usd: 0,
     accumulate: true,
-    manage_cash: true,
-    start_date: startDate
+    manage_cash: true
   }
 }
 
@@ -86,7 +85,7 @@ function createCashFundConfig(startDate: string): SubFundConfig {
 function createTradingFundConfig(
   fundType: 'stock' | 'crypto',
   fundSize: number,
-  startDate: string
+  _startDate: string
 ): SubFundConfig {
   return {
     fund_type: fundType,
@@ -103,8 +102,7 @@ function createTradingFundConfig(
     margin_apr: 0,
     margin_access_usd: 0,
     accumulate: true,
-    manage_cash: false, // Use platform cash fund
-    start_date: startDate
+    manage_cash: false // Use platform cash fund
   }
 }
 

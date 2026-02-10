@@ -36,7 +36,7 @@ interface ImportProgress {
 
 interface CoinbaseImportButtonProps {
   fundId: string
-  fundStartDate: string  // ISO date from fund config - scrape will stop here
+  fundStartDate?: string  // ISO date - scrape will stop here (derived from first entry)
   hasEntries: boolean    // True if fund already has entries (show "Re-import" vs "Import")
   onComplete?: () => void
   className?: string
@@ -242,9 +242,11 @@ export function CoinbaseImportButton({
               This will clear all existing entries in this fund and re-import from Coinbase.
               This action cannot be undone.
             </p>
-            <p className="text-slate-400 text-sm mb-4">
-              Scraping will go back to: <span className="text-white font-mono">{fundStartDate}</span>
-            </p>
+            {fundStartDate && (
+              <p className="text-slate-400 text-sm mb-4">
+                Scraping will go back to: <span className="text-white font-mono">{fundStartDate}</span>
+              </p>
+            )}
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowConfirm(false)}

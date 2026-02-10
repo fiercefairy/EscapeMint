@@ -44,7 +44,6 @@ function generateDerivativesConfig(overrides: Partial<FundConfig> = {}): FundCon
     margin_enabled: true,
     manage_cash: true,  // Track margin balance
     accumulate: false,  // Full liquidation mode
-    start_date: TEST_START_DATE,
     ...overrides
   })
 }

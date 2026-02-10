@@ -21,6 +21,21 @@ See the [docs/](./docs/) folder for detailed documentation:
 
 ## Recently Completed
 
+### TWAP Denominator for Trading Fund APY
+Replaced snapshot-based denominator (netInvested/totalEverInvested) with Time-Weighted Average Position (TWAP) for trading fund APY. Tracks `costBasis * days` during active periods so multi-cycle funds reflect actual average capital deployed. Matches existing TWAB pattern for cash funds.
+
+### Remove start_date from Config + Active Days APY Tracking
+Removed redundant `start_date` from fund config (derived from first entry instead). APY now calculated using **active days** (time with capital deployed) rather than calendar days, so idle gaps after full liquidation don't dilute APY.
+
+**Changes:**
+- [x] Made `start_date` optional in engine types (`SubFundConfig`)
+- [x] Engine derives start date from first trade/cashflow entry
+- [x] Server fund-metrics tracks active days via cycle boundaries (BUY starts, liquidation freezes)
+- [x] FundDetail.tsx uses active days for all APY calculations
+- [x] Removed start_date from all create/edit forms and import flows
+- [x] Stripped start_date from all 29 data JSON files
+- [x] Fixed pre-existing E2E test bug: `computeStartInput` helper now handles accumulate mode
+
 ### Four Pillars Fund Categories (v0.27.0)
 Portfolio categorization system with 4 investment philosophy pillars: Liquidity, Yield, Store of Value, Volatility. Margin is tracked separately as borrowing capacity.
 

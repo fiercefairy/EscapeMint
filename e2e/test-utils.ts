@@ -28,7 +28,7 @@ export interface FundConfig {
   dividend_reinvest?: boolean
   interest_reinvest?: boolean
   expense_from_fund?: boolean
-  start_date: string
+  start_date?: string
 }
 
 export interface FundEntry {
@@ -253,8 +253,9 @@ export function daysBetween(date1: string, date2: string): number {
 }
 
 export function computeStartInput(
-  trades: Array<{ date: string; amount: number; type: 'buy' | 'sell' }>,
-  asOfDate: string
+  trades: Array<{ date: string; amount: number; type: 'buy' | 'sell'; value?: number }>,
+  asOfDate: string,
+  accumulate = false
 ): number {
   // Sort trades by date to process in chronological order
   const sortedTrades = [...trades]
@@ -269,9 +270,16 @@ export function computeStartInput(
       totalBuys += trade.amount
     } else {
       totalSells += trade.amount
-      // Full liquidation detection: when sells >= buys, reset both
-      if (totalSells >= totalBuys) {
+      // Value-based liquidation: remaining value is dust compared to sale
+      const valueBasedLiquidation = trade.value !== undefined && trade.value <= trade.amount + 0.01
+      // Dollar-based fallback: total sells >= total buys
+      const dollarBasedLiquidation = totalSells >= totalBuys
+      const isFullLiquidation = valueBasedLiquidation || dollarBasedLiquidation
+      if (isFullLiquidation) {
         totalBuys = 0
+        totalSells = 0
+      } else if (accumulate) {
+        // Accumulate mode: partial sells are profit extraction, don't reduce cost basis
         totalSells = 0
       }
     }
@@ -301,7 +309,6 @@ export function generateTestConfig(overrides: Partial<FundConfig> = {}): FundCon
     dividend_reinvest: true,
     interest_reinvest: true,
     expense_from_fund: true,
-    start_date: '2024-01-01',
     ...overrides
   }
 }
@@ -433,10 +440,6 @@ export class DashboardPage {
     if (config.interval_days !== undefined) {
       await this.page.fill('input:near(:text("Interval"))', String(config.interval_days))
     }
-    if (config.start_date) {
-      await this.page.fill('input[type="date"]', config.start_date)
-    }
-
     // Submit
     await this.page.click('button[type="submit"]:has-text("Create")')
     await this.page.waitForURL(/\/fund\//)

@@ -371,7 +371,6 @@ test.describe('Date Validation', () => {
 
   test('API currently accepts entry before fund start date (no validation)', async ({ page }) => {
     const fund = await createFundViaAPI(page, TEST_PLATFORM, 'date-val-1', generateTestConfig({
-      start_date: '2024-06-01'
     }))
 
     // Try to add entry before start date
@@ -392,7 +391,6 @@ test.describe('Date Validation', () => {
 
   test('entry date accepts valid date after start', async ({ page }) => {
     const fund = await createFundViaAPI(page, TEST_PLATFORM, 'date-val-2', generateTestConfig({
-      start_date: '2024-01-01'
     }))
 
     // Add valid entry
@@ -412,7 +410,6 @@ test.describe('Date Validation', () => {
 
   test('API currently accepts out-of-order entries (no validation)', async ({ page }) => {
     const fund = await createFundViaAPI(page, TEST_PLATFORM, 'date-val-3', generateTestConfig({
-      start_date: '2024-01-01'
     }))
 
     // Add first entry
@@ -521,7 +518,6 @@ test.describe('Leap Year Date Handling', () => {
   test('fund handles Feb 29 leap year date correctly', async ({ page }) => {
     // 2024 is a leap year
     const fund = await createFundViaAPI(page, TEST_PLATFORM, 'leap-year', generateTestConfig({
-      start_date: '2024-02-01'
     }))
 
     // Add entry on Feb 29 (leap year date)
@@ -546,7 +542,6 @@ test.describe('Leap Year Date Handling', () => {
 
   test('calculations span across leap year correctly', async ({ page }) => {
     const fund = await createFundViaAPI(page, TEST_PLATFORM, 'leap-calc', generateTestConfig({
-      start_date: '2024-02-28',
       target_apy: 0.10
     }))
 

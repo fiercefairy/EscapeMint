@@ -79,7 +79,6 @@ const pieConfig = {
   margin_apr: 0.05,
   accumulate: true,
   manage_cash: true,
-  start_date: pieData[0].date,
   dividend_reinvest: false,
   interest_reinvest: false,
   expense_from_fund: false

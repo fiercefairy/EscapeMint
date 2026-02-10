@@ -200,7 +200,6 @@ export function runBacktest(
     margin_apr: scenario.marginAPR,
     margin_access_usd: scenario.marginAccessUSD,
     margin_enabled: scenario.marginAccessUSD > 0,
-    start_date: dateRange.start,
     status: 'active'
   }
 

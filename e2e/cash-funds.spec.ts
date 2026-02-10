@@ -34,7 +34,6 @@ function generateCashFundConfig(overrides: Partial<FundConfig> = {}): FundConfig
     dividend_reinvest: true,
     interest_reinvest: true,
     expense_from_fund: true,
-    start_date: '2024-01-01',
     ...overrides
   }
 }

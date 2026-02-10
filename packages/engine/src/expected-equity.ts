@@ -233,7 +233,7 @@ export function computeCashInterest(
   cashflows: CashFlow[],
   asOfDate: string
 ): number {
-  const { cash_apy, start_date, fund_size_usd } = config
+  const { cash_apy, fund_size_usd } = config
 
   // Collect all events sorted by date
   const events: { date: string; type: 'trade' | 'cashflow'; amount: number; sign: number }[] = []
@@ -260,7 +260,10 @@ export function computeCashInterest(
 
   let totalInterest = 0
   let currentCash = fund_size_usd
-  let lastDate = start_date
+  // Use config start_date if available, otherwise first event date (or asOfDate if no events)
+  // Cash interest accrues from fund start (when cash was deployed), not first trade
+  let lastDate: string = config.start_date
+    ?? (events.length > 0 ? events[0]!.date : asOfDate)
 
   for (const event of events) {
     if (daysBetween(event.date, asOfDate) < 0) continue

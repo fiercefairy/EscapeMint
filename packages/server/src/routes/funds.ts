@@ -13,6 +13,7 @@ import {
   entriesToDividends,
   entriesToExpenses,
   entriesToCashInterest,
+  entriesToCashFlows,
   getLatestEquity,
   type FundData,
   type FundEntry
@@ -81,9 +82,8 @@ async function writePlatformsData(data: Record<string, PlatformConfig>): Promise
  * Query params:
  *   - include_test: 'true' to include test platform funds (default: false)
  */
-// Test platforms: 'test' or any platform ending in 'test' (with or without dash)
-const isTestPlatform = (platform: string) =>
-  platform === 'test' || platform.endsWith('test')
+// Test platforms: any platform starting with 'test' (matches global-setup/teardown cleanup)
+const isTestPlatform = (platform: string) => platform.startsWith('test')
 
 fundsRouter.get('/', async (req, res, next) => {
   const allFunds = await readAllFunds(FUNDS_DIR).catch(next)
@@ -228,6 +228,7 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
       }
     }
 
+    const cashFlows = isCashFund ? entriesToCashFlows(fund.entries) : undefined
     const metrics = computeFundMetrics(
       fund.id,
       fund.platform,
@@ -235,7 +236,8 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
       configWithActualFundSize,
       trades,
       state,
-      today
+      today,
+      cashFlows
     )
 
     // Override APY with values from computeFundFinalMetrics which uses
@@ -363,10 +365,12 @@ fundsRouter.get('/history', async (req, res, next) => {
   }
   const sortedDates = Array.from(allDates).sort()
 
-  // Find the earliest fund start date for APY calculations
+  // Find the earliest fund start date for APY calculations (minimum entry date across all funds)
   const earliestStartDate = funds.reduce((earliest, fund) => {
-    const startDate = fund.config.start_date
-    return !earliest || startDate < earliest ? startDate : earliest
+    for (const entry of fund.entries) {
+      if (!earliest || entry.date < earliest) earliest = entry.date
+    }
+    return earliest
   }, '' as string)
 
   // Build time series data
@@ -725,6 +729,7 @@ fundsRouter.get('/history', async (req, res, next) => {
       }
     }
 
+    const cashFlowsForMetrics = isCashFund ? entriesToCashFlows(fund.entries) : undefined
     const metrics = computeFundMetrics(
       fund.id,
       fund.platform,
@@ -732,7 +737,8 @@ fundsRouter.get('/history', async (req, res, next) => {
       configWithActualFundSize,
       trades,
       state,
-      today
+      today,
+      cashFlowsForMetrics
     )
     fundMetricsForAggregate.push(metrics)
   }
@@ -1145,7 +1151,6 @@ fundsRouter.post('/', async (req, res, next) => {
       await writePlatformsData(platformsData)
 
       // Create the cash fund
-      const today = new Date().toISOString().split('T')[0] as string
       const cashFundConfig: FundData['config'] = {
         fund_type: 'cash',
         status: 'active',
@@ -1161,8 +1166,7 @@ fundsRouter.post('/', async (req, res, next) => {
         margin_apr: 0,
         margin_access_usd: 0,
         accumulate: true,
-        manage_cash: true,
-        start_date: today
+        manage_cash: true
       }
 
       const cashFundData: FundData = {
