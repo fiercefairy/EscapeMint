@@ -327,12 +327,14 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
     const denominator = twap > 0 ? twap : (costBasis > 0 ? costBasis : 1)
     if (denominator > 0) {
       const realizedReturnPct = realized / denominator
-      const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
+      const clampedRealizedPct = Math.max(-0.99, Math.min(realizedReturnPct, 1))
       realizedApy = Math.pow(1 + clampedRealizedPct, 365 / daysActive) - 1
+      realizedApy = Math.max(-0.99, Math.min(realizedApy, 10))
 
       const liquidReturnPct = liquidPnl / denominator
-      const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
+      const clampedLiquidPct = Math.max(-0.99, Math.min(liquidReturnPct, 1))
       liquidApy = Math.pow(1 + clampedLiquidPct, 365 / daysActive) - 1
+      liquidApy = Math.max(-0.99, Math.min(liquidApy, 10))
     }
   }
 
