@@ -487,13 +487,15 @@ export function FundDetail() {
 
         // Calculate Realized APY (based only on realized gains relative to invested)
         const realizedReturnPct = investedDenominator > 0 ? realized / investedDenominator : 0
-        const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
+        const clampedRealizedPct = Math.max(-0.99, Math.min(realizedReturnPct, 1))
         realizedApy = isFirstEntry ? 0 : (activeDays > 0 ? Math.pow(1 + clampedRealizedPct, 365 / activeDays) - 1 : 0)
+        realizedApy = Math.max(-0.99, Math.min(realizedApy, 10))
 
         // Liquid APY = based on liquid P&L relative to invested capital
         const liquidReturnPct = investedDenominator > 0 ? liquidPnl / investedDenominator : 0
-        const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
+        const clampedLiquidPct = Math.max(-0.99, Math.min(liquidReturnPct, 1))
         liquidApy = isFirstEntry ? 0 : (activeDays > 0 ? Math.pow(1 + clampedLiquidPct, 365 / activeDays) - 1 : 0)
+        liquidApy = Math.max(-0.99, Math.min(liquidApy, 10))
       }
 
       // If value is 0 (closed fund), preserve the last valid APYs
@@ -572,13 +574,13 @@ export function FundDetail() {
           const realizedPlusFunding = derivState.realizedPnl + derivState.sumFunding +
             derivState.sumInterest + derivState.sumRebates
           const realizedReturnPct = realizedPlusFunding / derivDenominator
-          const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
+          const clampedRealizedPct = Math.max(-0.99, Math.min(realizedReturnPct, 1))
           derivRealizedApy = Math.pow(1 + clampedRealizedPct, 365 / activeDays) - 1
           derivRealizedApy = Math.max(-0.99, Math.min(derivRealizedApy, 10))
 
           // Liquid APY: based on total P&L (including unrealized) relative to capital
           const liquidReturnPct = derivLiquidPnl / derivDenominator
-          const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
+          const clampedLiquidPct = Math.max(-0.99, Math.min(liquidReturnPct, 1))
           derivLiquidApy = Math.pow(1 + clampedLiquidPct, 365 / activeDays) - 1
           derivLiquidApy = Math.max(-0.99, Math.min(derivLiquidApy, 10))
         }
