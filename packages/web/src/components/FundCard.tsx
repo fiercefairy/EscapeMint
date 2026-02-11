@@ -7,6 +7,7 @@ import {
   FUND_CATEGORY_CONFIG,
   getEffectiveCategory
 } from '@escapemint/engine'
+import { formatPercent } from '../utils/format'
 import type { FundCategory } from '../api/funds'
 
 export interface FundCardProps {
@@ -41,9 +42,7 @@ export const FundCard = memo(function FundCard({ fund, impactPct, realizedAPY, l
     }).format(value)
   }
 
-  const formatPercent = (value: number) => {
-    return (value * 100).toFixed(1) + '%'
-  }
+  const formatPercentShort = (value: number) => (value * 100).toFixed(1) + '%'
 
   // Different color schemes by fund type (using config)
   const borderHoverClass = features.borderHoverClass
@@ -152,7 +151,7 @@ export const FundCard = memo(function FundCard({ fund, impactPct, realizedAPY, l
             ) : (
               <div className="flex justify-between gap-1 xs:gap-2">
                 <span className="text-slate-400 truncate">APY</span>
-                <span className="text-slate-300 truncate text-right">{formatPercent(fund.config.target_apy)} / {fund.config.interval_days}d</span>
+                <span className="text-slate-300 truncate text-right">{formatPercentShort(fund.config.target_apy)} / {fund.config.interval_days}d</span>
               </div>
             )}
           </>

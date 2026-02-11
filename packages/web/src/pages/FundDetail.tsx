@@ -314,9 +314,8 @@ export function FundDetail() {
       const returnPct = denominatorValue > 0 ? totalReturn / denominatorValue : 0
       // Annualize: APY = (1 + returnPct)^(365/days) - 1
       // Clamp returnPct to avoid NaN from Math.pow with negative base
-      const clampedReturnPct = Math.max(-0.99, Math.min(returnPct, 1))
+      const clampedReturnPct = Math.max(-0.99, returnPct)
       let apy = isFirstEntry ? 0 : (activeDays > 0 ? Math.pow(1 + clampedReturnPct, 365 / activeDays) - 1 : 0)
-      apy = Math.max(-0.99, Math.min(apy, 10))
 
       // If value is 0 (closed fund), preserve the last valid APY
       if (entry.value === 0 && lastApy !== 0) {
@@ -470,10 +469,8 @@ export function FundDetail() {
 
           const cashReturnPct = realized / cashDenominator
           // APY = (1 + return)^(365/days) - 1
-          const clampedCashPct = Math.max(-0.99, Math.min(cashReturnPct, 1))
+          const clampedCashPct = Math.max(-0.99, cashReturnPct)
           realizedApy = activeDays > 0 ? Math.pow(1 + clampedCashPct, 365 / activeDays) - 1 : 0
-          // Cap APY at reasonable bounds (-99% to 1000%)
-          realizedApy = Math.max(-0.99, Math.min(realizedApy, 10))
           liquidApy = realizedApy
         }
       } else {
@@ -488,15 +485,13 @@ export function FundDetail() {
 
         // Calculate Realized APY (based only on realized gains relative to invested)
         const realizedReturnPct = investedDenominator > 0 ? realized / investedDenominator : 0
-        const clampedRealizedPct = Math.max(-0.99, Math.min(realizedReturnPct, 1))
+        const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
         realizedApy = isFirstEntry ? 0 : (activeDays > 0 ? Math.pow(1 + clampedRealizedPct, 365 / activeDays) - 1 : 0)
-        realizedApy = Math.max(-0.99, Math.min(realizedApy, 10))
 
         // Liquid APY = based on liquid P&L relative to invested capital
         const liquidReturnPct = investedDenominator > 0 ? liquidPnl / investedDenominator : 0
-        const clampedLiquidPct = Math.max(-0.99, Math.min(liquidReturnPct, 1))
+        const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
         liquidApy = isFirstEntry ? 0 : (activeDays > 0 ? Math.pow(1 + clampedLiquidPct, 365 / activeDays) - 1 : 0)
-        liquidApy = Math.max(-0.99, Math.min(liquidApy, 10))
       }
 
       // If value is 0 (closed fund), preserve the last valid APYs
@@ -575,15 +570,13 @@ export function FundDetail() {
           const realizedPlusFunding = derivState.realizedPnl + derivState.sumFunding +
             derivState.sumInterest + derivState.sumRebates
           const realizedReturnPct = realizedPlusFunding / derivDenominator
-          const clampedRealizedPct = Math.max(-0.99, Math.min(realizedReturnPct, 1))
+          const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
           derivRealizedApy = Math.pow(1 + clampedRealizedPct, 365 / activeDays) - 1
-          derivRealizedApy = Math.max(-0.99, Math.min(derivRealizedApy, 10))
 
           // Liquid APY: based on total P&L (including unrealized) relative to capital
           const liquidReturnPct = derivLiquidPnl / derivDenominator
-          const clampedLiquidPct = Math.max(-0.99, Math.min(liquidReturnPct, 1))
+          const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
           derivLiquidApy = Math.pow(1 + clampedLiquidPct, 365 / activeDays) - 1
-          derivLiquidApy = Math.max(-0.99, Math.min(derivLiquidApy, 10))
         }
 
         // Use tracked cash (entry.cash) when available, otherwise use calculated marginBalance

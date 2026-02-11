@@ -482,11 +482,10 @@ export function computeClosedFundMetrics(
 
   // APY = (1 + returnPct)^(365/days) - 1
   // For very short periods, avoid division issues
-  const clampedReturnPct = Math.max(-0.99, Math.min(returnPct, 1))
-  const rawApy = durationDays > 3
+  const clampedReturnPct = Math.max(-0.99, returnPct)
+  const apy = durationDays > 3
     ? Math.pow(1 + clampedReturnPct, DAYS_PER_YEAR / durationDays) - 1
     : clampedReturnPct
-  const apy = Math.max(-0.99, Math.min(rawApy, 10))
 
   return {
     total_invested_usd: totalInvested,

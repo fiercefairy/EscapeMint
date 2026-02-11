@@ -112,14 +112,12 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         const realizedPlusFunding = realized + lastState.sumFunding +
           lastState.sumInterest + lastState.sumRebates
         const realizedReturnPct = realizedPlusFunding / denominator
-        const clampedRealizedPct = Math.max(-0.99, Math.min(realizedReturnPct, 1))
+        const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
         realizedApy = Math.pow(1 + clampedRealizedPct, 365 / daysActive) - 1
-        realizedApy = Math.max(-0.99, Math.min(realizedApy, 10))
 
         const liquidReturnPct = liquidPnl / denominator
-        const clampedLiquidPct = Math.max(-0.99, Math.min(liquidReturnPct, 1))
+        const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
         liquidApy = Math.pow(1 + clampedLiquidPct, 365 / daysActive) - 1
-        liquidApy = Math.max(-0.99, Math.min(liquidApy, 10))
       }
 
       return {
@@ -348,9 +346,8 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
     const denominator = twab > 0 ? twab : (fundSize > 0 ? fundSize : 1)
     if (Math.abs(realized) >= 0.01) {
       const returnPct = realized / denominator
-      const clampedPct = Math.max(-0.99, Math.min(returnPct, 1))
+      const clampedPct = Math.max(-0.99, returnPct)
       realizedApy = Math.pow(1 + clampedPct, 365 / daysActive) - 1
-      realizedApy = Math.max(-0.99, Math.min(realizedApy, 10))
       liquidApy = realizedApy
     }
   } else {
@@ -359,14 +356,12 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
     const denominator = twap > 0 ? twap : (costBasis > 0 ? costBasis : 1)
     if (denominator > 0) {
       const realizedReturnPct = realized / denominator
-      const clampedRealizedPct = Math.max(-0.99, Math.min(realizedReturnPct, 1))
+      const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
       realizedApy = Math.pow(1 + clampedRealizedPct, 365 / daysActive) - 1
-      realizedApy = Math.max(-0.99, Math.min(realizedApy, 10))
 
       const liquidReturnPct = liquidPnl / denominator
-      const clampedLiquidPct = Math.max(-0.99, Math.min(liquidReturnPct, 1))
+      const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
       liquidApy = Math.pow(1 + clampedLiquidPct, 365 / daysActive) - 1
-      liquidApy = Math.max(-0.99, Math.min(liquidApy, 10))
     }
   }
 
