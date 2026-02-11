@@ -66,22 +66,52 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
     const lastState = derivStates[derivStates.length - 1]
 
     if (lastState) {
-      const startDate = entries.length > 0 ? entries[0]!.date : new Date().toISOString().slice(0, 10)
-      const endDate = lastState.date
-      const daysActive = Math.max(1, Math.floor(
-        (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
-      ))
+      // Compute cycle-aware active days (matches client-side FundDetail.tsx)
+      // Track BUY/SELL cycles from entries: BUY starts a cycle, SELL ends it
+      // For derivatives, entry.value is always 0, so every SELL is treated as full liquidation
+      let cycleStartDate: string | null = null
+      let cumulativeActiveDays = 0
+      for (const entry of entries) {
+        const entryTime = new Date(entry.date).getTime()
+        if (entry.action === 'BUY' && entry.amount) {
+          if (!cycleStartDate) cycleStartDate = entry.date
+        } else if (entry.action === 'SELL' && entry.amount) {
+          const value = entry.value ?? 0
+          const isFullLiquidation = value <= entry.amount + 0.01
+          if (isFullLiquidation && cycleStartDate) {
+            cumulativeActiveDays += Math.max(0,
+              (entryTime - new Date(cycleStartDate).getTime()) / (1000 * 60 * 60 * 24)
+            )
+            cycleStartDate = null
+          }
+        }
+      }
+      // Add current open cycle if still active
+      const currentCycleDays = cycleStartDate
+        ? Math.max(0, (new Date(lastState.date).getTime() - new Date(cycleStartDate).getTime()) / (1000 * 60 * 60 * 24))
+        : 0
+      const hasAnyActiveHistory = cycleStartDate !== null || cumulativeActiveDays > 0
+      const daysActive = hasAnyActiveHistory
+        ? Math.max(1, cumulativeActiveDays + currentCycleDays)
+        : Math.max(1, (new Date(lastState.date).getTime() - new Date(entries[0]!.date).getTime()) / (1000 * 60 * 60 * 24))
 
-      // Realized P&L already includes funding + interest + rebates - fees from the engine
+      // Derivatives Liquid P&L = Realized + Unrealized + Funding + Interest + Rebates
       const realized = lastState.realizedPnl
-      const liquidPnl = lastState.unrealizedPnl + realized
-      const denominator = lastState.costBasis > 0 ? lastState.costBasis : 1
+      const liquidPnl = realized + lastState.unrealizedPnl +
+        lastState.sumFunding + lastState.sumInterest + lastState.sumRebates
 
-      // Calculate APY
+      // Use marginBalance - liquidPnl as capital base (matches client-side FundDetail.tsx)
+      // costBasis is 0 when position is closed, so it's unreliable as denominator
+      const capitalBase = lastState.marginBalance - liquidPnl
+      const denominator = capitalBase > 0 ? capitalBase : lastState.marginBalance
+
+      // Calculate APY using same formula as client-side
       let realizedApy = 0
       let liquidApy = 0
       if (daysActive > 0 && denominator > 0) {
-        const realizedReturnPct = realized / denominator
+        const realizedPlusFunding = realized + lastState.sumFunding +
+          lastState.sumInterest + lastState.sumRebates
+        const realizedReturnPct = realizedPlusFunding / denominator
         const clampedRealizedPct = Math.max(-0.99, Math.min(realizedReturnPct, 1))
         realizedApy = Math.pow(1 + clampedRealizedPct, 365 / daysActive) - 1
         realizedApy = Math.max(-0.99, Math.min(realizedApy, 10))
