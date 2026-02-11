@@ -314,8 +314,9 @@ export function FundDetail() {
       const returnPct = denominatorValue > 0 ? totalReturn / denominatorValue : 0
       // Annualize: APY = (1 + returnPct)^(365/days) - 1
       // Clamp returnPct to avoid NaN from Math.pow with negative base
-      const clampedReturnPct = Math.max(-0.99, returnPct)
+      const clampedReturnPct = Math.max(-0.99, Math.min(returnPct, 1))
       let apy = isFirstEntry ? 0 : (activeDays > 0 ? Math.pow(1 + clampedReturnPct, 365 / activeDays) - 1 : 0)
+      apy = Math.max(-0.99, Math.min(apy, 10))
 
       // If value is 0 (closed fund), preserve the last valid APY
       if (entry.value === 0 && lastApy !== 0) {
