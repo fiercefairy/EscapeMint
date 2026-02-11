@@ -26,14 +26,19 @@ export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existing
   // Track the base fund size (before any adjustments)
   const baseFundSize = useMemo(() => {
     const fundSize = entry.fund_size ?? calculatedFundSize ?? 0
-    const existingDeposit = parseFloat(parseDepositFromNotes(entry.notes)) || 0
-    const existingWithdrawal = parseFloat(parseWithdrawalFromNotes(entry.notes)) || 0
+    // DEPOSIT/WITHDRAW actions store amount in entry.amount, not in notes
+    const existingDeposit = (entry.action === 'DEPOSIT' && entry.amount)
+      ? entry.amount
+      : parseFloat(parseDepositFromNotes(entry.notes)) || 0
+    const existingWithdrawal = (entry.action === 'WITHDRAW' && entry.amount)
+      ? Math.abs(entry.amount)
+      : parseFloat(parseWithdrawalFromNotes(entry.notes)) || 0
     const existingDividend = entry.dividend ?? 0
     const existingExpense = entry.expense ?? 0
     const existingCashInterest = entry.cash_interest ?? 0
     const existingAdjustment = existingDeposit - existingWithdrawal + existingDividend - existingExpense + existingCashInterest
     return fundSize - existingAdjustment
-  }, [entry.fund_size, calculatedFundSize, entry.notes, entry.dividend, entry.expense, entry.cash_interest])
+  }, [entry.fund_size, calculatedFundSize, entry.notes, entry.dividend, entry.expense, entry.cash_interest, entry.action, entry.amount])
 
   const [formData, setFormData] = useState<EntryFormData>(() =>
     createFormDataFromEntry(entry, calculatedFundSize, fundType)

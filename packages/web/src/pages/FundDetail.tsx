@@ -416,7 +416,8 @@ export function FundDetail() {
       // Data integrity check: invested exceeds fund size (purchased without available cash)
       // Use small tolerance (1 cent) for floating point precision
       // Skip check for non-cash managing funds (they don't maintain a cash pool)
-      const hasIntegrityIssue = manageCash && fundSize > 0 && netInvested > fundSize + 0.01
+      // Skip for derivatives funds: notional trade value legitimately exceeds margin balance due to leverage
+      const hasIntegrityIssue = !isDerivativesFund && manageCash && fundSize > 0 && netInvested > fundSize + 0.01
 
       // Data integrity check: margin borrowed exceeds margin available (margin call situation)
       const marginBorrowed = entry.margin_borrowed ?? 0
