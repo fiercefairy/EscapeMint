@@ -1,11 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="mintGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#4ade80;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#16a34a;stop-opacity:1" />
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
     </linearGradient>
   </defs>
-  <circle cx="50" cy="50" r="45" fill="url(#mintGradient)"/>
-  <text x="50" y="65" font-size="50" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-weight="bold">$</text>
-  <path d="M25 35 L50 20 L75 35" stroke="white" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="512" height="512" rx="108" ry="108" fill="url(#bg)"/>
+  <g fill="#4ade80">
+    <!-- Vertical bar -->
+    <rect x="241" y="80" width="30" height="352" rx="15"/>
+    <!-- S-shape -->
+    <path fill-rule="evenodd" d="
+      M256 136
+      C172 136 120 168 120 220
+      C120 272 168 296 256 316
+      C320 332 352 348 352 380
+      C352 408 316 428 256 428
+      C196 428 160 408 160 380
+      L120 380
+      C120 432 172 464 256 464
+      C340 464 392 432 392 380
+      C392 324 340 300 256 280
+      C192 264 160 248 160 220
+      C160 192 196 172 256 172
+      C316 172 352 192 352 220
+      L392 220
+      C392 168 340 136 256 136
+      Z
+    "/>
+  </g>
 </svg>

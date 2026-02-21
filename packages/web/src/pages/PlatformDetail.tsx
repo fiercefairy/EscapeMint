@@ -12,6 +12,7 @@ import {
 } from '../api/platforms'
 import { notifyFundsChanged } from '../api/funds'
 
+import { formatPercent } from '../utils/format'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { FundsTable } from '../components/fundsTable'
 
@@ -114,9 +115,6 @@ export function PlatformDetail() {
     }).format(value)
   }
 
-  const formatPercent = (value: number) => {
-    return (value * 100).toFixed(2) + '%'
-  }
 
   if (loading) {
     return (

@@ -10,15 +10,12 @@ import { existsSync } from 'node:fs'
 import { readAllFunds, writeFund, deleteFund } from '@escapemint/storage'
 import { generateTestFunds, checkPriceDataExists } from '../utils/test-data-generator.js'
 import { badRequest } from '../middleware/error-handler.js'
+import { isTestPlatform } from '../utils/platforms.js'
 
 export const testDataRouter: ReturnType<typeof Router> = Router()
 
 const DATA_DIR = process.env['DATA_DIR'] ?? './data'
 const FUNDS_DIR = join(DATA_DIR, 'funds')
-
-// Test platforms: exactly 'test' or ending with '-test' (e.g., 'my-test')
-const isTestPlatform = (platform: string) =>
-  platform === 'test' || platform.endsWith('-test')
 
 /**
  * GET /test-data/status - Check if test data can be generated

@@ -416,7 +416,8 @@ export function FundDetail() {
       // Data integrity check: invested exceeds fund size (purchased without available cash)
       // Use small tolerance (1 cent) for floating point precision
       // Skip check for non-cash managing funds (they don't maintain a cash pool)
-      const hasIntegrityIssue = manageCash && fundSize > 0 && netInvested > fundSize + 0.01
+      // Skip for derivatives funds: notional trade value legitimately exceeds margin balance due to leverage
+      const hasIntegrityIssue = !isDerivativesFund && manageCash && fundSize > 0 && netInvested > fundSize + 0.01
 
       // Data integrity check: margin borrowed exceeds margin available (margin call situation)
       const marginBorrowed = entry.margin_borrowed ?? 0
@@ -468,10 +469,8 @@ export function FundDetail() {
 
           const cashReturnPct = realized / cashDenominator
           // APY = (1 + return)^(365/days) - 1
-          const clampedCashPct = Math.max(-0.99, Math.min(cashReturnPct, 1))
+          const clampedCashPct = Math.max(-0.99, cashReturnPct)
           realizedApy = activeDays > 0 ? Math.pow(1 + clampedCashPct, 365 / activeDays) - 1 : 0
-          // Cap APY at reasonable bounds (-99% to 1000%)
-          realizedApy = Math.max(-0.99, Math.min(realizedApy, 10))
           liquidApy = realizedApy
         }
       } else {
@@ -573,13 +572,11 @@ export function FundDetail() {
           const realizedReturnPct = realizedPlusFunding / derivDenominator
           const clampedRealizedPct = Math.max(-0.99, realizedReturnPct)
           derivRealizedApy = Math.pow(1 + clampedRealizedPct, 365 / activeDays) - 1
-          derivRealizedApy = Math.max(-0.99, Math.min(derivRealizedApy, 10))
 
           // Liquid APY: based on total P&L (including unrealized) relative to capital
           const liquidReturnPct = derivLiquidPnl / derivDenominator
           const clampedLiquidPct = Math.max(-0.99, liquidReturnPct)
           derivLiquidApy = Math.pow(1 + clampedLiquidPct, 365 / activeDays) - 1
-          derivLiquidApy = Math.max(-0.99, Math.min(derivLiquidApy, 10))
         }
 
         // Use tracked cash (entry.cash) when available, otherwise use calculated marginBalance

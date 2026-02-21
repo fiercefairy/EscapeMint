@@ -64,10 +64,10 @@ export function Layout() {
   const loadFundsAndPlatforms = useCallback(() => {
     fetchFunds(settings.testFundsMode).then(result => {
       if (result.data) setFunds(result.data)
-    }).catch(() => {})
+    }).catch((e: unknown) => console.warn('Failed to fetch funds:', e))
     fetchPlatforms(settings.testFundsMode).then(result => {
       if (result.data) setPlatforms(result.data)
-    }).catch(() => {})
+    }).catch((e: unknown) => console.warn('Failed to fetch platforms:', e))
     fetchActionableFunds(settings.testFundsMode).then(result => {
       if (result.data) {
         // Filter out dismissed funds and stock funds when market is closed
@@ -82,7 +82,7 @@ export function Layout() {
         }).length
         setActionableFundsCount(visibleCount)
       }
-    }).catch(() => {})
+    }).catch((e: unknown) => console.warn('Failed to fetch actionable funds:', e))
   }, [settings.testFundsMode])
 
   // Fetch funds, platforms, and version on mount and when testFundsMode changes
@@ -91,7 +91,7 @@ export function Layout() {
     fetch(`${API_BASE}/version`)
       .then(res => res.json())
       .then(data => setVersion(data.version))
-      .catch(() => {})
+      .catch((e: unknown) => console.warn('Failed to fetch version:', e))
   }, [loadFundsAndPlatforms])
 
   // Listen for funds changed event

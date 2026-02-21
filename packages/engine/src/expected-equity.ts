@@ -10,6 +10,34 @@ function daysBetween(startDate: string, endDate: string): number {
 }
 
 /**
+ * Track cumulative shares: BUY adds, SELL subtracts.
+ */
+function trackShares(trade: Trade, currentShares: number): number {
+  if (trade.shares === undefined) return currentShares
+  const sharesAbs = Math.abs(trade.shares)
+  return currentShares + (trade.type === 'sell' ? -sharesAbs : sharesAbs)
+}
+
+/**
+ * Detect full position liquidation using multiple methods:
+ * - Share-based: net shares near zero
+ * - Value-based: remaining value is dust compared to sale
+ * - Dollar-based: total sells >= total buys
+ */
+function detectFullLiquidation(
+  trade: Trade,
+  sumShares: number,
+  totalBuys: number,
+  totalSells: number
+): boolean {
+  const hasShareTracking = trade.shares !== undefined && trade.shares !== 0
+  const shareBasedLiquidation = hasShareTracking && Math.abs(sumShares) < 0.0001
+  const valueBasedLiquidation = trade.value !== undefined && trade.value <= trade.amount_usd + 0.01
+  const dollarBasedLiquidation = totalSells >= totalBuys
+  return shareBasedLiquidation || valueBasedLiquidation || dollarBasedLiquidation
+}
+
+/**
  * Computes the total amount currently invested (start input / cost basis).
  * This is the sum of all buys minus the sum of all sells, with liquidation detection.
  * When position is fully liquidated (based on shares or value), totals are reset.
@@ -29,26 +57,14 @@ export function computeStartInput(trades: Trade[], asOfDate: string, config?: Su
   for (const trade of sortedTrades) {
     if (daysBetween(trade.date, asOfDate) < 0) continue // Skip future
 
-    // Track shares: BUY adds, SELL subtracts
-    if (trade.shares !== undefined) {
-      const sharesAbs = Math.abs(trade.shares)
-      sumShares += trade.type === 'sell' ? -sharesAbs : sharesAbs
-    }
+    sumShares = trackShares(trade, sumShares)
 
     if (trade.type === 'buy') {
       totalBuys += trade.amount_usd
     } else {
       totalSells += trade.amount_usd
-      // Check for full liquidation using multiple detection methods
       const hasShareTracking = trade.shares !== undefined && trade.shares !== 0
-      const shareBasedLiquidation = hasShareTracking && Math.abs(sumShares) < 0.0001
-      // Value-based: remaining value is dust compared to sale (value <= sale amount)
-      const valueBasedLiquidation = trade.value !== undefined && trade.value <= trade.amount_usd + 0.01
-      // Dollar-based fallback: total sells >= total buys
-      const dollarBasedLiquidation = totalSells >= totalBuys
-      // Full liquidation if ANY detection method triggers
-      const isFullLiquidation = shareBasedLiquidation || valueBasedLiquidation || dollarBasedLiquidation
-      if (isFullLiquidation) {
+      if (detectFullLiquidation(trade, sumShares, totalBuys, totalSells)) {
         totalBuys = 0
         totalSells = 0
         sumShares = 0
@@ -105,11 +121,7 @@ export function computeExpectedTarget(
     const tradeDays = daysBetween(trade.date, asOfDate)
     if (tradeDays < 0) continue // Skip future trades
 
-    // Track shares: BUY adds, SELL subtracts
-    if (trade.shares !== undefined) {
-      const sharesAbs = Math.abs(trade.shares)
-      sumShares += trade.type === 'sell' ? -sharesAbs : sharesAbs
-    }
+    sumShares = trackShares(trade, sumShares)
 
     if (trade.type === 'buy') {
       totalBuys += trade.amount_usd
@@ -119,16 +131,8 @@ export function computeExpectedTarget(
       expectedGain += gain
     } else {
       totalSells += trade.amount_usd
-      // Check for full liquidation using multiple detection methods
       const hasShareTracking = trade.shares !== undefined && trade.shares !== 0
-      const shareBasedLiquidation = hasShareTracking && Math.abs(sumShares) < 0.0001
-      // Value-based: remaining value is dust compared to sale (value <= sale amount)
-      const valueBasedLiquidation = trade.value !== undefined && trade.value <= trade.amount_usd + 0.01
-      // Dollar-based fallback: total sells >= total buys
-      const dollarBasedLiquidation = totalSells >= totalBuys
-      // Full liquidation if ANY detection method triggers
-      const isFullLiquidation = shareBasedLiquidation || valueBasedLiquidation || dollarBasedLiquidation
-      if (isFullLiquidation) {
+      if (detectFullLiquidation(trade, sumShares, totalBuys, totalSells)) {
         startInput = 0
         expectedGain = 0
         totalBuys = 0
@@ -394,7 +398,7 @@ export function computeFundState(
       actual_value_usd: actualValue,
       start_input_usd: startInput,
       gain_usd: cashInterest,
-      gain_pct: startInput > 0 ? cashInterest / startInput : 0,
+      gain_pct: startInput > 0 && isFinite(cashInterest / startInput) ? cashInterest / startInput : 0,
       target_diff_usd: 0,
       cash_interest_usd: cashInterest,
       realized_gains_usd: cashInterest
@@ -423,7 +427,8 @@ export function computeFundState(
   const realizedGains = computeRealizedGains(config, trades, cashflows, dividends, expenses, asOfDate)
 
   const gainUsd = startInput > 0 ? actualValue - startInput : 0
-  const gainPct = startInput > 0 ? (actualValue / startInput) - 1 : 0
+  const rawGainPct = startInput > 0 ? (actualValue / startInput) - 1 : 0
+  const gainPct = isFinite(rawGainPct) ? rawGainPct : 0
   const targetDiff = actualValue - expectedTarget
 
   return {
@@ -482,9 +487,10 @@ export function computeClosedFundMetrics(
 
   // APY = (1 + returnPct)^(365/days) - 1
   // For very short periods, avoid division issues
+  const clampedReturnPct = Math.max(-0.99, returnPct)
   const apy = durationDays > 3
-    ? Math.pow(1 + returnPct, DAYS_PER_YEAR / durationDays) - 1
-    : returnPct
+    ? Math.pow(1 + clampedReturnPct, DAYS_PER_YEAR / durationDays) - 1
+    : clampedReturnPct
 
   return {
     total_invested_usd: totalInvested,

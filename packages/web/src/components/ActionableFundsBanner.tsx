@@ -25,13 +25,14 @@ export function getDismissedFundIds(): Set<string> {
   try {
     const parsed = JSON.parse(saved) as unknown
     if (typeof parsed === 'object' && parsed !== null && 'date' in parsed && 'ids' in parsed) {
-      const { date, ids } = parsed as { date: string; ids: string[] }
+      const { date, ids } = parsed as { date: unknown; ids: unknown }
+      if (typeof date !== 'string' || !Array.isArray(ids)) return new Set()
       const today = new Date().toISOString().split('T')[0]
       if (date !== today) {
         sessionStorage.removeItem(DISMISSED_STORAGE_KEY)
         return new Set()
       }
-      return Array.isArray(ids) ? new Set(ids) : new Set()
+      return new Set(ids.filter((id): id is string => typeof id === 'string'))
     }
     return new Set()
   } catch {

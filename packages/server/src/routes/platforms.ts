@@ -1,77 +1,28 @@
 import { Router } from 'express'
 import { join } from 'node:path'
-import { readFile, writeFile, rename, mkdir, unlink } from 'node:fs/promises'
+import { unlink, mkdir, rename, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { v4 as uuidv4 } from 'uuid'
 import { readAllFunds, writeFund, updateFundConfig, entriesToCashInterest } from '@escapemint/storage'
 import type { FundData, FundEntry } from '@escapemint/storage'
 import type { SubFundConfig } from '@escapemint/engine'
 import { badRequest, notFound } from '../middleware/error-handler.js'
 import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
+import {
+  readPlatformsData,
+  writePlatformsData,
+  isTestPlatform,
+  round2,
+  getTodayDate,
+  type PlatformConfig,
+  type Platform,
+  type PlatformsData
+} from '../utils/platforms.js'
 
 export const platformsRouter: ReturnType<typeof Router> = Router()
 
-// Round to 2 decimal places for monetary values
-const round2 = (value: number): number => Math.round(value * 100) / 100
-
 const DATA_DIR = process.env['DATA_DIR'] ?? './data'
 const FUNDS_DIR = join(DATA_DIR, 'funds')
-const PLATFORMS_FILE = join(DATA_DIR, 'platforms.json')
 const BACKUPS_DIR = join(DATA_DIR, 'backups')
-
-/**
- * Platform configuration stored in JSON.
- * Key is platform id, value is platform config.
- */
-interface PlatformConfig {
-  name: string
-  color?: string
-  url?: string
-  notes?: string
-  /** When true, platform manages a shared cash pool via a {platform}-cash fund */
-  manage_cash?: boolean
-  /** When true, trades (BUY/SELL/dividends) on trading funds auto-create corresponding entries in the cash fund.
-   *  Use this for platforms like Robinhood where cash is shared across all trading within the platform.
-   *  Defaults to true for robinhood platform. */
-  auto_sync_cash?: boolean
-  /** Column order for funds table */
-  funds_column_order?: string[]
-  /** Visible columns for funds table */
-  funds_visible_columns?: string[]
-}
-
-interface Platform extends PlatformConfig {
-  id: string
-}
-
-type PlatformsData = Record<string, PlatformConfig>
-
-/**
- * Read platforms from JSON file
- */
-async function readPlatformsData(): Promise<PlatformsData> {
-  if (!existsSync(PLATFORMS_FILE)) {
-    return {}
-  }
-  const content = await readFile(PLATFORMS_FILE, 'utf-8')
-  return JSON.parse(content) as PlatformsData
-}
-
-/**
- * Write platforms to JSON file atomically
- */
-async function writePlatformsData(data: PlatformsData): Promise<void> {
-  const tempPath = join(DATA_DIR, `.${uuidv4()}.tmp`)
-  await writeFile(tempPath, JSON.stringify(data, null, 2), 'utf-8')
-  await rename(tempPath, PLATFORMS_FILE)
-}
-
-/**
- * Check if a platform is a test platform (matches global-setup/teardown cleanup)
- */
-function isTestPlatform(platformId: string): boolean {
-  return platformId.startsWith('test')
-}
 
 /**
  * GET /platforms - List all platforms (from file + derived from funds)
@@ -117,13 +68,6 @@ platformsRouter.get('/', async (req, res) => {
 
   res.json(allPlatforms)
 })
-
-/**
- * Get today's date as YYYY-MM-DD
- */
-function getTodayDate(): string {
-  return new Date().toISOString().split('T')[0]!
-}
 
 /**
  * POST /platforms - Create or update a platform

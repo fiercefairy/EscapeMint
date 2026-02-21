@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { join } from 'node:path'
-import { rename, readFile } from 'node:fs/promises'
+import { rename } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import {
   readFund,
@@ -31,25 +31,12 @@ import {
 import { notFound, badRequest } from '../middleware/error-handler.js'
 import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
 import { parseLocalDate } from '../utils/calculations.js'
+import { readPlatformsData, writePlatformsData, isTestPlatform } from '../utils/platforms.js'
 
 export const fundsRouter: ReturnType<typeof Router> = Router()
 
 const DATA_DIR = process.env['DATA_DIR'] ?? './data'
 const FUNDS_DIR = join(DATA_DIR, 'funds')
-const PLATFORMS_FILE = join(DATA_DIR, 'platforms.json')
-
-interface PlatformConfig {
-  name: string
-  manage_cash?: boolean
-  /** When true, trades auto-create entries in the cash fund. Defaults to true for robinhood. */
-  auto_sync_cash?: boolean
-}
-
-async function readPlatformsData(): Promise<Record<string, PlatformConfig>> {
-  if (!existsSync(PLATFORMS_FILE)) return {}
-  const content = await readFile(PLATFORMS_FILE, 'utf-8')
-  return JSON.parse(content) as Record<string, PlatformConfig>
-}
 
 /**
  * Computes the post-action equity value for an entry.
@@ -70,21 +57,11 @@ function computePostActionEquity(entry: FundEntry): number {
   return entry.value
 }
 
-async function writePlatformsData(data: Record<string, PlatformConfig>): Promise<void> {
-  const { writeFile: fsWriteFile, mkdir } = await import('node:fs/promises')
-  const { dirname } = await import('node:path')
-  await mkdir(dirname(PLATFORMS_FILE), { recursive: true })
-  await fsWriteFile(PLATFORMS_FILE, JSON.stringify(data, null, 2), 'utf-8')
-}
-
 /**
  * GET /funds - List all funds
  * Query params:
  *   - include_test: 'true' to include test platform funds (default: false)
  */
-// Test platforms: any platform starting with 'test' (matches global-setup/teardown cleanup)
-const isTestPlatform = (platform: string) => platform.startsWith('test')
-
 fundsRouter.get('/', async (req, res, next) => {
   const allFunds = await readAllFunds(FUNDS_DIR).catch(next)
   if (!allFunds) return
