@@ -436,15 +436,19 @@ export async function listFunds(fundsDir: string): Promise<string[]> {
 
 /**
  * Read all funds from a directory.
+ * Resilient to individual fund failures — skips malformed files with a warning.
  */
 export async function readAllFunds(fundsDir: string): Promise<FundData[]> {
   const files = await listFunds(fundsDir)
-  const funds: FundData[] = []
+  const results = await Promise.allSettled(files.map(file => readFund(file)))
 
-  for (const file of files) {
-    const fund = await readFund(file)
-    if (fund) {
-      funds.push(fund)
+  const funds: FundData[] = []
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]!
+    if (result.status === 'fulfilled' && result.value) {
+      funds.push(result.value)
+    } else if (result.status === 'rejected') {
+      console.warn(`⚠️ skipped malformed fund file: ${files[i]}`, result.reason)
     }
   }
 

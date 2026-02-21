@@ -1,5 +1,6 @@
 import { fetchJson, postJson, API_BASE } from './utils'
 import type { ApiResult } from './utils'
+import { createEventStream } from './streaming'
 
 export interface ParsedTransaction {
   date: string
@@ -313,45 +314,10 @@ export function scrapeRobinhoodHistoryStream(
 ): { close: () => void } {
   const encodedUrl = encodeURIComponent(url)
   const fullParam = full ? '&full=true' : ''
-  const eventSource = new EventSource(
-    `${API_BASE}/import/robinhood/scrape-stream?url=${encodedUrl}&platform=${platform}${fullParam}`
+  return createEventStream<ScrapeStatusEvent, ScrapeProgressEvent, ScrapeCompleteEvent, ScrapeErrorEvent>(
+    `${API_BASE}/import/robinhood/scrape-stream?url=${encodedUrl}&platform=${platform}${fullParam}`,
+    callbacks
   )
-
-  eventSource.addEventListener('status', (e: MessageEvent) => {
-    const data = JSON.parse(e.data) as ScrapeStatusEvent
-    callbacks.onStatus?.(data)
-  })
-
-  eventSource.addEventListener('progress', (e: MessageEvent) => {
-    const data = JSON.parse(e.data) as ScrapeProgressEvent
-    callbacks.onProgress?.(data)
-  })
-
-  eventSource.addEventListener('complete', (e: MessageEvent) => {
-    const data = JSON.parse(e.data) as ScrapeCompleteEvent
-    callbacks.onComplete?.(data)
-    eventSource.close()
-  })
-
-  eventSource.addEventListener('error', (e: MessageEvent) => {
-    if (e.data) {
-      const data = JSON.parse(e.data) as ScrapeErrorEvent
-      callbacks.onError?.(data)
-    } else {
-      callbacks.onError?.({ message: 'Connection lost' })
-    }
-    eventSource.close()
-  })
-
-  // Handle connection errors
-  eventSource.onerror = () => {
-    callbacks.onError?.({ message: 'Connection error' })
-    eventSource.close()
-  }
-
-  return {
-    close: () => eventSource.close()
-  }
 }
 
 /**
@@ -368,45 +334,10 @@ export function scrapeM1CashHistoryStream(
   }
 ): { close: () => void } {
   const encodedUrl = encodeURIComponent(url)
-  const eventSource = new EventSource(
-    `${API_BASE}/import/m1-cash/scrape-stream?url=${encodedUrl}&platform=${platform}`
+  return createEventStream<ScrapeStatusEvent, ScrapeProgressEvent, ScrapeCompleteEvent, ScrapeErrorEvent>(
+    `${API_BASE}/import/m1-cash/scrape-stream?url=${encodedUrl}&platform=${platform}`,
+    callbacks
   )
-
-  eventSource.addEventListener('status', (e: MessageEvent) => {
-    const data = JSON.parse(e.data) as ScrapeStatusEvent
-    callbacks.onStatus?.(data)
-  })
-
-  eventSource.addEventListener('progress', (e: MessageEvent) => {
-    const data = JSON.parse(e.data) as ScrapeProgressEvent
-    callbacks.onProgress?.(data)
-  })
-
-  eventSource.addEventListener('complete', (e: MessageEvent) => {
-    const data = JSON.parse(e.data) as ScrapeCompleteEvent
-    callbacks.onComplete?.(data)
-    eventSource.close()
-  })
-
-  eventSource.addEventListener('error', (e: MessageEvent) => {
-    if (e.data) {
-      const data = JSON.parse(e.data) as ScrapeErrorEvent
-      callbacks.onError?.(data)
-    } else {
-      callbacks.onError?.({ message: 'Connection lost' })
-    }
-    eventSource.close()
-  })
-
-  // Handle connection errors
-  eventSource.onerror = () => {
-    callbacks.onError?.({ message: 'Connection error' })
-    eventSource.close()
-  }
-
-  return {
-    close: () => eventSource.close()
-  }
 }
 
 // ============================================================================
@@ -562,44 +493,10 @@ export function downloadCryptoStatementsStream(
     onError?: (data: { message: string }) => void
   }
 ): { close: () => void } {
-  const eventSource = new EventSource(
-    `${API_BASE}/import/crypto/download-stream?all=${downloadAll}`
+  return createEventStream(
+    `${API_BASE}/import/crypto/download-stream?all=${downloadAll}`,
+    callbacks
   )
-
-  eventSource.addEventListener('status', (e: MessageEvent) => {
-    const data = JSON.parse(e.data)
-    callbacks.onStatus?.(data)
-  })
-
-  eventSource.addEventListener('progress', (e: MessageEvent) => {
-    const data = JSON.parse(e.data)
-    callbacks.onProgress?.(data)
-  })
-
-  eventSource.addEventListener('complete', (e: MessageEvent) => {
-    const data = JSON.parse(e.data)
-    callbacks.onComplete?.(data)
-    eventSource.close()
-  })
-
-  eventSource.addEventListener('error', (e: MessageEvent) => {
-    if (e.data) {
-      const data = JSON.parse(e.data)
-      callbacks.onError?.(data)
-    } else {
-      callbacks.onError?.({ message: 'Connection lost' })
-    }
-    eventSource.close()
-  })
-
-  eventSource.onerror = () => {
-    callbacks.onError?.({ message: 'Connection error' })
-    eventSource.close()
-  }
-
-  return {
-    close: () => eventSource.close()
-  }
 }
 
 // ============================================================================
@@ -728,44 +625,10 @@ export function downloadM1StatementsStream(
   if (options.year) params.set('year', options.year)
   if (options.accountType) params.set('accountType', options.accountType)
 
-  const eventSource = new EventSource(
-    `${API_BASE}/import/m1-statements/download-stream?${params.toString()}`
+  return createEventStream(
+    `${API_BASE}/import/m1-statements/download-stream?${params.toString()}`,
+    callbacks
   )
-
-  eventSource.addEventListener('status', (e: MessageEvent) => {
-    const data = JSON.parse(e.data)
-    callbacks.onStatus?.(data)
-  })
-
-  eventSource.addEventListener('progress', (e: MessageEvent) => {
-    const data = JSON.parse(e.data)
-    callbacks.onProgress?.(data)
-  })
-
-  eventSource.addEventListener('complete', (e: MessageEvent) => {
-    const data = JSON.parse(e.data)
-    callbacks.onComplete?.(data)
-    eventSource.close()
-  })
-
-  eventSource.addEventListener('error', (e: MessageEvent) => {
-    if (e.data) {
-      const data = JSON.parse(e.data)
-      callbacks.onError?.(data)
-    } else {
-      callbacks.onError?.({ message: 'Connection lost' })
-    }
-    eventSource.close()
-  })
-
-  eventSource.onerror = () => {
-    callbacks.onError?.({ message: 'Connection error' })
-    eventSource.close()
-  }
-
-  return {
-    close: () => eventSource.close()
-  }
 }
 
 // ============================================================================
@@ -896,47 +759,16 @@ export function scrapeCoinbaseTransactionsStream(
   if (options.fundId) params.set('fundId', options.fundId)
   if (options.clearFundEntries) params.set('clearFundEntries', 'true')
 
-  const eventSource = new EventSource(
-    `${API_BASE}/import/coinbase/transactions/scrape-stream?${params.toString()}`
+  const { eventSource, close } = createEventStream<CoinbaseScrapeStatusEvent, CoinbaseScrapeProgressEvent, CoinbaseScrapeCompleteEvent, ScrapeErrorEvent>(
+    `${API_BASE}/import/coinbase/transactions/scrape-stream?${params.toString()}`,
+    callbacks
   )
 
-  eventSource.addEventListener('status', (e: MessageEvent) => {
-    const data = JSON.parse(e.data) as CoinbaseScrapeStatusEvent
-    callbacks.onStatus?.(data)
-  })
-
-  eventSource.addEventListener('progress', (e: MessageEvent) => {
-    const data = JSON.parse(e.data) as CoinbaseScrapeProgressEvent
-    callbacks.onProgress?.(data)
-  })
-
+  // Extra event not covered by createEventStream
   eventSource.addEventListener('applied', (e: MessageEvent) => {
     const data = JSON.parse(e.data) as { entriesApplied: number; lastDate: string }
     callbacks.onApplied?.(data)
   })
 
-  eventSource.addEventListener('complete', (e: MessageEvent) => {
-    const data = JSON.parse(e.data) as CoinbaseScrapeCompleteEvent
-    callbacks.onComplete?.(data)
-    eventSource.close()
-  })
-
-  eventSource.addEventListener('error', (e: MessageEvent) => {
-    if (e.data) {
-      const data = JSON.parse(e.data) as ScrapeErrorEvent
-      callbacks.onError?.(data)
-    } else {
-      callbacks.onError?.({ message: 'Connection lost' })
-    }
-    eventSource.close()
-  })
-
-  eventSource.onerror = () => {
-    callbacks.onError?.({ message: 'Connection error' })
-    eventSource.close()
-  }
-
-  return {
-    close: () => eventSource.close()
-  }
+  return { close }
 }
