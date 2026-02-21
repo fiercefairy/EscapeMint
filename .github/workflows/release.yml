@@ -96,29 +96,3 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Prep dev branch for next release
-        if: steps.tag-check.outputs.exists == 'false'
-        run: |
-          # Get current version
-          CURRENT_VERSION=${{ steps.package-version.outputs.version }}
-
-          # Split into parts
-          MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
-          MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
-
-          # Increment minor, reset patch to 0
-          NEW_MINOR=$((MINOR + 1))
-          NEW_VERSION="$MAJOR.$NEW_MINOR.0"
-
-          # Checkout dev branch
-          git fetch origin dev
-          git checkout dev
-
-          # Update root package.json
-          npm version $NEW_VERSION --no-git-tag-version
-
-          # Commit and push
-          git add package.json package-lock.json
-          git commit -m "build: prep v$NEW_VERSION for next release [skip ci]"
-          git push origin dev
