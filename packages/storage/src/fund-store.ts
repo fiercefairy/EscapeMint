@@ -65,7 +65,13 @@ const LOCK_OPTIONS = { retries: { retries: 5, minTimeout: 100, maxTimeout: 1000 
  * Ensures read-modify-write operations are atomic.
  */
 async function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
-  const release = await lockfile.lock(filePath, LOCK_OPTIONS)
+  let release: (() => Promise<void>) | undefined
+  try {
+    release = await lockfile.lock(filePath, LOCK_OPTIONS)
+  } catch (error) {
+    console.warn(`⚠️ failed to acquire lock for "${filePath}"`, error)
+    throw error
+  }
   try {
     return await fn()
   } finally {

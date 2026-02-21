@@ -26,7 +26,8 @@ export function EditEntryModal({ fundId, fundTicker, entryIndex, entry, existing
   // Track the base fund size (before any adjustments)
   const baseFundSize = useMemo(() => {
     const fundSize = entry.fund_size ?? calculatedFundSize ?? 0
-    // DEPOSIT/WITHDRAW actions store amount in entry.amount, not in notes
+    // DEPOSIT/WITHDRAW actions store amount in entry.amount (structured field),
+    // while BUY/SELL notes may contain deposit/withdrawal text for legacy cash sync entries
     const existingDeposit = (entry.action === 'DEPOSIT' && entry.amount)
       ? entry.amount
       : parseFloat(parseDepositFromNotes(entry.notes)) || 0
