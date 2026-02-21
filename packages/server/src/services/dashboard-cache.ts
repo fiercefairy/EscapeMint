@@ -15,11 +15,9 @@ import {
   type Trade
 } from '@escapemint/engine'
 import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
+import { isTestPlatform } from '../utils/platforms.js'
 
 const FUNDS_DIR = join(process.env['DATA_DIR'] ?? './data', 'funds')
-
-// Test platforms: any platform starting with 'test' (matches global-setup/teardown cleanup)
-const isTestPlatform = (platform: string) => platform.startsWith('test')
 
 // Cache entry with timestamp
 interface CacheEntry<T> {

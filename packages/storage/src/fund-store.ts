@@ -2,6 +2,7 @@ import { readFile, writeFile, rename, mkdir, readdir, unlink } from 'node:fs/pro
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { v4 as uuidv4 } from 'uuid'
+import lockfile from 'proper-lockfile'
 import type { SubFundConfig, Trade, CashFlow, Dividend, Expense } from '@escapemint/engine'
 
 // Action types for regular funds (trading, cash, crypto)
@@ -56,6 +57,21 @@ export interface FundData {
 }
 
 const ENTRY_HEADERS = ['date', 'value', 'cash', 'action', 'amount', 'shares', 'price', 'dividend', 'expense', 'cash_interest', 'fund_size', 'margin_available', 'margin_borrowed', 'margin_expense', 'notes', 'contracts', 'entry_price', 'liquidation_price', 'unrealized_pnl', 'margin_locked', 'fee', 'margin']
+
+const LOCK_OPTIONS = { retries: { retries: 5, minTimeout: 100, maxTimeout: 1000 } }
+
+/**
+ * Execute a function while holding an exclusive file lock.
+ * Ensures read-modify-write operations are atomic.
+ */
+async function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
+  const release = await lockfile.lock(filePath, LOCK_OPTIONS)
+  try {
+    return await fn()
+  } finally {
+    await release()
+  }
+}
 
 /**
  * Get the JSON config file path for a TSV file.
@@ -246,9 +262,9 @@ export async function readFund(filePath: string): Promise<FundData | null> {
   )
   const cleanConfig = Object.fromEntries(cleanConfigEntries) as SubFundConfig
 
-  // Read entries from TSV file
+  // Read entries from TSV file (normalize CRLF line endings)
   const content = await readFile(filePath, 'utf-8')
-  const lines = content.split('\n').filter(line => line.trim() !== '')
+  const lines = content.replace(/\r\n/g, '\n').split('\n').filter(line => line.trim() !== '')
 
   if (lines.length < 1) {
     return null
@@ -314,18 +330,21 @@ export async function writeFund(filePath: string, data: FundData): Promise<void>
 
 /**
  * Update only the config for a fund (more efficient than writeFund for config-only changes).
+ * Uses file locking to prevent concurrent read-modify-write races.
  */
 export async function updateFundConfig(filePath: string, config: Partial<SubFundConfig>): Promise<SubFundConfig> {
-  const configPath = getConfigPath(filePath)
-  const existingConfig = await readConfig(configPath)
+  return withFileLock(filePath, async () => {
+    const configPath = getConfigPath(filePath)
+    const existingConfig = await readConfig(configPath)
 
-  if (!existingConfig) {
-    throw new Error(`Config file not found: ${configPath}`)
-  }
+    if (!existingConfig) {
+      throw new Error(`Config file not found: ${configPath}`)
+    }
 
-  const updatedConfig: SubFundConfig = { ...existingConfig, ...config }
-  await writeConfig(configPath, updatedConfig)
-  return updatedConfig
+    const updatedConfig: SubFundConfig = { ...existingConfig, ...config }
+    await writeConfig(configPath, updatedConfig)
+    return updatedConfig
+  })
 }
 
 /**
@@ -347,49 +366,58 @@ export async function deleteFund(filePath: string): Promise<void> {
 
 /**
  * Append an entry to a fund file.
+ * Uses file locking to prevent concurrent read-modify-write races.
  */
 export async function appendEntry(filePath: string, entry: FundEntry): Promise<void> {
-  const fund = await readFund(filePath)
-  if (!fund) {
-    throw new Error(`Fund file not found: ${filePath}`)
-  }
+  await withFileLock(filePath, async () => {
+    const fund = await readFund(filePath)
+    if (!fund) {
+      throw new Error(`Fund file not found: ${filePath}`)
+    }
 
-  fund.entries.push(entry)
-  await writeFund(filePath, fund)
+    fund.entries.push(entry)
+    await writeFund(filePath, fund)
+  })
 }
 
 /**
  * Update an entry at a specific index.
+ * Uses file locking to prevent concurrent read-modify-write races.
  */
 export async function updateEntry(filePath: string, entryIndex: number, entry: FundEntry): Promise<void> {
-  const fund = await readFund(filePath)
-  if (!fund) {
-    throw new Error(`Fund file not found: ${filePath}`)
-  }
+  await withFileLock(filePath, async () => {
+    const fund = await readFund(filePath)
+    if (!fund) {
+      throw new Error(`Fund file not found: ${filePath}`)
+    }
 
-  if (entryIndex < 0 || entryIndex >= fund.entries.length) {
-    throw new Error(`Entry index out of bounds: ${entryIndex}`)
-  }
+    if (entryIndex < 0 || entryIndex >= fund.entries.length) {
+      throw new Error(`Entry index out of bounds: ${entryIndex}`)
+    }
 
-  fund.entries[entryIndex] = entry
-  await writeFund(filePath, fund)
+    fund.entries[entryIndex] = entry
+    await writeFund(filePath, fund)
+  })
 }
 
 /**
  * Delete an entry at a specific index.
+ * Uses file locking to prevent concurrent read-modify-write races.
  */
 export async function deleteEntry(filePath: string, entryIndex: number): Promise<void> {
-  const fund = await readFund(filePath)
-  if (!fund) {
-    throw new Error(`Fund file not found: ${filePath}`)
-  }
+  await withFileLock(filePath, async () => {
+    const fund = await readFund(filePath)
+    if (!fund) {
+      throw new Error(`Fund file not found: ${filePath}`)
+    }
 
-  if (entryIndex < 0 || entryIndex >= fund.entries.length) {
-    throw new Error(`Entry index out of bounds: ${entryIndex}`)
-  }
+    if (entryIndex < 0 || entryIndex >= fund.entries.length) {
+      throw new Error(`Entry index out of bounds: ${entryIndex}`)
+    }
 
-  fund.entries.splice(entryIndex, 1)
-  await writeFund(filePath, fund)
+    fund.entries.splice(entryIndex, 1)
+    await writeFund(filePath, fund)
+  })
 }
 
 /**

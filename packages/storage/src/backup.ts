@@ -148,7 +148,7 @@ export async function listBackups(backupDir: string): Promise<{ name: string; da
 }
 
 /**
- * Read a backup file.
+ * Read and validate a backup file.
  */
 export async function readBackup(backupDir: string, filename: string): Promise<BackupData | null> {
   // Sanitize filename to prevent directory traversal
@@ -158,7 +158,11 @@ export async function readBackup(backupDir: string, filename: string): Promise<B
     return null
   }
   const content = await readFile(backupPath, 'utf-8')
-  return JSON.parse(content) as BackupData
+  const parsed: unknown = JSON.parse(content)
+  if (!validateBackupData(parsed)) {
+    return null
+  }
+  return parsed
 }
 
 /**
@@ -290,6 +294,8 @@ function validateBackupData(data: unknown): data is BackupData {
   for (const fund of backup.funds) {
     if (!fund || typeof fund !== 'object') return false
     if (!fund.id || typeof fund.id !== 'string') return false
+    if (!fund.platform || typeof fund.platform !== 'string') return false
+    if (!fund.ticker || typeof fund.ticker !== 'string') return false
     if (!fund.config || typeof fund.config !== 'object') return false
     if (!Array.isArray(fund.entries)) return false
   }

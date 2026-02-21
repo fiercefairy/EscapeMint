@@ -71,3 +71,11 @@ export function getTodayDate(): string {
 export function round2(value: number): number {
   return Math.round(value * 100) / 100
 }
+
+/**
+ * Check if a platform is a test platform.
+ * Test platforms have IDs starting with 'test' (e.g., 'test', 'test-plat', 'test-cash').
+ */
+export function isTestPlatform(platform: string): boolean {
+  return platform.startsWith('test')
+}

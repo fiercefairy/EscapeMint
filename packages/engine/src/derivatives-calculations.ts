@@ -221,11 +221,14 @@ export const calculateSafeLimitOrders = (
     const addedCostBasis = orderContracts * costPerContract
     const newContracts = cumulativeContracts + orderContracts
     const newCostBasis = cumulativeCostBasis + addedCostBasis
-    const newAvgEntry = newCostBasis / (newContracts * contractMultiplier)
+    const newNotionalSize = newContracts * contractMultiplier
+    const newAvgEntry = newNotionalSize > 0 ? newCostBasis / newNotionalSize : 0
 
     // Calculate new liquidation price
-    const estimatedNewMaintMargin = newContracts * contractMultiplier * orderPrice * maintenanceRate
-    const newLiqPrice = (estimatedNewMaintMargin + newCostBasis - totalCash) / (newContracts * contractMultiplier)
+    const estimatedNewMaintMargin = newNotionalSize * orderPrice * maintenanceRate
+    const newLiqPrice = newNotionalSize > 0
+      ? (estimatedNewMaintMargin + newCostBasis - totalCash) / newNotionalSize
+      : 0
 
     // Equity at asset price = $0
     const equityAtZero = totalCash - newCostBasis
@@ -703,10 +706,11 @@ export const computeDerivativesEntriesState = (
         // Update average entry price (weighted average)
         // Note: price is "cost per contract" (e.g., $1056 when asset = $105,600)
         // We want avgEntry to be asset price = totalDollarCost / (position * contractMultiplier)
-        if (position > 0) {
+        const buyDenominator = position * contractMultiplier
+        if (position > 0 && buyDenominator > 0) {
           const oldCost = avgEntry * (position - contracts) * contractMultiplier
           const newCost = price * contracts  // Total dollar cost (price is already per contract)
-          avgEntry = (oldCost + newCost) / (position * contractMultiplier)
+          avgEntry = (oldCost + newCost) / buyDenominator
         }
         // Calculate margin for this trade
         const notionalForTrade = price * contracts  // Total dollar cost
@@ -767,9 +771,10 @@ export const computeDerivativesEntriesState = (
         position -= contracts
 
         // Recalculate average entry from remaining queue
-        if (position > 0 && costBasisQueue.length > 0) {
+        const sellDenominator = position * contractMultiplier
+        if (position > 0 && sellDenominator > 0 && costBasisQueue.length > 0) {
           const totalCost = costBasisQueue.reduce((sum, lot) => sum + lot.cost, 0)
-          avgEntry = totalCost / (position * contractMultiplier)
+          avgEntry = totalCost / sellDenominator
         } else if (position === 0) {
           avgEntry = 0
         }
@@ -790,11 +795,11 @@ export const computeDerivativesEntriesState = (
         // HOLD entries can mark position to market via the value field
         // If value is provided and we have an open position, derive asset price
         const entryValue = (entry as { value?: number }).value
-        if (entryValue && entryValue > 0 && position > 0) {
+        const holdNotionalSize = position * contractMultiplier
+        if (entryValue && entryValue > 0 && holdNotionalSize > 0) {
           // Value represents current position value
           // Derive implied asset price: assetPrice = value / (position * contractMultiplier)
-          const notionalSize = position * contractMultiplier
-          currentAssetPrice = entryValue / notionalSize
+          currentAssetPrice = entryValue / holdNotionalSize
         }
         // If cash field is provided, sync marginBalance to actual account cash
         // This allows cash balance scrapes to correct drift in calculated margin
