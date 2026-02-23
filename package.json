@@ -1,6 +1,6 @@
 {
   "name": "escapemint",
-  "version": "0.40.2",
+  "version": "0.40.3",
   "type": "module",
   "private": true,
   "description": "A local-first, open-source capital allocation engine for rules-based fund management",
