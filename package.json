@@ -1,11 +1,11 @@
 {
   "name": "escapemint",
-  "version": "0.40.4",
+  "version": "0.40.7",
   "type": "module",
   "private": true,
   "description": "A local-first, open-source capital allocation engine for rules-based fund management",
   "scripts": {
-    "setup": "npm install && npm run build:packages && npm run setup:data",
+    "setup": "npm install && cd pages && npm install && cd .. && npm run build:packages && npm run setup:data",
     "setup:data": "mkdir -p data/funds && echo 'Created data/funds directory. Use Settings > Generate Test Data to populate sample data.'",
     "dev": "pm2 start ecosystem.config.cjs && pm2 logs",
     "dev:stop": "pm2 stop ecosystem.config.cjs",
@@ -14,7 +14,7 @@
     "dev:logs": "pm2 logs",
     "dev:api": "cd packages/server && npx tsx watch src/index.ts",
     "dev:web": "cd packages/web && npx vite --host",
-    "dev:backtest": "cd pages && npm run dev",
+    "dev:backtest": "cd pages && npm install && npm run dev",
     "build:packages": "npm run build:engine && npm run build:storage",
     "build": "npm run build:packages && npm run build:server && npm run build:web && npm run build:backtest",
     "build:engine": "npx tsc --project packages/engine/tsconfig.json",

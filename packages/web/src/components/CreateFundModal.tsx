@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { createFund, notifyFundsChanged, type FundConfig, type FundType, type FundCategory, type CategoryAllocation } from '../api/funds'
-import { fetchPlatforms, type Platform } from '../api/platforms'
+import { fetchPlatforms, createPlatform, deletePlatform, type Platform } from '../api/platforms'
 import {
   getFundTypeFeatures,
   FUND_TYPE_DEFAULTS,
@@ -26,6 +26,8 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
   const [loading, setLoading] = useState(false)
   const [platforms, setPlatforms] = useState<Platform[]>([])
   const [selectedPlatform, setSelectedPlatform] = useState('')
+  const [isCreatingPlatform, setIsCreatingPlatform] = useState(false)
+  const [newPlatformName, setNewPlatformName] = useState('')
   const [ticker, setTicker] = useState('')
   const [fundType, setFundType] = useState<FundType>('stock')
   const [category, setCategory] = useState<FundCategory | ''>('')
@@ -58,11 +60,15 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     fetchPlatforms().then(result => {
       if (result.data) {
         setPlatforms(result.data)
-        // Default to Robinhood if available, otherwise first platform
-        const robinhood = result.data.find(p => p.id === 'robinhood')
-        const defaultPlatform = robinhood || result.data[0]
-        if (defaultPlatform) {
-          setSelectedPlatform(defaultPlatform.id)
+        if (result.data.length === 0) {
+          setIsCreatingPlatform(true)
+        } else {
+          // Default to Robinhood if available, otherwise first platform
+          const robinhood = result.data.find(p => p.id === 'robinhood')
+          const defaultPlatform = robinhood || result.data[0]
+          if (defaultPlatform) {
+            setSelectedPlatform(defaultPlatform.id)
+          }
         }
       }
     })
@@ -107,57 +113,102 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedPlatform || !ticker) {
+
+    let platformId = selectedPlatform
+    if (isCreatingPlatform) {
+      if (!newPlatformName.trim()) {
+        toast.error('Platform name is required')
+        return
+      }
+      platformId = newPlatformName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      if (!platformId) {
+        toast.error('Platform name must contain letters or numbers')
+        return
+      }
+      if (platformId.startsWith('test')) {
+        toast.error("Platform names starting with 'test' are reserved")
+        return
+      }
+    }
+
+    if (!platformId || !ticker) {
       toast.error('Platform and ticker are required')
       return
     }
     setLoading(true)
+    let createdNewPlatform = false
 
-    // For non-trading funds, use defaults for trading-related fields
-    const config: Partial<FundConfig> = {
-      status: 'active',
-      fund_type: fundType,
-      // Multi-category takes precedence, clear single category when using allocations
-      category: isMultiCategory ? undefined : (category || undefined),
-      category_allocations: isMultiCategory && categoryAllocations.length > 0 ? categoryAllocations : undefined,
-      fund_size_usd: fundType === 'cash' ? formData.fund_size_usd : 0,
-      target_apy: features.allowsTrading ? round(formData.target_apy / 100, 4) : (defaults.target_apy ?? 0),
-      interval_days: features.allowsTrading ? formData.interval_days : (defaults.interval_days ?? 1),
-      input_min_usd: features.allowsTrading ? formData.input_min_usd : (defaults.input_min_usd ?? 0),
-      input_mid_usd: features.allowsTrading ? formData.input_mid_usd : (defaults.input_mid_usd ?? 0),
-      input_max_usd: features.allowsTrading ? formData.input_max_usd : (defaults.input_max_usd ?? 0),
-      max_at_pct: features.allowsTrading ? round(formData.max_at_pct / 100, 4) : (defaults.max_at_pct ?? 0),
-      min_profit_usd: features.allowsTrading ? formData.min_profit_usd : (defaults.min_profit_usd ?? 0),
-      cash_apy: round(formData.cash_apy / 100, 4),
-      margin_apr: round(formData.margin_apr / 100, 4),
-      margin_access_usd: formData.margin_access_usd,
-      accumulate: features.allowsTrading ? formData.accumulate : (defaults.accumulate ?? true),
-      manage_cash: features.allowsTrading ? formData.manage_cash : (defaults.manage_cash ?? true),
-      margin_enabled: features.allowsTrading ? formData.margin_enabled : (defaults.margin_enabled ?? false),
-      dividend_reinvest: formData.dividend_reinvest,
-      interest_reinvest: formData.interest_reinvest,
-      expense_from_fund: formData.expense_from_fund
-    }
-
-    const result = await createFund({
-      platform: selectedPlatform,
-      ticker: ticker.toLowerCase(),
-      config
-    })
-
-    if (result.error) {
-      toast.error(result.error)
-    } else {
-      toast.success(`Created ${ticker.toUpperCase()} fund`)
-      notifyFundsChanged()
-      onClose()
-      onCreated?.()
-      if (result.data) {
-        navigate(`/fund/${result.data.id}`)
+    try {
+      if (isCreatingPlatform) {
+        const platformResult = await createPlatform({
+          id: platformId,
+          name: newPlatformName.trim()
+        })
+        if (platformResult.error) {
+          // If platform already exists (e.g. retry after fund creation failed), treat as success
+          if (!platformResult.error.toLowerCase().includes('already exists')) {
+            toast.error(platformResult.error)
+            return
+          }
+        } else {
+          createdNewPlatform = true
+        }
       }
-    }
 
-    setLoading(false)
+      // For non-trading funds, use defaults for trading-related fields
+      const config: Partial<FundConfig> = {
+        status: 'active',
+        fund_type: fundType,
+        // Multi-category takes precedence, clear single category when using allocations
+        category: isMultiCategory ? undefined : (category || undefined),
+        category_allocations: isMultiCategory && categoryAllocations.length > 0 ? categoryAllocations : undefined,
+        fund_size_usd: fundType === 'cash' ? formData.fund_size_usd : 0,
+        target_apy: features.allowsTrading ? round(formData.target_apy / 100, 4) : (defaults.target_apy ?? 0),
+        interval_days: features.allowsTrading ? formData.interval_days : (defaults.interval_days ?? 1),
+        input_min_usd: features.allowsTrading ? formData.input_min_usd : (defaults.input_min_usd ?? 0),
+        input_mid_usd: features.allowsTrading ? formData.input_mid_usd : (defaults.input_mid_usd ?? 0),
+        input_max_usd: features.allowsTrading ? formData.input_max_usd : (defaults.input_max_usd ?? 0),
+        max_at_pct: features.allowsTrading ? round(formData.max_at_pct / 100, 4) : (defaults.max_at_pct ?? 0),
+        min_profit_usd: features.allowsTrading ? formData.min_profit_usd : (defaults.min_profit_usd ?? 0),
+        cash_apy: round(formData.cash_apy / 100, 4),
+        margin_apr: round(formData.margin_apr / 100, 4),
+        margin_access_usd: formData.margin_access_usd,
+        accumulate: features.allowsTrading ? formData.accumulate : (defaults.accumulate ?? true),
+        manage_cash: features.allowsTrading ? formData.manage_cash : (defaults.manage_cash ?? true),
+        margin_enabled: features.allowsTrading ? formData.margin_enabled : (defaults.margin_enabled ?? false),
+        dividend_reinvest: formData.dividend_reinvest,
+        interest_reinvest: formData.interest_reinvest,
+        expense_from_fund: formData.expense_from_fund
+      }
+
+      const result = await createFund({
+        platform: platformId,
+        ticker: ticker.toLowerCase(),
+        config
+      })
+
+      if (result.error) {
+        if (createdNewPlatform) {
+          deletePlatform(platformId).catch(() => {})
+        }
+        toast.error(result.error)
+      } else {
+        toast.success(`Created ${ticker.toUpperCase()} fund`)
+        notifyFundsChanged()
+        onClose()
+        onCreated?.()
+        if (result.data) {
+          navigate(`/fund/${result.data.id}`)
+        }
+      }
+    } catch {
+      if (createdNewPlatform) {
+        deletePlatform(platformId).catch(() => {})
+      }
+      toast.error('An unexpected error occurred')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -316,16 +367,54 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-slate-400 mb-1">Platform</label>
-              <select
-                value={selectedPlatform}
-                onChange={e => setSelectedPlatform(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                required
-              >
-                {platforms.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              {isCreatingPlatform ? (
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    value={newPlatformName}
+                    onChange={e => setNewPlatformName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                    placeholder="e.g., Robinhood"
+                    autoFocus
+                  />
+                  {platforms.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCreatingPlatform(false)
+                        setNewPlatformName('')
+                        if (!selectedPlatform || !platforms.some(p => p.id === selectedPlatform)) {
+                          if (platforms.length > 0) setSelectedPlatform(platforms[0].id)
+                        }
+                      }}
+                      className="px-2 py-2 text-slate-400 hover:text-white shrink-0"
+                      aria-label="Cancel new platform"
+                    >
+                      <svg className="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <select
+                  value={selectedPlatform}
+                  onChange={e => {
+                    if (e.target.value === '__new__') {
+                      setIsCreatingPlatform(true)
+                    } else {
+                      setSelectedPlatform(e.target.value)
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                  required
+                >
+                  {platforms.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                  <option value="__new__">+ New Platform</option>
+                </select>
+              )}
             </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1">Ticker</label>
