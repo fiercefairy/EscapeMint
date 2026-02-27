@@ -188,9 +188,8 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
       })
 
       if (result.error) {
-        // Clean up orphaned platform if we just created it and fund creation failed
         if (createdNewPlatform) {
-          await deletePlatform(platformId)
+          deletePlatform(platformId).catch(() => {})
         }
         toast.error(result.error)
       } else {
@@ -203,6 +202,9 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
         }
       }
     } catch {
+      if (createdNewPlatform) {
+        deletePlatform(platformId).catch(() => {})
+      }
       toast.error('An unexpected error occurred')
     } finally {
       setLoading(false)
