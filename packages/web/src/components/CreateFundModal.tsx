@@ -125,6 +125,10 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
         toast.error('Platform name must contain letters or numbers')
         return
       }
+      if (platformId.startsWith('test')) {
+        toast.error("Platform names starting with 'test' are reserved")
+        return
+      }
     }
 
     if (!platformId || !ticker) {
@@ -139,9 +143,12 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
         name: newPlatformName.trim()
       })
       if (platformResult.error) {
-        toast.error(platformResult.error)
-        setLoading(false)
-        return
+        // If platform already exists (e.g. retry after fund creation failed), treat as success
+        if (!platformResult.error.toLowerCase().includes('already exists')) {
+          toast.error(platformResult.error)
+          setLoading(false)
+          return
+        }
       }
     }
 
@@ -357,7 +364,6 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                     className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
                     placeholder="e.g., Robinhood"
                     autoFocus
-                    required
                   />
                   {platforms.length > 0 && (
                     <button
@@ -365,7 +371,9 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                       onClick={() => {
                         setIsCreatingPlatform(false)
                         setNewPlatformName('')
-                        if (!selectedPlatform && platforms.length > 0) {
+                        if (selectedPlatform && platforms.some(p => p.id === selectedPlatform)) {
+                          // Restore previous selection (still stored in selectedPlatform)
+                        } else if (platforms.length > 0) {
                           setSelectedPlatform(platforms[0].id)
                         }
                       }}
@@ -384,7 +392,6 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
                   onChange={e => {
                     if (e.target.value === '__new__') {
                       setIsCreatingPlatform(true)
-                      setSelectedPlatform('')
                     } else {
                       setSelectedPlatform(e.target.value)
                     }
