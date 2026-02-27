@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { createFund, notifyFundsChanged, type FundConfig, type FundType, type FundCategory, type CategoryAllocation } from '../api/funds'
-import { fetchPlatforms, type Platform } from '../api/platforms'
+import { fetchPlatforms, createPlatform, type Platform } from '../api/platforms'
 import {
   getFundTypeFeatures,
   FUND_TYPE_DEFAULTS,
@@ -26,6 +26,8 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
   const [loading, setLoading] = useState(false)
   const [platforms, setPlatforms] = useState<Platform[]>([])
   const [selectedPlatform, setSelectedPlatform] = useState('')
+  const [isCreatingPlatform, setIsCreatingPlatform] = useState(false)
+  const [newPlatformName, setNewPlatformName] = useState('')
   const [ticker, setTicker] = useState('')
   const [fundType, setFundType] = useState<FundType>('stock')
   const [category, setCategory] = useState<FundCategory | ''>('')
@@ -58,11 +60,15 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     fetchPlatforms().then(result => {
       if (result.data) {
         setPlatforms(result.data)
-        // Default to Robinhood if available, otherwise first platform
-        const robinhood = result.data.find(p => p.id === 'robinhood')
-        const defaultPlatform = robinhood || result.data[0]
-        if (defaultPlatform) {
-          setSelectedPlatform(defaultPlatform.id)
+        if (result.data.length === 0) {
+          setIsCreatingPlatform(true)
+        } else {
+          // Default to Robinhood if available, otherwise first platform
+          const robinhood = result.data.find(p => p.id === 'robinhood')
+          const defaultPlatform = robinhood || result.data[0]
+          if (defaultPlatform) {
+            setSelectedPlatform(defaultPlatform.id)
+          }
         }
       }
     })
@@ -107,11 +113,37 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedPlatform || !ticker) {
+
+    let platformId = selectedPlatform
+    if (isCreatingPlatform) {
+      if (!newPlatformName.trim()) {
+        toast.error('Platform name is required')
+        return
+      }
+      platformId = newPlatformName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      if (!platformId) {
+        toast.error('Platform name must contain letters or numbers')
+        return
+      }
+    }
+
+    if (!platformId || !ticker) {
       toast.error('Platform and ticker are required')
       return
     }
     setLoading(true)
+
+    if (isCreatingPlatform) {
+      const platformResult = await createPlatform({
+        id: platformId,
+        name: newPlatformName.trim()
+      })
+      if (platformResult.error) {
+        toast.error(platformResult.error)
+        setLoading(false)
+        return
+      }
+    }
 
     // For non-trading funds, use defaults for trading-related fields
     const config: Partial<FundConfig> = {
@@ -140,7 +172,7 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
     }
 
     const result = await createFund({
-      platform: selectedPlatform,
+      platform: platformId,
       ticker: ticker.toLowerCase(),
       config
     })
@@ -316,16 +348,56 @@ export function CreateFundModal({ onClose, onCreated }: CreateFundModalProps) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-slate-400 mb-1">Platform</label>
-              <select
-                value={selectedPlatform}
-                onChange={e => setSelectedPlatform(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
-                required
-              >
-                {platforms.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              {isCreatingPlatform ? (
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    value={newPlatformName}
+                    onChange={e => setNewPlatformName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                    placeholder="e.g., Robinhood"
+                    autoFocus
+                    required
+                  />
+                  {platforms.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCreatingPlatform(false)
+                        setNewPlatformName('')
+                        if (!selectedPlatform && platforms.length > 0) {
+                          setSelectedPlatform(platforms[0].id)
+                        }
+                      }}
+                      className="px-2 py-2 text-slate-400 hover:text-white shrink-0"
+                      title="Cancel"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <select
+                  value={selectedPlatform}
+                  onChange={e => {
+                    if (e.target.value === '__new__') {
+                      setIsCreatingPlatform(true)
+                      setSelectedPlatform('')
+                    } else {
+                      setSelectedPlatform(e.target.value)
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-mint-500"
+                  required
+                >
+                  {platforms.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                  <option value="__new__">+ New Platform</option>
+                </select>
+              )}
             </div>
             <div>
               <label className="block text-xs text-slate-400 mb-1">Ticker</label>
