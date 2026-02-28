@@ -2,7 +2,7 @@ name: Deploy Backtest to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [release]
     paths:
       - 'pages/**'
       - 'packages/engine/src/**'
