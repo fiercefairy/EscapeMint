@@ -279,7 +279,7 @@ Functions tested:
 - `computeExpectedTarget()` with various trade combinations
 - `computeCashAvailable()` with different cash flows
 - `entriesToTrades()` conversion functions
-- `recommendeation()` decision logic
+- `recommendation()` decision logic
 
 **Integration Tests:**
 
