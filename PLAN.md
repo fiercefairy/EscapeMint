@@ -110,7 +110,7 @@ When tracking price/size, show additional charts on the fund dashboard.
 
 ## Test Coverage
 
-Run `npm run test:coverage:report` to generate the HTML report, viewable in the app's Settings page.
+Run `npm run test:coverage` to generate the coverage report, viewable in the app's Settings page.
 
 | Suite | Files | Coverage |
 |-------|-------|----------|

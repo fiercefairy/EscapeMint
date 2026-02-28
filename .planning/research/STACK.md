@@ -205,7 +205,7 @@ Otherwise, **no new installations required** for this milestone.
 
 - Codebase grep — confirmed D3 is used for all charts, Recharts is unused (HIGH confidence)
 - `packages/web/package.json` — verified current dependency versions (HIGH confidence)
-- [recharts GitHub releases](https://github.com/recharts/recharts/releases) — v3.7.0 latest stable as of Jan 2025; 3.0 introduced breaking state management changes (MEDIUM confidence via WebFetch)
+- [recharts GitHub releases](https://github.com/recharts/recharts/releases) — v3.x is latest major; installed version is 2.15.0 (unused). 3.0 introduced breaking state management changes (MEDIUM confidence via WebFetch)
 - [recharts 3.0 migration guide](https://github.com/recharts/recharts/wiki/3.0-migration-guide) — confirms CategoricalChartState removed, internal API breaking changes (MEDIUM confidence via WebSearch)
 - [@dnd-kit/core npm](https://www.npmjs.com/package/@dnd-kit/core) — v6.3.1, last published ~Feb 2025 (MEDIUM confidence via WebSearch)
 - [@dnd-kit/sortable npm](https://www.npmjs.com/package/@dnd-kit/sortable) — v10.0.0, last published ~Feb 2025 (MEDIUM confidence via WebSearch)
