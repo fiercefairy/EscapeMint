@@ -40,7 +40,7 @@
 - Purpose: User interface with React components, page-based routing, real-time dashboard
 - Location: `packages/web/src/`
 - Contains: Pages, components, API client, contexts, utilities
-- Depends on: Engine (for client-side calculations), React Router, D3/Recharts, Sonner
+- Depends on: Engine (for client-side calculations), React Router, D3, Sonner
 - Used by: End users via browser
 
 ## Data Flow
@@ -54,7 +54,7 @@
 5. Web receives response, dispatches `FUNDS_CHANGED_EVENT`, components re-fetch fund data
 6. `FundDetail.tsx` or Dashboard calls API GET `/api/v1/funds/{id}` to refresh state
 7. Server reads fund from storage, transforms entries to trades/dividends/cashflows, calls engine to compute metrics
-8. Web receives JSON, renders charts and metrics via Recharts/D3
+8. Web receives JSON, renders charts and metrics via D3
 
 **Dashboard Data Refresh:**
 

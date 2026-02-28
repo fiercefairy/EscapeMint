@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-EscapeMint is a mature, local-first DCA investing dashboard with an established monorepo architecture (React + D3 + Express + TSV storage). This milestone adds three UX features — configurable entry form fields, chart date range selector, and price/size charts — plus two bug fixes (liquidation detection divergence, cashflow data contract) and server route test coverage. Because the codebase already provides the data, patterns, and extension points for all three features, this is entirely a brownfield integration task. No new packages, no new API routes, and no engine changes are required.
+EscapeMint is a mature, local-first DCA investing dashboard with an established monorepo architecture (React + D3 + Express + TSV storage). This milestone adds three UX features — configurable entry form fields, chart date range selector, and price/size charts — plus two bug fixes (liquidation detection divergence, cashflow data contract) and server route test coverage. Because the codebase already provides the data, patterns, and extension points for all three features, this is entirely a brownfield integration task. No new packages and no new API routes are required. The only engine change is extracting a shared `detectFullLiquidation()` function to eliminate duplicated logic across three call sites.
 
 The recommended approach follows existing codebase patterns exactly: per-fund display preferences go into `FundConfig` JSON (matching `chart_bounds`, `charts_collapsed`, `entries_visible_columns`); chart filtering happens client-side in `useMemo` (no server round-trips); new charts use D3 v7 imperative SVG (matching all five existing chart components); field configuration uses the `entries_column_order` / `entries_visible_columns` pattern from `EntriesTable`. The critical architectural insight is that Recharts is in `package.json` but entirely unused — all charts are D3. Any new chart work must follow D3, not Recharts.
 
@@ -19,7 +19,7 @@ The top risks are pre-existing code debt that must be resolved before new featur
 
 ### Recommended Stack
 
-All three features can be implemented with the existing stack — no new dependencies are needed. The codebase uses React 18.3.1, TypeScript 5.7.2, D3 v7.9.0, Tailwind CSS 3.4.17, react-router-dom v7, and Express 4.x. `@dnd-kit/core` and `@dnd-kit/sortable` are available if drag-to-reorder entry fields is eventually desired, but up/down arrows or a checkbox list are sufficient for the immediate milestone. `recharts` should be uninstalled — it adds ~200 KB to the bundle and zero files import from it.
+All three features can be implemented with the existing stack — no new dependencies are needed. The codebase uses React 18.3.1, TypeScript 5.7.2, D3 v7.9.0, Tailwind CSS 3.4.17, react-router-dom v7, and Express 4.x. `@dnd-kit/core` and `@dnd-kit/sortable` could be added as optional dependencies later if drag-to-reorder entry fields is eventually desired, but up/down arrows or a checkbox list are sufficient for the immediate milestone. `recharts` should be uninstalled — it adds ~200 KB to the bundle and zero files import from it.
 
 **Core technologies:**
 - D3 7.9.0: all chart rendering — matches every existing chart component; adding Recharts would create a second charting paradigm

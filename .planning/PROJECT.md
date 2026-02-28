@@ -26,7 +26,7 @@ The system must reliably compute and display fund state, recommendations, and me
 - ✓ Platform management (create, rename, delete) — existing
 - ✓ Fund creation with inline platform creation — existing
 - ✓ Test data generation system — existing
-- ✓ E2E test suite (130+ tests, 8 spec files) — existing
+- ✓ E2E test suite (130+ tests, 9 spec files) — existing
 - ✓ Engine unit tests (135 tests) and storage unit tests (9 tests) — existing
 - ✓ WebSocket real-time updates — existing
 

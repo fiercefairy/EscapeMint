@@ -18,7 +18,7 @@
 
 **Package Manager:**
 - npm (monorepo with workspaces)
-- Lockfile: pnpm style lock present (found .pnpm directory in node_modules)
+- Lockfile: `package-lock.json` at repository root (npm lockfile)
 
 ## Frameworks
 
@@ -55,7 +55,7 @@
 
 **Frontend:**
 - react-router-dom 7.1.1 - Client-side routing
-- recharts 2.15.0 - Chart visualization library
+- recharts 2.15.0 - Unused/legacy charting library (candidate for removal; all current charts use D3)
 - d3 7.9.0 - Data-driven document manipulation (manual chunking in build)
 - sonner 1.7.2 - Toast notifications (replaces window.alert)
 - react-dom 18.3.1 - React DOM rendering

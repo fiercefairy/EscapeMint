@@ -224,7 +224,7 @@ FundEntry[] (already loaded in FundDetail)
     ↓ client-side filter: entries where supportsShares && any entry has price
 FundCharts: new PriceSizeChart component receives filteredEntries
     ↓ useMemo computes: date, price, cumulative shares, cost basis
-    ↓ Recharts or D3 renders: price line + share accumulation bar/area
+    ↓ D3 renders: price line + share accumulation bar/area
 No server changes. No new API endpoints.
 ```
 

@@ -70,13 +70,11 @@ Existing: Vitest, Playwright, ESLint, Prettier — all sufficient.
 
 Add to `FundConfig`:
 ```typescript
-entry_fields?: {
-  visible: string[]   // ordered list of field keys to show
-  // e.g., ['date', 'value', 'action', 'amount', 'shares', 'price', 'notes']
-}
+entry_fields?: string[]   // ordered list of field keys to show
+// e.g., ['date', 'value', 'action', 'amount', 'shares', 'price', 'notes']
 ```
 
-**Rendering approach:** In `EntryForm.tsx`, derive a field definition array from the config, then render only the fields present in `entry_fields.visible` in that order. When `entry_fields` is absent, fall back to current behavior (show all applicable fields for fund type).
+**Rendering approach:** In `EntryForm.tsx`, derive a field definition array from the config, then render only the fields present in `entry_fields` in that order. When `entry_fields` is absent, fall back to current behavior (show all applicable fields for fund type).
 
 **No library needed.** This is a `useMemo` over a config array + conditional JSX render. The existing `EntryForm.tsx` already conditionally shows/hides fields based on `fundType`; the new config layer just adds one more filter.
 
@@ -86,12 +84,12 @@ entry_fields?: {
 
 **Pattern:** Preset button group (1M / 3M / 6M / YTD / 1Y / All), persisted to fund JSON config.
 
-**State:** `chart_range?: '1M' | '3M' | '6M' | 'YTD' | '1Y' | 'All'` added to `FundConfig`.
+**State:** `chart_date_range?: '1M' | '3M' | '6M' | 'YTD' | '1Y' | 'All'` added to `FundConfig`.
 
 **Implementation approach:**
-1. Add `chart_range` to `FundConfig` type in `funds.ts`.
+1. Add `chart_date_range` to `FundConfig` type in `funds.ts`.
 2. Render a button group in `FundCharts.tsx` header (above charts).
-3. On button click: call `updateFundConfig(fundId, { chart_range: value })` — this persists to the fund's `.json` file, matching how `chart_bounds`, `charts_collapsed`, etc. already work.
+3. On button click: call `updateFundConfig(fundId, { chart_date_range: value })` — this persists to the fund's `.json` file, matching how `chart_bounds`, `charts_collapsed`, etc. already work.
 4. In `computeTimeSeries()` (or at the chart level), `useMemo` filter the `entries` array to only include entries within the selected range before passing to D3.
 
 **Date range calculation:**

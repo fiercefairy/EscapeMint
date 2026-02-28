@@ -60,8 +60,13 @@ packages/storage/
 e2e/
 ├── cash-funds.spec.ts
 ├── derivatives-funds.spec.ts
+├── fund-configurations.spec.ts
 ├── high-priority-features.spec.ts
+├── import-export.spec.ts
 ├── integrity-tests.spec.ts
+├── platform-management.spec.ts
+├── ui-workflows.spec.ts
+├── yearly-simulation.spec.ts
 ├── test-utils.ts
 ├── test-fixtures.ts
 ├── global-setup.ts
