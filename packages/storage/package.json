@@ -1,6 +1,6 @@
 {
   "name": "@escapemint/storage",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "TSV persistence layer for EscapeMint",
   "type": "module",
   "main": "./dist/index.js",

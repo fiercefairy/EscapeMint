@@ -1,6 +1,6 @@
 # EscapeMint - Development Plan
 
-Current development tasks and remaining work. For long-term vision and milestones, see [GOALS.md](./GOALS.md).
+The tactical backlog: what's next, what's in progress, and what's done. For mission, principles, and milestone definitions, see [GOALS.md](./GOALS.md).
 
 ---
 
@@ -16,12 +16,6 @@ See the [docs/](./docs/) folder for detailed documentation:
 - [System Architecture](./docs/architecture.md) - Package structure and data flow
 - [Derivatives](./docs/derivatives.md) - Perpetual futures data model
 - [Project Goals](./GOALS.md) - Mission, milestones, and non-goals
-
-### Documentation Backlog
-
-- [ ] Ticker Choices Guide (`docs/ticker-choices.md`) - Why volatile assets like TQQQ work better for DCA than VTI
-- [ ] Getting Started Guide
-- [ ] API Reference (OpenAPI/Swagger)
 
 ---
 
@@ -56,19 +50,24 @@ When tracking price/size, show additional charts on the fund dashboard.
 
 ## Remaining Work
 
-### Known Issues
-- Full liquidation detection logic in `funds.ts` may be fragile
-- Cashflows not stored - fund route passes empty array (verify DEPOSIT/WITHDRAW handling)
-
 ### Testing Gaps
 - [ ] Server route unit tests (`packages/server/test/routes/`)
-- [ ] Aggregate calculation tests (`packages/engine/test/aggregate.test.ts`)
 - [ ] Visual regression tests for charts
+- [ ] 95%+ feature coverage in E2E suite
 
-### Derivatives Import
-- [ ] Update scraper to mark USD/USDC deposits as perp-related
-- [ ] Update apply endpoint to use correct action types
-- [ ] Store contracts/price properly on trade entries
+### Engine Completeness
+- [ ] TWAP-based APY calculation verified across all edge cases (multi-cycle, idle gaps, partial liquidation)
+- [ ] Recommendation engine handles every combination of fund config flags correctly
+
+### UX Polish
+- [ ] Keyboard shortcuts (j/k navigation, Enter to open, Esc to close)
+- [ ] Mobile-responsive layout
+
+### Documentation Backlog
+- [ ] Ticker Choices Guide (`docs/ticker-choices.md`) - Why volatile assets like TQQQ work better for DCA than VTI
+- [ ] Getting Started Guide
+- [ ] API Reference (OpenAPI/Swagger)
+- [ ] Complete configuration reference with examples
 
 ### Parameterized Test Data
 - [ ] Add parameter inputs to Test/Demo Data settings section
@@ -77,9 +76,41 @@ When tracking price/size, show additional charts on the fund dashboard.
 
 ---
 
+## Future (v2.0+)
+
+### Strategy Layer
+- [ ] Plugin system for custom DCA strategies beyond tiered min/mid/max
+- [ ] Per-holding allocation within a fund (pie-style)
+- [ ] Benchmark comparison (vs SPY, BTC, custom benchmark)
+- [ ] Goal setting with target dates and amounts
+
+### Analytics
+- [ ] Performance attribution (break down gains by dividends, price appreciation, interest)
+- [ ] Comparison mode (side-by-side fund analysis)
+- [ ] Drawdown analysis and recovery time tracking
+- [ ] Portfolio correlation matrix
+
+### Data & Integration
+- [ ] Currency support for non-USD funds with exchange rate conversion
+- [ ] Multi-account aggregation (same ticker across platforms as single view)
+- [ ] Split handling (adjust historical prices/shares automatically)
+- [ ] CSV/PDF export for tax reporting
+
+### PWA / Offline
+- [ ] Service worker for full offline access
+- [ ] Installable as a desktop/mobile app
+- [ ] Background sync when connectivity returns
+
+### Community
+- [ ] Shareable fund configurations (anonymized strategy templates)
+- [ ] Backtesting engine with historical data for strategy validation before committing real capital
+- [ ] Public backtest page with onboarding wizard (already started in `pages/`)
+
+---
+
 ## Test Coverage
 
-Run `npm run test:coverage-report` to generate the HTML report, viewable in the app's Settings page.
+Run `npm run test:coverage` to generate the coverage report, viewable in the app's Settings page.
 
 | Suite | Files | Coverage |
 |-------|-------|----------|
@@ -93,13 +124,23 @@ Run `npm run test:coverage-report` to generate the HTML report, viewable in the 
 
 1. **Configurable entry form fields** - Highest-value UX improvement; reduces friction for the most common action (adding entries)
 2. **Chart date range selector** - Second most requested feature; enables focused analysis of recent performance
-3. **Fix known issues** - Audit liquidation detection logic and DEPOSIT/WITHDRAW cashflow handling before they cause data bugs
+3. **Price/size charts** - Price history, share accumulation, and cost basis charts for funds with price/size data
 4. **Server route unit tests** - Largest testing gap; API routes have zero unit test coverage
 5. **Ticker Choices documentation** - Referenced in README and philosophy docs but doesn't exist yet
 
 ---
 
 ## Completed Work (Archive)
+
+<details>
+<summary>v0.40+ Fixes</summary>
+
+- [x] Liquidation detection refactored to triple-redundant logic (share-based, value-based, dollar-based) in `expected-equity.ts`
+- [x] DEPOSIT/WITHDRAW handling verified — correctly tracked via entries, empty cashflows array is intentional architecture
+- [x] Aggregate calculation tests (`packages/engine/test/aggregate.test.ts`)
+- [x] Inline platform creation in Add Fund form (v0.40.5)
+
+</details>
 
 <details>
 <summary>v0.20+ Features</summary>
