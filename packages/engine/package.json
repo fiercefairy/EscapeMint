@@ -1,6 +1,6 @@
 {
   "name": "@escapemint/engine",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Pure calculation functions for EscapeMint",
   "type": "module",
   "main": "./dist/index.js",

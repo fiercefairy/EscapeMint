@@ -1,6 +1,6 @@
 {
   "name": "@escapemint/web",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "React frontend for EscapeMint",
   "type": "module",
   "scripts": {
