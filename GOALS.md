@@ -25,73 +25,40 @@ These are non-negotiable principles that guide every decision:
 
 ---
 
-## v1.0 - Stable Release
+## Milestones
 
-The milestone where EscapeMint is reliable enough for anyone to use confidently.
+### v1.0 - Stable Release
 
-### Engine Completeness
-- [ ] All fund types (stock, crypto, cash, derivatives) fully tested and documented
-- [ ] TWAP-based APY calculation is accurate across all edge cases (multi-cycle, idle gaps, partial liquidation)
-- [ ] Recommendation engine handles every combination of fund config flags correctly
-- [ ] Tax lot tracking (FIFO) for cost basis and realized gains
+The milestone where EscapeMint is reliable enough for anyone to use confidently. This means:
 
-### Data Integrity
-- [ ] Server route unit tests for all API endpoints
-- [ ] Aggregate calculation tests
-- [ ] Visual regression tests for charts
-- [ ] 95%+ feature coverage in E2E suite
+- **Engine correctness** - Every fund type (stock, crypto, cash, derivatives) produces accurate APY calculations across all edge cases: multi-cycle positions, idle gaps, partial liquidations. Tax lot tracking (FIFO) provides cost basis and realized gains.
+- **Data integrity** - Comprehensive test coverage gives confidence that calculations are correct and regressions are caught. API routes, aggregate calculations, and charts all have dedicated test suites.
+- **Frictionless daily use** - Adding an entry takes under 30 seconds. The UI adapts to each fund's needs with configurable fields, focused chart views, and keyboard-driven navigation. Works on mobile.
+- **Self-documenting** - A new user can go from zero to tracking their first fund without asking for help. Strategy rationale, configuration options, and API surface are all documented.
 
-### UX Polish
-- [ ] Configurable entry form fields (per-fund field visibility and ordering)
-- [ ] Chart date range selector (1M, 3M, 6M, YTD, 1Y, All)
-- [ ] Price/size charts when tracking share-level data
-- [ ] Keyboard shortcuts (j/k navigation, Enter to open, Esc to close)
-- [ ] Mobile-responsive layout
+### v2.0 - Strategy Plugins & Advanced Analytics
 
-### Documentation
-- [ ] Getting Started guide for new users
-- [ ] Ticker Choices guide (why TQQQ over VTI for DCA)
-- [ ] API reference (OpenAPI/Swagger)
-- [ ] Complete configuration reference with examples
+The milestone where EscapeMint becomes a thinking tool, not just a tracking tool:
 
----
-
-## v2.0 - Strategy Plugins & Advanced Analytics
-
-### Strategy Layer
-- [ ] Plugin system for custom DCA strategies beyond tiered min/mid/max
-- [ ] Per-holding allocation within a fund (pie-style)
-- [ ] Benchmark comparison (vs SPY, BTC, custom benchmark)
-- [ ] Goal setting with target dates and amounts
-
-### Analytics
-- [ ] Performance attribution (break down gains by dividends, price appreciation, interest)
-- [ ] Comparison mode (side-by-side fund analysis)
-- [ ] Drawdown analysis and recovery time tracking
-- [ ] Portfolio correlation matrix
-
-### Data & Integration
-- [ ] Currency support for non-USD funds with exchange rate conversion
-- [ ] Multi-account aggregation (same ticker across platforms as single view)
-- [ ] Split handling (adjust historical prices/shares automatically)
-- [ ] CSV/PDF export for tax reporting
+- **Pluggable strategies** - Users can define custom DCA strategies beyond the built-in tiered min/mid/max approach, and allocate within funds pie-style.
+- **Analytical depth** - Performance attribution, drawdown analysis, correlation matrices, and benchmark comparisons help users understand *why* their portfolio behaves the way it does.
+- **Data portability** - Multi-currency support, cross-platform aggregation, split handling, and tax-ready exports make EscapeMint the single source of truth regardless of how many brokerages a user touches.
 
 ---
 
 ## Long-Term Vision
 
 ### The Money Tree Network
+
 The ultimate success state: a user has multiple funds in harvest mode, each yielding regular cash flow. Mature funds seed new funds. The portfolio becomes self-sustaining. Financial independence is achieved without speculation, stress, or sleepless nights.
 
 ### PWA / Offline
-- [ ] Service worker for full offline access
-- [ ] Installable as a desktop/mobile app
-- [ ] Background sync when connectivity returns
+
+EscapeMint becomes an installable app that works fully offline with background sync — a portable financial cockpit that lives on your device.
 
 ### Community
-- [ ] Shareable fund configurations (anonymized strategy templates)
-- [ ] Backtesting engine with historical data for strategy validation before committing real capital
-- [ ] Public backtest page with onboarding wizard (already started in `pages/`)
+
+Anonymized strategy templates let users share configurations. A backtesting engine with historical data validates strategies before committing real capital.
 
 ---
 
@@ -104,3 +71,7 @@ Things EscapeMint will **never** be:
 - **A social platform** - No leaderboards, no sharing portfolios, no gamification.
 - **A day trading tool** - No intraday data, no real-time feeds, no order books.
 - **SaaS** - No hosted version, no subscriptions, no accounts. Run it yourself, own your data.
+
+---
+
+For the tactical backlog and current work items, see [PLAN.md](./PLAN.md).
