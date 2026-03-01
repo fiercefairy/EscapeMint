@@ -283,9 +283,9 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* Chart legend color indicators */
-span[style*="backgroundColor"],
-span.w-2.h-2,
-span.w-2.h-0\.5 {
+.chart-legend span[style*="backgroundColor"],
+.chart-legend span.w-2.h-2,
+.chart-legend span.w-2.h-0\.5 {
   display: inline-block !important;
   flex-shrink: 0;
   min-width: 8px !important;

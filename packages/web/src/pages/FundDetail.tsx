@@ -1554,7 +1554,7 @@ export function FundDetail() {
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
                       <h3 className="text-sm font-semibold text-white">P&L</h3>
-                      <div className="flex gap-2">
+                      <div className="chart-legend flex gap-2">
                         <span className="text-[10px] text-slate-400 flex items-center gap-1">
                           <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#f59e0b' }} />
                           Liquid
@@ -1579,7 +1579,7 @@ export function FundDetail() {
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
                       <h3 className="text-sm font-semibold text-white">APY</h3>
-                      <div className="flex gap-2">
+                      <div className="chart-legend flex gap-2">
                         <span className="text-[10px] text-slate-400 flex items-center gap-1">
                           <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: '#f59e0b' }} />
                           Liquid
