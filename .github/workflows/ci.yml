@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check for peer dependency conflicts
+        run: npm ls --all 2>&1 | grep -i "invalid\|ERESOLVE\|peer dep" && exit 1 || true
+
       - name: Lint
         run: npm run lint
 

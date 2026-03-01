@@ -40,7 +40,7 @@ jobs:
 
       - name: Install pages dependencies
         working-directory: pages
-        run: npm install
+        run: npm ci
 
       - name: Build pages
         working-directory: pages
