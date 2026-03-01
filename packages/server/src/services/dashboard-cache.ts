@@ -11,8 +11,12 @@ import { readFund, type FundData } from '@escapemint/storage'
 import {
   computeDerivativesEntriesState,
   computeExpectedTarget,
+  computeTimeWeightedFundSize,
+  computeCashFundTimeWeightedSize,
+  getFundStartDate,
   type SubFundConfig,
-  type Trade
+  type Trade,
+  type CashFlow
 } from '@escapemint/engine'
 import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
 import { isTestPlatform } from '../utils/platforms.js'
@@ -269,46 +273,37 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
 
   // Use fundSize from finalMetrics for all funds (correctly handles manage_cash and derivatives)
   const actualFundSize = finalMetrics.fundSize
-  // Use calendar days between first and last entry for time-weighted calculations,
-  // not cycle-aware daysActive from finalMetrics, since dollar-days are accumulated
-  // over calendar date intervals.
+  // Calendar days between first and last entry (for share weighting, not for TWFS)
   const calendarDays = Math.max(1, Math.floor(
     (new Date(latestEntry.date).getTime() - new Date(sortedEntries[0]!.date).getTime()) / (24 * 60 * 60 * 1000)
   ))
 
-  // Time-weighted AVERAGE fund size calculation (for APY and share weighting)
-  // Track cumulative investment from BUY/SELL (matches engine's computeTimeWeightedFundSize)
-  let dollarDays = 0
-  let totalDays = 0
-  let cumulativeInvestment = 0
-  for (let i = 0; i < sortedEntries.length; i++) {
-    const entry = sortedEntries[i]!
-    const nextEntry = sortedEntries[i + 1]
-
-    // Track cumulative investment from trades at entry.date
-    if ((entry.action === 'BUY' || entry.action === 'DEPOSIT') && entry.amount) {
-      cumulativeInvestment += entry.amount
-    } else if ((entry.action === 'SELL' || entry.action === 'WITHDRAW') && entry.amount) {
-      cumulativeInvestment = Math.max(0, cumulativeInvestment - entry.amount)
-    }
-
-    // Use entry.fund_size when explicitly set; otherwise use tracked investment after this entry
-    const entryFundSize = entry.fund_size != null && entry.fund_size > 0
-      ? entry.fund_size
-      : (fund.config.fund_size_usd > 0 ? fund.config.fund_size_usd : cumulativeInvestment)
-
-    const startDate = new Date(entry.date)
-    const endDate = nextEntry ? new Date(nextEntry.date) : new Date(latestEntry.date)
-    const days = Math.max(1, Math.floor((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)))
-
-    dollarDays += entryFundSize * days
-    totalDays += days
-  }
-  // Convert to time-weighted average using the same accumulated days as the numerator
-  // to avoid inflation when multiple entries share the same day (each clamped to min 1)
-  const timeWeightedFundSize = totalDays > 0 ? dollarDays / totalDays : 0
-
+  // Time-weighted AVERAGE fund size — reuse the engine's canonical implementation
+  const fundStartDate = getFundStartDate(sortedEntries)
+  const asOfDate = latestEntry.date
   const isCashFund = fund.config.fund_type === 'cash'
+
+  let timeWeightedFundSize: number
+  if (isCashFund) {
+    const cashFlows: CashFlow[] = sortedEntries
+      .filter(e => (e.action === 'DEPOSIT' || e.action === 'WITHDRAW') && e.amount)
+      .map(e => ({
+        date: e.date,
+        amount_usd: Math.abs(e.amount!),
+        type: e.action === 'DEPOSIT' ? 'deposit' as const : 'withdrawal' as const
+      }))
+    timeWeightedFundSize = computeCashFundTimeWeightedSize(cashFlows, fundStartDate, asOfDate)
+  } else {
+    const trades: Trade[] = sortedEntries
+      .filter(e => (e.action === 'BUY' || e.action === 'SELL') && e.amount)
+      .map(e => ({
+        date: e.date,
+        amount_usd: Math.abs(e.amount!),
+        type: e.action === 'BUY' ? 'buy' as const : 'sell' as const
+      }))
+    timeWeightedFundSize = computeTimeWeightedFundSize(trades, fundStartDate, asOfDate)
+  }
+
   const isClosed = fund.config.status === 'closed'
 
   // Use APY from finalMetrics (proper TWAB and compound interest formula)

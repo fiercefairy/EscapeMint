@@ -1081,15 +1081,17 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                       Upload CSV File
                     </h3>
                     <p className="text-sm text-slate-400 mt-1">
-                      {platform === 'cashapp'
-                        ? 'Import from a downloaded Cash App transaction history CSV file'
-                        : 'Import from a downloaded Robinhood transaction history CSV file'
+                      {platform
+                        ? `Import from a downloaded ${formatPlatformName(platform)} transaction history CSV file`
+                        : 'Import from a downloaded transaction history CSV file'
                       }
                     </p>
                     <p className="text-xs text-slate-500 mt-3">
                       {platform === 'cashapp'
                         ? 'Best for: Cash App investing transactions (stocks & bitcoin)'
-                        : 'Best for: Stock transactions'
+                        : platform
+                          ? `Best for: ${formatPlatformName(platform)} transactions`
+                          : 'Best for: Stock & crypto transactions'
                       }
                     </p>
                   </button>
