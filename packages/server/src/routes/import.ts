@@ -656,16 +656,23 @@ const parseCashAppRow = (row: Record<string, string>, platform: string): ParsedT
   let action: ParsedTransaction['action']
   let symbol = assetType
 
+  const notes = (row['notes'] ?? '').trim()
+
   if (transType === 'Bitcoin Buy' || transType.endsWith(' Buy')) {
     action = 'BUY'
   } else if (transType === 'Bitcoin Sell' || transType.endsWith(' Sell')) {
     action = 'SELL'
+  } else if (transType === 'Stock Dividends' || transType.endsWith(' Dividends') || transType.endsWith(' Dividend')) {
+    action = 'DIVIDEND'
   } else if (transType === 'P2P') {
     // P2P transfers are cash deposits/withdrawals - route to cash fund
     const amountStr = row['amount'] ?? '0'
     const amountVal = parseFloat(amountStr.replace(/[$,\s]/g, '')) || 0
     action = amountVal >= 0 ? 'DEPOSIT' : 'WITHDRAW'
     symbol = 'CASH'
+  } else if (!transType && notes.toLowerCase().includes('sale of')) {
+    // CashApp sometimes exports sales with empty transaction_type
+    action = 'SELL'
   } else {
     // Skip unrecognized transaction types
     return null
@@ -690,7 +697,7 @@ const parseCashAppRow = (row: Record<string, string>, platform: string): ParsedT
   const assetPrice = parseAmount(row['asset_price'] ?? '0')
   const assetAmount = parseFloat((row['asset_amount'] ?? '0').replace(/[$,\s]/g, '')) || 0
 
-  const description = (row['notes'] ?? '').trim()
+  const description = notes
 
   // Build fund ID
   const fundId = symbol === 'CASH'
@@ -992,17 +999,23 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
     errors: []
   }
 
-  // Track running shares per fund to compute pre-action equity value
+  // Track running shares and last known price per fund to compute pre-action equity value
   // Initialize from existing fund entries
   const fundRunningShares = new Map<string, number>()
+  const fundLastPrice = new Map<string, number>()
   for (const [fundId, fund] of fundMap) {
     let shares = 0
+    let lastPrice = 0
     for (const e of fund.entries) {
       if (e.shares) {
         shares += e.action === 'SELL' ? -Math.abs(e.shares) : Math.abs(e.shares)
       }
+      if (e.price && e.price > 0) {
+        lastPrice = e.price
+      }
     }
     fundRunningShares.set(fundId, shares)
+    if (lastPrice > 0) fundLastPrice.set(fundId, lastPrice)
   }
 
   // Sort transactions by date to process in chronological order
@@ -1026,10 +1039,11 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
       continue
     }
 
-    // Compute pre-action equity value from running shares and current price
+    // Compute pre-action equity value from running shares and current/last known price
     const runningShares = fundRunningShares.get(tx.fundId) ?? 0
-    const preActionValue = tx.price > 0 && runningShares > 0
-      ? runningShares * tx.price
+    const effectivePrice = tx.price > 0 ? tx.price : (fundLastPrice.get(tx.fundId) ?? 0)
+    const preActionValue = effectivePrice > 0 && runningShares > 0
+      ? runningShares * effectivePrice
       : 0
 
     // Convert to FundEntry
@@ -1045,9 +1059,10 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
       entry.amount = tx.amount
       entry.shares = tx.quantity
       entry.price = tx.price
-      // Update running shares for this fund
+      // Update running shares and last known price for this fund
       const delta = tx.action === 'SELL' ? -Math.abs(tx.quantity) : Math.abs(tx.quantity)
       fundRunningShares.set(tx.fundId, runningShares + delta)
+      if (tx.price > 0) fundLastPrice.set(tx.fundId, tx.price)
     } else if (tx.action === 'DIVIDEND') {
       entry.dividend = tx.amount
     } else if (tx.action === 'INTEREST') {
