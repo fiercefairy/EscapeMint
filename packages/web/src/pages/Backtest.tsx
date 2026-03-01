@@ -232,8 +232,8 @@ function loadStoredConfig(accumulate: boolean): ScenarioConfig {
   const storageKey = getStorageKey(accumulate)
   const stored = localStorage.getItem(storageKey)
   if (stored) {
-    const parsed = JSON.parse(stored)
-    return { ...getDefaultConfig(accumulate), ...parsed, accumulate }
+    const parsed = (() => { try { return JSON.parse(stored) } catch { return null } })()
+    if (parsed) return { ...getDefaultConfig(accumulate), ...parsed, accumulate }
   }
   return getDefaultConfig(accumulate)
 }
