@@ -277,9 +277,8 @@ export function runBacktest(
         gldEquivShares *= (1 - sellProportion)
         slvEquivShares *= (1 - sellProportion)
 
-        const remainingEquity = equity - sellAmount
         const sharesLiquidated = shares < 0.0001
-        const valueLiquidated = remainingEquity <= sellAmount + 0.01
+        const valueLiquidated = equity <= sellAmount + 0.01
         const dollarsLiquidated = totalExtracted >= totalInvested
         const isFullLiquidation = sharesLiquidated || valueLiquidated || dollarsLiquidated
 
