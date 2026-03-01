@@ -214,7 +214,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
       // Check for full liquidation
       const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
       const sharesLiquidated = hasShareTracking && Math.abs(sumShares) < 0.0001
-      const valueLiquidated = (entry.value ?? 0) <= entry.amount + 0.01
+      const valueLiquidated = (entry.value ?? 0) > 0 && (entry.value ?? 0) <= entry.amount + 0.01
       const isFullLiquidation = sharesLiquidated || valueLiquidated
 
       // Calculate extracted profit

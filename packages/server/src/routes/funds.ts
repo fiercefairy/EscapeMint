@@ -48,7 +48,7 @@ function computePostActionEquity(entry: FundEntry): number {
   if (action === 'SELL' || action === 'CLOSE') {
     const sellAmount = entry.amount ?? 0
     // Check for full liquidation: selling everything or close to it
-    if (entry.value <= sellAmount + 0.01) {
+    if (entry.value > 0 && entry.value <= sellAmount + 0.01) {
       return 0
     }
     return Math.max(0, entry.value - sellAmount)
@@ -217,11 +217,14 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
       cashFlows
     )
 
-    // Override APY with values from computeFundFinalMetrics which uses
-    // compound interest formula matching the fund detail page
+    // Override with values from computeFundFinalMetrics which correctly handles
+    // accumulate mode, pre-action entry values, and compound interest APY
     const finalMetrics = computeFundFinalMetrics(fund)
     metrics.realizedAPY = finalMetrics.realizedApy
     metrics.liquidAPY = finalMetrics.liquidApy
+    metrics.realizedGains = finalMetrics.realized
+    metrics.unrealizedGains = finalMetrics.unrealized
+    metrics.currentValue = finalMetrics.currentValue
 
     fundMetrics.push(metrics)
   }
@@ -717,6 +720,16 @@ fundsRouter.get('/history', async (req, res, next) => {
       today,
       cashFlowsForMetrics
     )
+
+    // Override with values from computeFundFinalMetrics which correctly handles
+    // accumulate mode, pre-action entry values, and compound interest APY
+    const finalMetrics = computeFundFinalMetrics(fund)
+    metrics.realizedAPY = finalMetrics.realizedApy
+    metrics.liquidAPY = finalMetrics.liquidApy
+    metrics.realizedGains = finalMetrics.realized
+    metrics.unrealizedGains = finalMetrics.unrealized
+    metrics.currentValue = finalMetrics.currentValue
+
     fundMetricsForAggregate.push(metrics)
   }
 
