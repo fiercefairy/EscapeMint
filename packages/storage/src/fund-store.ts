@@ -475,7 +475,10 @@ export function entriesToTrades(entries: FundEntry[]): Trade[] {
         type: e.action!.toLowerCase() as 'buy' | 'sell'
       }
       if (e.shares !== undefined) trade.shares = e.shares
-      if (e.value !== undefined) trade.value = e.value
+      // Pass value for buys (value=0 is valid for initial buy) but only
+      // for sells when value > 0 (value=0 on sells triggers false liquidation
+      // detection in the engine for imported entries without real portfolio values)
+      if (e.value !== undefined && (e.action === 'BUY' || e.value > 0)) trade.value = e.value
       return trade
     })
 }

@@ -551,7 +551,7 @@ export function EntriesTable({
                       const isClosingEntry = entry.action === 'SELL' && (
                         hasShareTracking
                           ? entry.sumShares !== undefined && Math.abs(entry.sumShares) < 0.0001
-                          : entry.value <= (entry.amount ?? 0) + 0.01
+                          : entry.value > 0 && entry.value <= (entry.amount ?? 0) + 0.01
                       )
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right">
@@ -640,7 +640,7 @@ export function EntriesTable({
                       const isFundClosed = entry.action === 'SELL' && (
                         hasShareTrackingForFundSize
                           ? entry.sumShares !== undefined && Math.abs(entry.sumShares) < 0.0001
-                          : entry.value <= (entry.amount ?? 0) + 0.01
+                          : entry.value > 0 && entry.value <= (entry.amount ?? 0) + 0.01
                       )
                       return (
                         <td key={col.id} className="px-2 py-1.5 text-right text-slate-400">

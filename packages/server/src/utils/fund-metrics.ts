@@ -77,7 +77,7 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
           if (!cycleStartDate) cycleStartDate = entry.date
         } else if (entry.action === 'SELL' && entry.amount) {
           const value = entry.value ?? 0
-          const isFullLiquidation = value <= entry.amount + 0.01
+          const isFullLiquidation = value > 0 && value <= entry.amount + 0.01
           if (isFullLiquidation && cycleStartDate) {
             cumulativeActiveDays += Math.max(0,
               (entryTime - new Date(cycleStartDate).getTime()) / (1000 * 60 * 60 * 24)

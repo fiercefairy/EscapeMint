@@ -359,7 +359,9 @@ export function FundDetail() {
         // Either condition triggers liquidation (share tracking can accumulate errors over time)
         const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
         const sharesLiquidated = hasShareTracking && Math.abs(sumShares) < 0.0001
-        const valueLiquidated = entry.value <= entry.amount + 0.01
+        // Only use value-based liquidation when value > 0 (value=0 means
+        // "unknown" for imported entries, not "position is worthless")
+        const valueLiquidated = entry.value > 0 && entry.value <= entry.amount + 0.01
         const isFullLiquidation = sharesLiquidated || valueLiquidated
 
         // Always track sell proceeds for APY calculation

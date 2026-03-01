@@ -626,6 +626,93 @@ const parseRobinhoodRow = (row: Record<string, string>): RobinhoodTransaction =>
   }
 }
 
+// ============================================================================
+// CashApp CSV Parsing
+// ============================================================================
+
+/**
+ * Detect if CSV content is from CashApp based on header columns.
+ */
+const isCashAppCSV = (rows: Record<string, string>[]): boolean => {
+  if (rows.length === 0) return false
+  const keys = Object.keys(rows[0] ?? {})
+  return keys.includes('transaction_type') && keys.includes('asset_type') && keys.includes('net_amount')
+}
+
+/**
+ * Parse CashApp CSV row into a ParsedTransaction.
+ * CashApp columns: date, transaction_id, transaction_type, currency, amount, fee, net_amount,
+ *   asset_type, asset_price, asset_amount, status, notes, name_of_sender/receiver, account
+ */
+const parseCashAppRow = (row: Record<string, string>, platform: string): ParsedTransaction | null => {
+  const status = (row['status'] ?? '').toUpperCase()
+  // Skip failed transactions
+  if (status === 'FAILED') return null
+
+  const transType = (row['transaction_type'] ?? '').trim()
+  const assetType = (row['asset_type'] ?? '').toUpperCase().trim()
+
+  // Map transaction type to action
+  let action: ParsedTransaction['action']
+  let symbol = assetType
+
+  if (transType === 'Bitcoin Buy' || transType.endsWith(' Buy')) {
+    action = 'BUY'
+  } else if (transType === 'Bitcoin Sell' || transType.endsWith(' Sell')) {
+    action = 'SELL'
+  } else if (transType === 'P2P') {
+    // P2P transfers are cash deposits/withdrawals - route to cash fund
+    const amountStr = row['amount'] ?? '0'
+    const amountVal = parseFloat(amountStr.replace(/[$,\s]/g, '')) || 0
+    action = amountVal >= 0 ? 'DEPOSIT' : 'WITHDRAW'
+    symbol = 'CASH'
+  } else {
+    // Skip unrecognized transaction types
+    return null
+  }
+
+  // Parse date - format: "2026-02-22 17:59:47 PST"
+  const dateStr = (row['date'] ?? '').trim()
+  const date = dateStr ? dateStr.slice(0, 10) : '' // Take YYYY-MM-DD portion
+  if (!date) return null
+
+  // Parse amounts - strip $, commas, and handle negative with -$
+  const parseAmount = (str: string): number => {
+    if (!str) return 0
+    return Math.abs(parseFloat(str.replace(/[$,\s]/g, '')) || 0)
+  }
+
+  // Use net_amount as the canonical amount:
+  // - For BUYs: net_amount = cost + fee (total out of pocket, correct cost basis)
+  // - For SELLs: net_amount = proceeds - fee (actual cash received)
+  const netAmount = parseAmount(row['net_amount'] ?? '0')
+  const fee = parseAmount(row['fee'] ?? '0')
+  const assetPrice = parseAmount(row['asset_price'] ?? '0')
+  const assetAmount = parseFloat((row['asset_amount'] ?? '0').replace(/[$,\s]/g, '')) || 0
+
+  const description = (row['notes'] ?? '').trim()
+
+  // Build fund ID
+  const fundId = symbol === 'CASH'
+    ? `${platform.toLowerCase()}-cash`
+    : symbol
+      ? buildFundId(platform, symbol)
+      : null
+
+  return {
+    date,
+    action,
+    symbol,
+    quantity: Math.abs(assetAmount),
+    price: assetPrice,
+    amount: netAmount,
+    description: description || `${transType} ${symbol ? symbol + ' ' : ''}${assetAmount ? assetAmount + ' @ $' + assetPrice.toLocaleString() : ''}`.trim(),
+    fundId,
+    fundExists: false, // Will be set later
+    rawDetails: { fee: fee.toString() }
+  }
+}
+
 /**
  * Build fund ID from platform and symbol.
  */
@@ -669,15 +756,59 @@ importRouter.post('/robinhood/preview', async (req, res, next) => {
     return next(validationError('No valid data rows found in CSV'))
   }
 
+  // Auto-detect CashApp CSV format and override platform if needed
+  const detectedCashApp = isCashAppCSV(rows)
+  const effectivePlatform = detectedCashApp ? 'cashapp' : platform
+
   // Load existing funds
   const funds = await readAllFunds(FUNDS_DIR).catch(() => [])
-  const cashFundId = `${platform.toLowerCase().replace(/-cash$/, '')}-cash`
+  const cashFundId = `${effectivePlatform.toLowerCase().replace(/-cash$/, '')}-cash`
   const cashFundExists = fundExists(cashFundId, funds)
 
   // Parse and map transactions
   const transactions: ParsedTransaction[] = []
   const bySymbol: Record<string, { count: number; fundId: string | null; fundExists: boolean }> = {}
 
+  // CashApp CSV - use dedicated parser
+  if (detectedCashApp) {
+    for (const row of rows) {
+      const tx = parseCashAppRow(row, effectivePlatform)
+      if (!tx) continue
+
+      // Set fundExists
+      tx.fundExists = tx.fundId ? fundExists(tx.fundId, funds) : false
+
+      // Track by symbol
+      if (tx.symbol) {
+        if (!bySymbol[tx.symbol]) {
+          bySymbol[tx.symbol] = { count: 0, fundId: tx.fundId, fundExists: tx.fundExists }
+        }
+        bySymbol[tx.symbol]!.count++
+      }
+
+      transactions.push(tx)
+    }
+
+    // Sort by date
+    transactions.sort((a, b) => a.date.localeCompare(b.date))
+
+    const matched = transactions.filter(t => t.fundExists).length
+    const unmatched = transactions.filter(t => t.fundId && !t.fundExists).length
+
+    const preview: ImportPreview = {
+      transactions,
+      summary: {
+        total: transactions.length,
+        matched,
+        unmatched,
+        bySymbol
+      }
+    }
+
+    return res.json(preview)
+  }
+
+  // Robinhood CSV - use existing parser
   for (const row of rows) {
     const parsed = parseRobinhoodRow(row)
     const action = mapTransCode(parsed.transCode, parsed.description, parsed.amount)
@@ -861,7 +992,23 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
     errors: []
   }
 
-  for (const tx of transactions) {
+  // Track running shares per fund to compute pre-action equity value
+  // Initialize from existing fund entries
+  const fundRunningShares = new Map<string, number>()
+  for (const [fundId, fund] of fundMap) {
+    let shares = 0
+    for (const e of fund.entries) {
+      if (e.shares) {
+        shares += e.action === 'SELL' ? -Math.abs(e.shares) : Math.abs(e.shares)
+      }
+    }
+    fundRunningShares.set(fundId, shares)
+  }
+
+  // Sort transactions by date to process in chronological order
+  const sortedTxs = [...transactions].sort((a, b) => a.date.localeCompare(b.date))
+
+  for (const tx of sortedTxs) {
     // Skip transactions without fund mapping
     if (!tx.fundId) {
       result.skipped++
@@ -879,11 +1026,17 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
       continue
     }
 
+    // Compute pre-action equity value from running shares and current price
+    const runningShares = fundRunningShares.get(tx.fundId) ?? 0
+    const preActionValue = tx.price > 0 && runningShares > 0
+      ? runningShares * tx.price
+      : 0
+
     // Convert to FundEntry
     const entry: FundEntry = {
       date: tx.date,
-      value: 0, // Will be updated for cash funds
-      notes: `Imported from Robinhood: ${tx.description}`
+      value: Math.round(preActionValue * 100) / 100,
+      notes: `Imported: ${tx.description}`
     }
 
     // Set action-specific fields
@@ -892,6 +1045,9 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
       entry.amount = tx.amount
       entry.shares = tx.quantity
       entry.price = tx.price
+      // Update running shares for this fund
+      const delta = tx.action === 'SELL' ? -Math.abs(tx.quantity) : Math.abs(tx.quantity)
+      fundRunningShares.set(tx.fundId, runningShares + delta)
     } else if (tx.action === 'DIVIDEND') {
       entry.dividend = tx.amount
     } else if (tx.action === 'INTEREST') {
