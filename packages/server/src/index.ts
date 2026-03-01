@@ -48,6 +48,15 @@ app.get('/api/version', async (_req, res) => {
 // Error handling
 app.use(errorHandler)
 
+// Production: serve built web UI
+if (process.env['NODE_ENV'] === 'production') {
+  const webDist = join(__dirname, '..', '..', 'web', 'dist')
+  app.use(express.static(webDist))
+  app.get('*', (_req, res) => {
+    res.sendFile(join(webDist, 'index.html'))
+  })
+}
+
 // Initialize WebSocket server
 initWebSocket(server)
 

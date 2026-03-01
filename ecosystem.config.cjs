@@ -8,24 +8,11 @@ const PORTS = {
   PAGES: 5561     // Pages (backtest) Vite dev server
 }
 
-const BROWSER_USER_DATA_DIR = './.browser'
-
 module.exports = {
   // Export ports for other configs to import
   PORTS,
 
   apps: [
-    {
-      name: 'escapemint-browser',
-      script: './scripts/launch-browser.sh',
-      interpreter: '/bin/bash',
-      autorestart: false,  // Don't auto-restart browser if user closes it
-      watch: false,
-      env: {
-        CDP_PORT: PORTS.CDP,
-        BROWSER_DIR: BROWSER_USER_DATA_DIR
-      }
-    },
     {
       name: 'escapemint-api',
       cwd: './packages/server',
