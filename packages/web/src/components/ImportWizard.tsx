@@ -2996,7 +2996,9 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
             >
               <div className="text-4xl mb-4">📄</div>
               <p className="text-white font-medium mb-2">
-                Drop your {platform ? platform.charAt(0).toUpperCase() + platform.slice(1) : ''} CSV file here
+                {platform
+                  ? `Drop your ${platform.charAt(0).toUpperCase() + platform.slice(1)} CSV file here`
+                  : 'Drop your CSV file here'}
               </p>
               <p className="text-slate-400 text-sm mb-4">
                 or click to browse
