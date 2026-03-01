@@ -272,12 +272,24 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
   const daysActive = finalMetrics.daysActive
 
   // Time-weighted AVERAGE fund size calculation (for APY and share weighting)
-  // Sum dollar-days, then divide by daysActive to get average
+  // Track cumulative investment from BUY/SELL (matches engine's computeTimeWeightedFundSize)
   let dollarDays = 0
+  let cumulativeInvestment = 0
   for (let i = 0; i < sortedEntries.length; i++) {
     const entry = sortedEntries[i]!
     const nextEntry = sortedEntries[i + 1]
-    const entryFundSize = entry.fund_size ?? fund.config.fund_size_usd
+
+    // Use entry.fund_size when explicitly set; otherwise use tracked investment
+    const entryFundSize = entry.fund_size != null && entry.fund_size > 0
+      ? entry.fund_size
+      : (fund.config.fund_size_usd > 0 ? fund.config.fund_size_usd : cumulativeInvestment)
+
+    // Track cumulative investment from trades
+    if ((entry.action === 'BUY' || entry.action === 'DEPOSIT') && entry.amount) {
+      cumulativeInvestment += entry.amount
+    } else if ((entry.action === 'SELL' || entry.action === 'WITHDRAW') && entry.amount) {
+      cumulativeInvestment = Math.max(0, cumulativeInvestment - entry.amount)
+    }
 
     const startDate = new Date(entry.date)
     const endDate = nextEntry ? new Date(nextEntry.date) : new Date(latestEntry.date)
