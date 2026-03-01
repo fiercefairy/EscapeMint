@@ -221,7 +221,7 @@ function MultiLineChart({ data, title, series, formatValue = formatCurrencyCompa
     <div ref={containerRef} className="bg-slate-800 rounded-lg p-3 border border-slate-700 flex flex-col h-[200px] relative">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs font-medium text-slate-300">{title}</h3>
-        <div className="flex gap-2">
+        <div className="chart-legend flex gap-2">
           {series.map(s => (
             <span key={s.key} className="text-[10px] text-slate-400 flex items-center gap-1">
               <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: s.color }} />
@@ -244,6 +244,7 @@ function isPresetActive(config: ScenarioConfig, preset: Preset): boolean {
     config.btcPct === presetValues.btcPct &&
     config.gldPct === presetValues.gldPct &&
     config.slvPct === presetValues.slvPct &&
+    config.vtiPct === presetValues.vtiPct &&
     config.targetAPY === presetValues.targetAPY &&
     config.inputMin === presetValues.inputMin &&
     config.inputMid === presetValues.inputMid &&
