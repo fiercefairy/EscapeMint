@@ -283,7 +283,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* Chart legend color indicators */
-.chart-legend span[style*="backgroundColor"],
+.chart-legend span[style*="background-color"],
 .chart-legend span.w-2.h-2,
 .chart-legend span.w-2.h-0\.5 {
   display: inline-block !important;
