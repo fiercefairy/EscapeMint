@@ -364,7 +364,8 @@ interface ScrapeProgress {
   } | null
 }
 
-export function ImportWizard({ onClose, onImported, platform }: ImportWizardProps) {
+export function ImportWizard({ onClose, onImported, platform: rawPlatform }: ImportWizardProps) {
+  const platform = rawPlatform?.toLowerCase().replace(/-cash$/, '')
   const availableMethods = getAvailableMethods(platform)
   const [step, setStep] = useState<WizardStep>('method')
   const [method, setMethod] = useState<ImportMethod | null>(null)
