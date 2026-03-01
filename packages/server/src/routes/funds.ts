@@ -226,6 +226,11 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
     metrics.unrealizedGains = finalMetrics.unrealized
     metrics.currentValue = finalMetrics.currentValue
 
+    // Recompute derived fields that depend on the overridden values
+    metrics.gainUsd = isCashFund ? metrics.realizedGains : metrics.unrealizedGains
+    metrics.gainPct = metrics.startInput > 0 ? metrics.gainUsd / metrics.startInput : 0
+    metrics.projectedAnnualReturn = metrics.currentValue * metrics.realizedAPY
+
     fundMetrics.push(metrics)
   }
 
@@ -729,6 +734,11 @@ fundsRouter.get('/history', async (req, res, next) => {
     metrics.realizedGains = finalMetrics.realized
     metrics.unrealizedGains = finalMetrics.unrealized
     metrics.currentValue = finalMetrics.currentValue
+
+    // Recompute derived fields that depend on the overridden values
+    metrics.gainUsd = isCashFund ? metrics.realizedGains : metrics.unrealizedGains
+    metrics.gainPct = metrics.startInput > 0 ? metrics.gainUsd / metrics.startInput : 0
+    metrics.projectedAnnualReturn = metrics.currentValue * metrics.realizedAPY
 
     fundMetricsForAggregate.push(metrics)
   }

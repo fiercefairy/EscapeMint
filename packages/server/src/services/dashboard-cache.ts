@@ -269,7 +269,12 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
 
   // Use fundSize from finalMetrics for all funds (correctly handles manage_cash and derivatives)
   const actualFundSize = finalMetrics.fundSize
-  const daysActive = finalMetrics.daysActive
+  // Use calendar days between first and last entry for time-weighted calculations,
+  // not cycle-aware daysActive from finalMetrics, since dollar-days are accumulated
+  // over calendar date intervals.
+  const calendarDays = Math.max(1, Math.floor(
+    (new Date(latestEntry.date).getTime() - new Date(sortedEntries[0]!.date).getTime()) / (24 * 60 * 60 * 1000)
+  ))
 
   // Time-weighted AVERAGE fund size calculation (for APY and share weighting)
   // Track cumulative investment from BUY/SELL (matches engine's computeTimeWeightedFundSize)
@@ -298,7 +303,7 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
     dollarDays += entryFundSize * days
   }
   // Convert to time-weighted average (same as engine's computeTimeWeightedFundSize)
-  const timeWeightedFundSize = daysActive > 0 ? dollarDays / daysActive : 0
+  const timeWeightedFundSize = calendarDays > 0 ? dollarDays / calendarDays : 0
 
   const isCashFund = fund.config.fund_type === 'cash'
   const isClosed = fund.config.status === 'closed'
@@ -323,7 +328,7 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
     fundSize: actualFundSize,
     currentValue: finalMetrics.currentValue,
     startInput: finalMetrics.totalInvested,
-    daysActive,
+    daysActive: calendarDays,
     timeWeightedFundSize,
     realizedGains: finalMetrics.realized,
     unrealizedGains: finalMetrics.unrealized,
