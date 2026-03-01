@@ -1130,6 +1130,18 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
       entry.amount = Math.abs(tx.amount) // Ensure positive for withdraw
     }
 
+    // Normalize cash-fund DEPOSIT/WITHDRAW to signed amounts (no action)
+    // The UI renders cash entries using signed amount: positive=deposit, negative=withdraw
+    if (tx.fundId.endsWith('-cash') && entry.amount) {
+      if (entry.action === 'DEPOSIT') {
+        entry.amount = Math.abs(entry.amount)
+        delete entry.action
+      } else if (entry.action === 'WITHDRAW') {
+        entry.amount = -Math.abs(entry.amount)
+        delete entry.action
+      }
+    }
+
     // Check for duplicate based on transaction type
     let isDuplicate = false
     if (tx.action === 'INTEREST') {
@@ -1183,12 +1195,16 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
         updatedFund.entries.sort((a, b) => a.date.localeCompare(b.date))
 
         // Calculate running balance and update value/fund_size fields
+        // Entries may be normalized (signed amount, no action) or legacy (DEPOSIT/WITHDRAW)
         let runningBalance = 0
         for (const entry of updatedFund.entries) {
           if (entry.action === 'DEPOSIT' && entry.amount) {
             runningBalance += entry.amount
           } else if (entry.action === 'WITHDRAW' && entry.amount) {
             runningBalance -= entry.amount
+          } else if (!entry.action && entry.amount) {
+            // Normalized cash entry: amount is already signed
+            runningBalance += entry.amount
           }
           if (entry.cash_interest) {
             runningBalance += entry.cash_interest

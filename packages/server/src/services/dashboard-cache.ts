@@ -279,6 +279,7 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
   // Time-weighted AVERAGE fund size calculation (for APY and share weighting)
   // Track cumulative investment from BUY/SELL (matches engine's computeTimeWeightedFundSize)
   let dollarDays = 0
+  let totalDays = 0
   let cumulativeInvestment = 0
   for (let i = 0; i < sortedEntries.length; i++) {
     const entry = sortedEntries[i]!
@@ -301,9 +302,11 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
     const days = Math.max(1, Math.floor((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)))
 
     dollarDays += entryFundSize * days
+    totalDays += days
   }
-  // Convert to time-weighted average (same as engine's computeTimeWeightedFundSize)
-  const timeWeightedFundSize = calendarDays > 0 ? dollarDays / calendarDays : 0
+  // Convert to time-weighted average using the same accumulated days as the numerator
+  // to avoid inflation when multiple entries share the same day (each clamped to min 1)
+  const timeWeightedFundSize = totalDays > 0 ? dollarDays / totalDays : 0
 
   const isCashFund = fund.config.fund_type === 'cash'
   const isClosed = fund.config.status === 'closed'
