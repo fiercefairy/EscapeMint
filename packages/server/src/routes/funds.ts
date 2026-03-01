@@ -220,6 +220,7 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
     // Override with values from computeFundFinalMetrics which correctly handles
     // accumulate mode, pre-action entry values, and compound interest APY
     const finalMetrics = computeFundFinalMetrics(fund)
+    metrics.fundSize = finalMetrics.fundSize
     metrics.realizedAPY = finalMetrics.realizedApy
     metrics.liquidAPY = finalMetrics.liquidApy
     metrics.realizedGains = finalMetrics.realized
@@ -744,6 +745,7 @@ fundsRouter.get('/history', async (req, res, next) => {
     // Override with values from computeFundFinalMetrics which correctly handles
     // accumulate mode, pre-action entry values, and compound interest APY
     const finalMetrics = computeFundFinalMetrics(fund)
+    metrics.fundSize = finalMetrics.fundSize
     metrics.realizedAPY = finalMetrics.realizedApy
     metrics.liquidAPY = finalMetrics.liquidApy
     metrics.realizedGains = finalMetrics.realized
