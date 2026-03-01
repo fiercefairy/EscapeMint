@@ -7,7 +7,7 @@
 
 import { join } from 'node:path'
 import { readdir } from 'node:fs/promises'
-import { readFund, type FundData } from '@escapemint/storage'
+import { readFund, entriesToCashFlows, type FundData } from '@escapemint/storage'
 import {
   computeDerivativesEntriesState,
   computeExpectedTarget,
@@ -15,8 +15,7 @@ import {
   computeCashFundTimeWeightedSize,
   getFundStartDate,
   type SubFundConfig,
-  type Trade,
-  type CashFlow
+  type Trade
 } from '@escapemint/engine'
 import { computeFundFinalMetrics } from '../utils/fund-metrics.js'
 import { isTestPlatform } from '../utils/platforms.js'
@@ -285,24 +284,7 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
 
   let timeWeightedFundSize: number
   if (isCashFund) {
-    // Support both legacy DEPOSIT/WITHDRAW and normalized HOLD entries with signed amounts
-    const cashFlows: CashFlow[] = sortedEntries
-      .filter(e => !!e.amount && (e.action === 'DEPOSIT' || e.action === 'WITHDRAW' || e.action === 'HOLD'))
-      .map(e => {
-        if (e.action === 'HOLD') {
-          return e.amount! === 0 ? null : {
-            date: e.date,
-            amount_usd: Math.abs(e.amount!),
-            type: e.amount! > 0 ? 'deposit' as const : 'withdrawal' as const
-          }
-        }
-        return {
-          date: e.date,
-          amount_usd: Math.abs(e.amount!),
-          type: e.action === 'DEPOSIT' ? 'deposit' as const : 'withdrawal' as const
-        }
-      })
-      .filter((cf): cf is CashFlow => cf !== null)
+    const cashFlows = entriesToCashFlows(sortedEntries)
     timeWeightedFundSize = computeCashFundTimeWeightedSize(cashFlows, fundStartDate, asOfDate)
   } else {
     const trades: Trade[] = sortedEntries

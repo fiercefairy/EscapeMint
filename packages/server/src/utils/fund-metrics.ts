@@ -76,10 +76,8 @@ export function computeFundFinalMetrics(fund: FundData): FundComputedMetrics {
         if (entry.action === 'BUY' && entry.amount) {
           if (!cycleStartDate) cycleStartDate = entry.date
         } else if (entry.action === 'SELL' && entry.amount) {
-          const value = entry.value ?? 0
-          // For derivatives, value is always 0, so every SELL ends the cycle
-          const isFullLiquidation = isDerivativesFund || (value > 0 && value <= entry.amount + 0.01)
-          if (isFullLiquidation && cycleStartDate) {
+          // In the derivatives branch, every SELL ends the cycle (positions close fully)
+          if (cycleStartDate) {
             cumulativeActiveDays += Math.max(0,
               (entryTime - new Date(cycleStartDate).getTime()) / (1000 * 60 * 60 * 24)
             )

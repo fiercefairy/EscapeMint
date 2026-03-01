@@ -3054,7 +3054,7 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
               </div>
 
               <p className="text-slate-500 text-xs mt-4">
-                {platform === 'cashapp'
+                {platform?.toLowerCase().replace(/-cash$/, '') === 'cashapp'
                   ? 'Export from Cash App: Profile → Documents → Statements → Export CSV'
                   : 'Export from Robinhood: Account → Documents → Account Statements → Transaction History'
                 }
