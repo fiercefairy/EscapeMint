@@ -516,16 +516,27 @@ export function entriesToCashInterest(entries: FundEntry[]): number {
 
 /**
  * Convert fund entries to cash flows for cash fund TWFS calculation.
- * Only includes DEPOSIT and WITHDRAW actions.
+ * Supports legacy DEPOSIT/WITHDRAW and normalized HOLD entries with signed amounts.
  */
 export function entriesToCashFlows(entries: FundEntry[]): CashFlow[] {
   return entries
-    .filter(e => e.amount && (e.action === 'DEPOSIT' || e.action === 'WITHDRAW'))
-    .map(e => ({
-      date: e.date,
-      amount_usd: e.amount!,
-      type: e.action === 'DEPOSIT' ? 'deposit' as const : 'withdrawal' as const
-    }))
+    .filter(e => e.amount && (e.action === 'DEPOSIT' || e.action === 'WITHDRAW' || e.action === 'HOLD'))
+    .map(e => {
+      if (e.action === 'HOLD') {
+        if (e.amount === 0) return null
+        return {
+          date: e.date,
+          amount_usd: Math.abs(e.amount!),
+          type: e.amount! > 0 ? 'deposit' as const : 'withdrawal' as const
+        }
+      }
+      return {
+        date: e.date,
+        amount_usd: e.amount!,
+        type: e.action === 'DEPOSIT' ? 'deposit' as const : 'withdrawal' as const
+      }
+    })
+    .filter((cf): cf is CashFlow => cf !== null)
 }
 
 /**

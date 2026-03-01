@@ -326,6 +326,9 @@ const PLATFORM_IMPORT_METHODS: Record<string, ImportMethod[]> = {
   _default: ['csv', 'scrape', 'archive', 'crypto-pdf', 'm1-cash', 'm1-statements', 'coinbase-scrape']
 }
 
+// Platforms with dedicated CSV parser support in the backend
+const CSV_SUPPORTED_PLATFORMS = ['robinhood', 'cashapp']
+
 // Get available methods for a platform
 const getAvailableMethods = (platform?: string): ImportMethod[] => {
   const defaultMethods = PLATFORM_IMPORT_METHODS._default ?? ['csv']
@@ -1081,7 +1084,7 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                       Upload CSV File
                     </h3>
                     <p className="text-sm text-slate-400 mt-1">
-                      {platform
+                      {platform && CSV_SUPPORTED_PLATFORMS.includes(platform)
                         ? `Import from a downloaded ${formatPlatformName(platform)} transaction history CSV file`
                         : 'Import from a downloaded transaction history CSV file'
                       }
@@ -1089,7 +1092,7 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                     <p className="text-xs text-slate-500 mt-3">
                       {platform === 'cashapp'
                         ? 'Best for: Cash App investing transactions (stocks & bitcoin)'
-                        : platform
+                        : platform && CSV_SUPPORTED_PLATFORMS.includes(platform)
                           ? `Best for: ${formatPlatformName(platform)} transactions`
                           : 'Best for: Stock & crypto transactions'
                       }
