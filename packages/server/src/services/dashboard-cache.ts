@@ -7,10 +7,13 @@
 
 import { join } from 'node:path'
 import { readdir } from 'node:fs/promises'
-import { readFund, type FundData } from '@escapemint/storage'
+import { readFund, entriesToCashFlows, type FundData } from '@escapemint/storage'
 import {
   computeDerivativesEntriesState,
   computeExpectedTarget,
+  computeTimeWeightedFundSize,
+  computeCashFundTimeWeightedSize,
+  getFundStartDate,
   type SubFundConfig,
   type Trade
 } from '@escapemint/engine'
@@ -269,26 +272,31 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
 
   // Use fundSize from finalMetrics for all funds (correctly handles manage_cash and derivatives)
   const actualFundSize = finalMetrics.fundSize
-  const daysActive = finalMetrics.daysActive
+  // Calendar days between first and last entry (for share weighting, not for TWFS)
+  const calendarDays = Math.max(1, Math.floor(
+    (new Date(latestEntry.date).getTime() - new Date(sortedEntries[0]!.date).getTime()) / (24 * 60 * 60 * 1000)
+  ))
 
-  // Time-weighted AVERAGE fund size calculation (for APY and share weighting)
-  // Sum dollar-days, then divide by daysActive to get average
-  let dollarDays = 0
-  for (let i = 0; i < sortedEntries.length; i++) {
-    const entry = sortedEntries[i]!
-    const nextEntry = sortedEntries[i + 1]
-    const entryFundSize = entry.fund_size ?? fund.config.fund_size_usd
-
-    const startDate = new Date(entry.date)
-    const endDate = nextEntry ? new Date(nextEntry.date) : new Date(latestEntry.date)
-    const days = Math.max(1, Math.floor((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)))
-
-    dollarDays += entryFundSize * days
-  }
-  // Convert to time-weighted average (same as engine's computeTimeWeightedFundSize)
-  const timeWeightedFundSize = daysActive > 0 ? dollarDays / daysActive : 0
-
+  // Time-weighted AVERAGE fund size — reuse the engine's canonical implementation
+  const fundStartDate = getFundStartDate(sortedEntries)
+  const asOfDate = latestEntry.date
   const isCashFund = fund.config.fund_type === 'cash'
+
+  let timeWeightedFundSize: number
+  if (isCashFund) {
+    const cashFlows = entriesToCashFlows(sortedEntries)
+    timeWeightedFundSize = computeCashFundTimeWeightedSize(cashFlows, fundStartDate, asOfDate)
+  } else {
+    const trades: Trade[] = sortedEntries
+      .filter(e => (e.action === 'BUY' || e.action === 'SELL') && e.amount)
+      .map(e => ({
+        date: e.date,
+        amount_usd: Math.abs(e.amount!),
+        type: e.action === 'BUY' ? 'buy' as const : 'sell' as const
+      }))
+    timeWeightedFundSize = computeTimeWeightedFundSize(trades, fundStartDate, asOfDate)
+  }
+
   const isClosed = fund.config.status === 'closed'
 
   // Use APY from finalMetrics (proper TWAB and compound interest formula)
@@ -311,7 +319,7 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
     fundSize: actualFundSize,
     currentValue: finalMetrics.currentValue,
     startInput: finalMetrics.totalInvested,
-    daysActive,
+    daysActive: calendarDays,
     timeWeightedFundSize,
     realizedGains: finalMetrics.realized,
     unrealizedGains: finalMetrics.unrealized,

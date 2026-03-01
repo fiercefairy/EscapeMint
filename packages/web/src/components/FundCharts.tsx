@@ -115,7 +115,7 @@ function computeTimeSeries(entries: FundEntry[], config: FundConfig): TimeSeries
       // Check for full liquidation using multiple detection methods (matches engine)
       const hasShareTracking = entry.shares !== undefined && entry.shares !== 0
       const sharesLiquidated = hasShareTracking && Math.abs(sumShares) < 0.0001
-      const valueLiquidated = entry.value <= entry.amount + 0.01
+      const valueLiquidated = entry.value > 0 && entry.value <= entry.amount + 0.01
       // In accumulate mode, partial sells don't reduce invested (they're profit extraction)
       // In harvest mode, all sells reduce invested
       const isAccumulate = config.accumulate
