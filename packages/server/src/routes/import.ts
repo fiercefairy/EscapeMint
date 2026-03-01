@@ -1150,6 +1150,19 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
         e.date === entry.date &&
         e.cash_interest === entry.cash_interest
       )
+    } else if (tx.fundId.endsWith('-cash') && entry.action === 'HOLD') {
+      // Cash fund entries may exist as legacy DEPOSIT/WITHDRAW or normalized HOLD.
+      // Match against both conventions to prevent re-importing the same cash flow.
+      const absAmount = Math.abs(entry.amount ?? 0)
+      const legacyAction = (entry.amount ?? 0) >= 0 ? 'DEPOSIT' : 'WITHDRAW'
+      isDuplicate = fund.entries.some(e =>
+        e.date === entry.date && (
+          // Match normalized HOLD entries (same signed amount)
+          (e.action === 'HOLD' && e.amount === entry.amount) ||
+          // Match legacy DEPOSIT/WITHDRAW entries (unsigned amount)
+          (e.action === legacyAction && Math.abs(e.amount ?? 0) === absAmount)
+        )
+      )
     } else {
       // For other actions, check date, action, and amount
       isDuplicate = fund.entries.some(e =>
