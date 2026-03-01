@@ -234,7 +234,22 @@ fundsRouter.get('/aggregate', async (req, res, next) => {
     fundMetrics.push(metrics)
   }
 
-  const aggregate = computeAggregateMetrics(fundMetrics)
+  // Compute portfolioDays from earliest first entry to latest last entry
+  let earliestDate: string | undefined
+  let latestDate: string | undefined
+  for (const fund of funds) {
+    if (fund.entries.length === 0) continue
+    const sorted = [...fund.entries].sort((a, b) => a.date.localeCompare(b.date))
+    const first = sorted[0]!.date
+    const last = sorted[sorted.length - 1]!.date
+    if (!earliestDate || first < earliestDate) earliestDate = first
+    if (!latestDate || last > latestDate) latestDate = last
+  }
+  const portfolioDays = earliestDate && latestDate
+    ? Math.max(1, Math.floor((new Date(latestDate).getTime() - new Date(earliestDate).getTime()) / (24 * 60 * 60 * 1000)))
+    : undefined
+
+  const aggregate = computeAggregateMetrics(fundMetrics, portfolioDays)
   res.json(aggregate)
 })
 
@@ -743,7 +758,22 @@ fundsRouter.get('/history', async (req, res, next) => {
     fundMetricsForAggregate.push(metrics)
   }
 
-  const aggregate = computeAggregateMetrics(fundMetricsForAggregate)
+  // Compute portfolioDays from earliest first entry to latest last entry
+  let histEarliestDate: string | undefined
+  let histLatestDate: string | undefined
+  for (const fund of funds) {
+    if (fund.entries.length === 0) continue
+    const sorted = [...fund.entries].sort((a, b) => a.date.localeCompare(b.date))
+    const first = sorted[0]!.date
+    const last = sorted[sorted.length - 1]!.date
+    if (!histEarliestDate || first < histEarliestDate) histEarliestDate = first
+    if (!histLatestDate || last > histLatestDate) histLatestDate = last
+  }
+  const histPortfolioDays = histEarliestDate && histLatestDate
+    ? Math.max(1, Math.floor((new Date(histLatestDate).getTime() - new Date(histEarliestDate).getTime()) / (24 * 60 * 60 * 1000)))
+    : undefined
+
+  const aggregate = computeAggregateMetrics(fundMetricsForAggregate, histPortfolioDays)
 
   res.json({
     timeSeries,

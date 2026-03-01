@@ -57,6 +57,7 @@ export interface DashboardMetrics {
   totalGainPct: number
   activeFunds: number
   closedFunds: number
+  portfolioDays: number
   funds: FundMetrics[]
 }
 
@@ -246,14 +247,29 @@ export async function getAggregateMetrics(includeTest = false): Promise<Dashboar
   const funds = await loadAllFunds(includeTest)
   const fundMetrics: FundMetrics[] = []
 
+  let earliestDate: string | undefined
+  let latestDate: string | undefined
+
   for (const fund of funds) {
     const metrics = computeFundMetrics(fund)
     if (metrics) {
       fundMetrics.push(metrics)
     }
+    // Track earliest/latest entry dates for portfolioDays
+    if (fund.entries.length > 0) {
+      const sorted = [...fund.entries].sort((a, b) => a.date.localeCompare(b.date))
+      const first = sorted[0]!.date
+      const last = sorted[sorted.length - 1]!.date
+      if (!earliestDate || first < earliestDate) earliestDate = first
+      if (!latestDate || last > latestDate) latestDate = last
+    }
   }
 
-  return recalculateAggregates(fundMetrics)
+  const portfolioDays = earliestDate && latestDate
+    ? Math.max(1, Math.floor((new Date(latestDate).getTime() - new Date(earliestDate).getTime()) / (24 * 60 * 60 * 1000)))
+    : undefined
+
+  return recalculateAggregates(fundMetrics, portfolioDays)
 }
 
 // Compute metrics for a single fund using the same logic as /aggregate endpoint
@@ -334,7 +350,7 @@ function computeFundMetrics(fund: FundData): FundMetrics | null {
 }
 
 // Recalculate aggregates from fund metrics
-function recalculateAggregates(fundMetrics: FundMetrics[]): DashboardMetrics {
+function recalculateAggregates(fundMetrics: FundMetrics[], portfolioDays?: number): DashboardMetrics {
   const totalFundSize = fundMetrics.reduce((sum, f) => sum + f.fundSize, 0)
   const totalValue = fundMetrics.reduce((sum, f) => sum + f.currentValue, 0)
   const totalStartInput = fundMetrics.reduce((sum, f) => sum + f.startInput, 0)
@@ -364,28 +380,38 @@ function recalculateAggregates(fundMetrics: FundMetrics[]): DashboardMetrics {
     fundSharesPct: totalFundShares > 0 ? fund.fundShares / totalFundShares : 0
   }))
 
-  // Weighted realized APY
-  let weightedRealizedAPY = 0
+  // Dollar-weighted compound APY: annualize the portfolio-level return once
+  let totalDollarDays = 0
+  let maxDaysActive = 0
   for (const fund of fundsWithSharesPct) {
-    weightedRealizedAPY += fund.realizedAPY * fund.fundSharesPct
+    totalDollarDays += fund.timeWeightedFundSize * fund.daysActive
+    if (fund.daysActive > maxDaysActive) maxDaysActive = fund.daysActive
+  }
+  const effectivePortfolioDays = portfolioDays ?? maxDaysActive
+  const avgCapital = effectivePortfolioDays > 0 ? totalDollarDays / effectivePortfolioDays : 0
+
+  // Realized APY: compound formula
+  let weightedRealizedAPY = 0
+  if (avgCapital > 0 && effectivePortfolioDays > 0) {
+    const totalReturn = Math.max(-0.99, totalRealizedGains / avgCapital)
+    weightedRealizedAPY = Math.pow(1 + totalReturn, 365 / effectivePortfolioDays) - 1
+  }
+
+  // Total liquid gain = sum of each fund's liquidPnl (unrealized + realized)
+  const totalGainUsd = fundMetrics.reduce((sum, f) => sum + f.gainUsd, 0)
+  const totalGainPct = totalStartInput > 0 ? totalGainUsd / totalStartInput : 0
+
+  // Liquid APY: compound formula
+  let liquidAPY = 0
+  if (avgCapital > 0 && effectivePortfolioDays > 0) {
+    const liquidReturn = Math.max(-0.99, totalGainUsd / avgCapital)
+    liquidAPY = Math.pow(1 + liquidReturn, 365 / effectivePortfolioDays) - 1
   }
 
   // Sum projected returns
   const projectedAnnualReturn = fundsWithSharesPct
     .filter(f => f.currentValue > 0)
     .reduce((sum, f) => sum + f.projectedAnnualReturn, 0)
-
-  // Total liquid gain = sum of each fund's liquidPnl (unrealized + realized)
-  // This includes dividends, interest, and extracted profits - the full lifetime gain
-  const totalGainUsd = fundMetrics.reduce((sum, f) => sum + f.gainUsd, 0)
-  const totalGainPct = totalStartInput > 0 ? totalGainUsd / totalStartInput : 0
-
-  // Aggregate liquid APY: (totalGainUsd / totalTimeWeightedFundSize) * (365 / avgDaysActive)
-  // totalTimeWeightedFundSize is now the AVERAGE fund size (not dollar-days)
-  const avgDaysActive = fundMetrics.length > 0 ? totalDaysActive / fundMetrics.length : 1
-  const liquidAPY = totalTimeWeightedFundSize > 0 && avgDaysActive > 0
-    ? (totalGainUsd / totalTimeWeightedFundSize) * (365 / avgDaysActive)
-    : 0
 
   // Unrealized gain percentage
   const unrealizedGainPct = totalStartInput > 0 ? totalUnrealizedGains / totalStartInput : 0
@@ -406,6 +432,7 @@ function recalculateAggregates(fundMetrics: FundMetrics[]): DashboardMetrics {
     totalGainPct,
     activeFunds,
     closedFunds,
+    portfolioDays: effectivePortfolioDays,
     funds: fundsWithSharesPct
   }
 }
@@ -634,10 +661,10 @@ function computeHistory(funds: FundData[]): DashboardHistory {
 
     const apyBase = Math.max(totalStartInput, totalFundSize * 0.1)
     const realizedAPY = apyBase > 0 && daysActive > 0
-      ? (totalRealizedGain / apyBase) * (365 / daysActive)
+      ? Math.pow(1 + Math.max(-0.99, totalRealizedGain / apyBase), 365 / daysActive) - 1
       : 0
     const liquidAPY = apyBase > 0 && daysActive > 0
-      ? (totalGainUsd / apyBase) * (365 / daysActive)
+      ? Math.pow(1 + Math.max(-0.99, totalGainUsd / apyBase), 365 / daysActive) - 1
       : 0
 
     timeSeries.push({
