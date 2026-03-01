@@ -1036,14 +1036,31 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
   }
 
   // Track running shares and last known price per fund to compute pre-action equity value
-  // Initialize from existing fund entries
+  // Initialize from existing fund entries that are BEFORE the earliest imported tx date
+  // for each fund. This prevents incorrect values when importing historical data into
+  // a fund that already has newer entries.
   const fundRunningShares = new Map<string, number>()
   const fundLastPrice = new Map<string, number>()
+
+  // Build a map of fundId -> earliest import date so we only initialize from
+  // existing entries that predate the imported transactions
+  const fundEarliestImportDate = new Map<string, string>()
+  for (const tx of transactions) {
+    if (!tx.fundId) continue
+    const current = fundEarliestImportDate.get(tx.fundId)
+    if (!current || tx.date < current) {
+      fundEarliestImportDate.set(tx.fundId, tx.date)
+    }
+  }
+
   for (const [fundId, fund] of fundMap) {
     let shares = 0
     let lastPrice = 0
     let lastPriceDate = ''
+    const earliestImportDate = fundEarliestImportDate.get(fundId)
     for (const e of fund.entries) {
+      // Only count entries before the earliest imported tx date for this fund
+      if (earliestImportDate && e.date >= earliestImportDate) continue
       if (e.shares) {
         shares += e.action === 'SELL' ? -Math.abs(e.shares) : Math.abs(e.shares)
       }

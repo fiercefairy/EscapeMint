@@ -1088,7 +1088,7 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
                     </p>
                     <p className="text-xs text-slate-500 mt-3">
                       {platform === 'cashapp'
-                        ? 'Best for: Bitcoin transactions'
+                        ? 'Best for: Cash App investing transactions (stocks & bitcoin)'
                         : 'Best for: Stock transactions'
                       }
                     </p>

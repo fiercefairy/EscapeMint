@@ -362,7 +362,9 @@ export function FundDetail() {
         // Only use value-based liquidation when value > 0 (value=0 means
         // "unknown" for imported entries, not "position is worthless")
         const valueLiquidated = entry.value > 0 && entry.value <= entry.amount + 0.01
-        const isFullLiquidation = sharesLiquidated || valueLiquidated
+        // For derivatives funds, value is always 0 by design, so every SELL
+        // is treated as a full liquidation for cycle tracking purposes
+        const isFullLiquidation = isDerivativesFund || sharesLiquidated || valueLiquidated
 
         // Always track sell proceeds for APY calculation
         sumSellProceeds += entry.amount
