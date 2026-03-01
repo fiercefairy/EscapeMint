@@ -794,6 +794,42 @@ importRouter.post('/robinhood/preview', async (req, res, next) => {
       }
 
       transactions.push(tx)
+
+      // If includeCashImpact, also create a CASH entry for cash-affecting transactions
+      if (includeCashImpact && ['BUY', 'SELL', 'DIVIDEND'].includes(tx.action) && tx.amount > 0) {
+        let cashAction: ParsedTransaction['action']
+        let cashDescription: string
+
+        if (tx.action === 'BUY') {
+          cashAction = 'WITHDRAW'
+          cashDescription = `Trade: Buy ${tx.symbol} (${tx.quantity} @ $${tx.price.toFixed(2)})`
+        } else if (tx.action === 'SELL') {
+          cashAction = 'DEPOSIT'
+          cashDescription = `Trade: Sell ${tx.symbol} (${tx.quantity} @ $${tx.price.toFixed(2)})`
+        } else {
+          // DIVIDEND
+          cashAction = 'DEPOSIT'
+          cashDescription = `Dividend: ${tx.symbol}`
+        }
+
+        // Track as CASH
+        if (!bySymbol['CASH']) {
+          bySymbol['CASH'] = { count: 0, fundId: cashFundId, fundExists: cashFundExists }
+        }
+        bySymbol['CASH']!.count++
+
+        transactions.push({
+          date: tx.date,
+          action: cashAction,
+          symbol: 'CASH',
+          quantity: 0,
+          price: 0,
+          amount: tx.amount,
+          description: cashDescription,
+          fundId: cashFundId,
+          fundExists: cashFundExists
+        })
+      }
     }
 
     // Sort by date
@@ -1006,12 +1042,14 @@ importRouter.post('/robinhood/apply', async (req, res, next) => {
   for (const [fundId, fund] of fundMap) {
     let shares = 0
     let lastPrice = 0
+    let lastPriceDate = ''
     for (const e of fund.entries) {
       if (e.shares) {
         shares += e.action === 'SELL' ? -Math.abs(e.shares) : Math.abs(e.shares)
       }
-      if (e.price && e.price > 0) {
+      if (e.price && e.price > 0 && e.date >= lastPriceDate) {
         lastPrice = e.price
+        lastPriceDate = e.date
       }
     }
     fundRunningShares.set(fundId, shares)

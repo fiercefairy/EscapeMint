@@ -334,6 +334,18 @@ const getAvailableMethods = (platform?: string): ImportMethod[] => {
   return PLATFORM_IMPORT_METHODS[normalized] ?? defaultMethods
 }
 
+const PLATFORM_DISPLAY_NAMES: Record<string, string> = {
+  robinhood: 'Robinhood',
+  cashapp: 'Cash App',
+  m1: 'M1',
+  coinbase: 'Coinbase',
+  schwab: 'Schwab',
+  vanguard: 'Vanguard'
+}
+
+const formatPlatformName = (p: string): string =>
+  PLATFORM_DISPLAY_NAMES[p.toLowerCase()] ?? p.charAt(0).toUpperCase() + p.slice(1)
+
 interface ScrapeProgress {
   status: string
   phase: 'navigating' | 'loading' | 'scraping' | 'complete' | 'error'
@@ -2997,7 +3009,7 @@ export function ImportWizard({ onClose, onImported, platform }: ImportWizardProp
               <div className="text-4xl mb-4">📄</div>
               <p className="text-white font-medium mb-2">
                 {platform
-                  ? `Drop your ${platform.charAt(0).toUpperCase() + platform.slice(1)} CSV file here`
+                  ? `Drop your ${formatPlatformName(platform)} CSV file here`
                   : 'Drop your CSV file here'}
               </p>
               <p className="text-slate-400 text-sm mb-4">
